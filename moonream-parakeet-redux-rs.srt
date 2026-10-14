@@ -1,0 +1,500 @@
+1
+00:00:00,000 --> 00:00:04,000
+In a previous lesson we talked about the dumb zone and the smart zone, where
+
+2
+00:00:04,160 --> 00:00:08,960
+attention degradation kicks in as the session gets longer and the model gets dummer
+
+3
+00:00:08,960 --> 00:00:13,040
+and dummer and starts doing dumb things, but we didn't really talk about what those
+
+4
+00:00:13,040 --> 00:00:14,560
+dumb things are.
+
+5
+00:00:14,560 --> 00:00:20,080
+What symptoms are you likely to see inside the dumb zone and sometimes even in the
+
+6
+00:00:20,080 --> 00:00:21,360
+smart zone itself?
+
+7
+00:00:21,360 --> 00:00:27,840
+Well, the big one, and the one that we are always working to prevent at any cost, is
+
+8
+00:00:27,840 --> 00:00:28,880
+hallucination.
+
+9
+00:00:28,880 --> 00:00:31,440
+Confidently wrong model output.
+
+10
+00:00:31,440 --> 00:00:35,520
+A hallucination can be absolutely disastrous when you're coding.
+
+11
+00:00:35,520 --> 00:00:41,280
+It can just produce broken code, it can take you down a direction in the products
+
+12
+00:00:41,280 --> 00:00:46,640
+that you didn't want to take, it can recommend that you use a API that's no longer
+
+13
+00:00:46,640 --> 00:00:52,320
+secure, it can do all sorts of really dangerous stuff, and so often what we're
+
+14
+00:00:52,320 --> 00:00:57,520
+trying to do is provide an environment for the model, provide it things that lessen
+
+15
+00:00:57,520 --> 00:00:59,120
+the likelihood of hallucinations.
+
+16
+00:00:59,120 --> 00:01:03,600
+In this lesson I to give you a kind of dictionary for hallucinations, a way of
+
+17
+00:01:03,600 --> 00:01:07,200
+understanding how to prevent them understanding even really what they are.
+
+18
+00:01:07,280 --> 00:01:12,480
+Now there are two main flavours of hallucination, factuality and faithfulness.
+
+19
+00:01:12,560 --> 00:01:17,840
+A factuality hallucination is invented or just plain wrong facts about the world.
+
+20
+00:01:17,840 --> 00:01:22,400
+So a function that doesn't exist, a wrong API signature, a citation to an article
+
+21
+00:01:22,400 --> 00:01:23,120
+that doesn't exist.
+
+22
+00:01:23,120 --> 00:01:27,120
+And in general these happen because of a lack of parametric knowledge.
+
+23
+00:01:27,120 --> 00:01:28,800
+So what is parametric knowledge?
+
+24
+00:01:28,880 --> 00:01:32,800
+By the way, all of these articles I will link below, these are in the AI coding
+
+25
+00:01:32,800 --> 00:01:33,440
+dictionary.
+
+26
+00:01:33,440 --> 00:01:37,760
+Well, when the model is trained initially, then the information in its training is
+
+27
+00:01:37,760 --> 00:01:39,600
+stored in its parameters.
+
+28
+00:01:39,600 --> 00:01:45,280
+Every model, its brain, its memory essentially, is stored in these huge array of
+
+29
+00:01:45,440 --> 00:01:48,160
+numbers, so sometimes billions and billions of numbers.
+
+30
+00:01:48,160 --> 00:01:51,280
+You may sometimes have heard them called weights, for instance.
+
+31
+00:01:51,280 --> 00:01:56,720
+And the parametric knowledge is the knowledge encoded in these parameters, and it's
+
+32
+00:01:56,720 --> 00:01:59,520
+encoded once at the time that the model is trained.
+
+33
+00:02:00,320 --> 00:02:04,800
+that the model is stateless is that these parameters they never change after that
+
+34
+00:02:04,960 --> 00:02:09,600
+they're literally just frozen after the training process and so then parametric
+
+35
+00:02:09,600 --> 00:02:14,240
+knowledge is the knowledge that the model kind of has in its parameters.
+
+36
+00:02:14,240 --> 00:02:18,160
+However, if you think about it, if you think about all of the terabytes and
+
+37
+00:02:18,160 --> 00:02:22,960
+terabytes of training data that are put into an agent, and it then has to compress
+
+38
+00:02:22,960 --> 00:02:28,080
+them down into a couple of billion numbers, then a lot of stuff is going to get lost
+
+39
+00:02:28,080 --> 00:02:28,560
+there.
+
+40
+00:02:29,000 --> 00:02:32,680
+It's kind of like when you have a really detailed image and you then compress it
+
+41
+00:02:32,680 --> 00:02:36,200
+down to a tiny size, you sometimes can't see the finer detail.
+
+42
+00:02:36,200 --> 00:02:41,880
+Not only that, but parametric knowledge has a cut-off to it, which is the model was
+
+43
+00:02:42,040 --> 00:02:47,320
+trained at a certain time, and then the data that sort of came after that, so new
+
+44
+00:02:47,320 --> 00:02:53,000
+events, new libraries, new APIs, all of that has escaped the model, and so models
+
+45
+00:02:53,160 --> 00:02:56,840
+often need to be continually updated in order to make sure they've got the new
+
+46
+00:02:56,840 --> 00:02:57,400
+stuff.
+
+47
+00:02:57,400 --> 00:02:59,880
+All models have a knowledge cutoff.
+
+48
+00:02:59,880 --> 00:03:03,720
+And the way that training works is you can't just patch some more information into
+
+49
+00:03:03,720 --> 00:03:06,440
+the model, you have to retrain it from scratch.
+
+50
+00:03:06,440 --> 00:03:09,960
+So that means that factuality hallucinations can come from two places.
+
+51
+00:03:10,120 --> 00:03:15,400
+Either you're asking information that's after its knowledge cutoff, or you're asking
+
+52
+00:03:15,400 --> 00:03:19,160
+it information about stuff that's before the knowledge cutoff, but it's only got a
+
+53
+00:03:19,160 --> 00:03:22,360
+kind of fuzzy JPeg, a fuzzy image to reference.
+
+54
+00:03:22,360 --> 00:03:26,520
+It's not going to be very good at retrieving information from its parametric
+
+55
+00:03:26,520 --> 00:03:28,040
+knowledge because of the way it's stored.
+
+56
+00:03:28,040 --> 00:03:33,160
+It's not stored like a database of facts, it's just stored as fuzzy vibes.
+
+57
+00:03:33,160 --> 00:03:37,400
+So for instance, here's a hallucination I've just got from Opus 4.8 on medium
+
+58
+00:03:37,400 --> 00:03:37,960
+effort.
+
+59
+00:03:37,960 --> 00:03:40,440
+I've asked it, how expensive is the X API?
+
+60
+00:03:40,440 --> 00:03:43,800
+Don't search for information, just tell me based on what you know.
+
+61
+00:03:43,800 --> 00:03:46,680
+And it says, based on my knowledge which may be outdated.
+
+62
+00:03:46,680 --> 00:03:49,800
+Here are the rough tiers for the X Twitter API of my training.
+
+63
+00:03:49,800 --> 00:03:54,920
+Free is very limited, you get basic at $100 a month, pro at $5,000 a month,
+
+64
+00:03:55,080 --> 00:03:56,520
+enterprise custom pricing.
+
+65
+00:03:56,520 --> 00:03:58,360
+Now this is actually not true.
+
+66
+00:03:58,760 --> 00:04:01,960
+It's actually gone down massively relatively recently.
+
+67
+00:04:01,960 --> 00:04:04,520
+So I'm now going to tell it now search for the information.
+
+68
+00:04:04,520 --> 00:04:09,000
+And it's now going to go off and search for the info and it's going to check to see
+
+69
+00:04:09,000 --> 00:04:11,000
+if its parametric knowledge was correct.
+
+70
+00:04:11,000 --> 00:04:14,920
+We can see it's doing a web search here, so it's using some kind of built-in
+
+71
+00:04:15,000 --> 00:04:16,120
+anthropic web search.
+
+72
+00:04:16,120 --> 00:04:18,280
+And it's found that its earlier answer was outdated.
+
+73
+00:04:18,280 --> 00:04:21,800
+The pricing model actually changed significantly and now it has the real
+
+74
+00:04:21,800 --> 00:04:22,360
+information.
+
+75
+00:04:22,360 --> 00:04:25,880
+So it actually changed a while ago in February 6th, this is before this current
+
+76
+00:04:26,040 --> 00:04:27,240
+model's knowledge cut off.
+
+77
+00:04:27,240 --> 00:04:31,720
+And so what we had there was a factuality hallucination, invented or wrong fact
+
+78
+00:04:31,800 --> 00:04:32,360
+about the world.
+
+79
+00:04:32,360 --> 00:04:36,760
+And you notice in this right-hand column there is a fix column here, which is to
+
+80
+00:04:36,760 --> 00:04:39,320
+load in the correct contextual knowledge.
+
+81
+00:04:39,320 --> 00:04:43,880
+Contextual knowledge is knowledge that is in the context window of the model.
+
+82
+00:04:43,880 --> 00:04:47,880
+From the quote below, hallucinations are much less common when the agent works from
+
+83
+00:04:47,880 --> 00:04:49,000
+contextual knowledge.
+
+84
+00:04:49,000 --> 00:04:52,360
+The answer is right in front of it, not dredged up from a blurred memory.
+
+85
+00:04:52,360 --> 00:04:58,120
+However, it is not a cure for hallucinations because we also have faithfulness
+
+86
+00:04:58,280 --> 00:04:58,680
+hallucination.
+
+87
+00:04:59,560 --> 00:05:04,680
+And this is where even if you've passed the information to the LLM in its context,
+
+88
+00:05:04,680 --> 00:05:09,160
+it will ignore it or drift away from it or do something slightly strange with it.
+
+89
+00:05:09,160 --> 00:05:13,400
+This is the thing that the dumb zone makes really, really bad because of this
+
+90
+00:05:13,400 --> 00:05:14,840
+attention degradation.
+
+91
+00:05:14,840 --> 00:05:18,920
+Because you have so much information in the context, then it can't find the relevant
+
+92
+00:05:19,000 --> 00:05:23,480
+stuff because there are so many attention relationships to keep track of, it doesn't
+
+93
+00:05:23,480 --> 00:05:25,240
+know which ones are the important ones.
+
+94
+00:05:25,240 --> 00:05:28,280
+This means that you can pass the agent all the relevant information.
+
+95
+00:05:29,080 --> 00:05:33,400
+set things up perfectly, but if there's just too much in its context window, then it
+
+96
+00:05:33,400 --> 00:05:37,160
+won't be able to follow instructions as well, and it will hallucinate more.
+
+97
+00:05:37,160 --> 00:05:41,240
+That means it will produce worse code, it will open you up to security risks, it
+
+98
+00:05:41,240 --> 00:05:42,600
+will do really strange stuff.
+
+99
+00:05:42,680 --> 00:05:46,120
+So here's a decision tree that you can use when you see a hallucination.
+
+100
+00:05:46,120 --> 00:05:51,160
+So bam, you hit a hallucination and you say was the information available in the
+
+101
+00:05:51,160 --> 00:05:52,520
+model's context window?
+
+102
+00:05:52,520 --> 00:05:55,080
+If no, then it's a factuality problem.
+
+103
+00:05:55,080 --> 00:05:58,600
+It's looking at its parametric knowledge and it's coming up short.
+
+104
+00:05:58,760 --> 00:06:01,320
+So you need to load the information into context.
+
+105
+00:06:01,320 --> 00:06:07,080
+For this side of this little hexagon here, I would say never trust an unsourced LLM.
+
+106
+00:06:07,080 --> 00:06:12,680
+Always make sure the agent is working from sourced information, from contextual
+
+107
+00:06:12,680 --> 00:06:13,320
+info.
+
+108
+00:06:13,320 --> 00:06:17,160
+But you might end up just going straight back up here with another hallucination,
+
+109
+00:06:17,160 --> 00:06:21,560
+and if the information is in context, then it's a faithfulness problem.
+
+110
+00:06:21,560 --> 00:06:25,560
+The agent is not being faithful to the information that you've provided to it.
+
+111
+00:06:25,560 --> 00:06:30,120
+Now this can happen in the smart zone, but most Most of the time you've just got to
+
+112
+00:06:30,200 --> 00:06:33,880
+get out of the dumb zone, clear your context window, make sure the attention
+
+113
+00:06:34,040 --> 00:06:37,720
+degradation goes down, that the agent can relax a little bit.
+
+114
+00:06:37,720 --> 00:06:42,520
+It usually doesn't happen in the smart zone, but because LLMs or models are
+
+115
+00:06:42,520 --> 00:06:47,560
+non-deterministic, you will very occasionally get a faithfulness error in the smart
+
+116
+00:06:47,560 --> 00:06:47,880
+zone.
+
+117
+00:06:47,880 --> 00:06:52,840
+Now the hope is that the model providers improve models to the point where we don't
+
+118
+00:06:52,920 --> 00:06:55,640
+have to worry about hallucination so much.
+
+119
+00:06:55,640 --> 00:06:58,680
+These factuality and faithfulness errors are things that they test for.
+
+120
+00:06:59,480 --> 00:07:04,760
+but I just can't see a world in which we're not having to deal with these sometimes,
+
+121
+00:07:04,760 --> 00:07:09,160
+and knowing about how they work, understanding them at a deep level, is really
+
+122
+00:07:09,560 --> 00:07:11,320
+important part of AI coding.
+
+123
+00:07:11,320 --> 00:07:15,400
+I hope during the rest of this course you are on the lookout for factuality errors
+
+124
+00:07:15,400 --> 00:07:18,360
+and faithfulness errors, and now you will know how to deal with them.
+
+125
+00:07:18,440 --> 00:07:20,440
+That's work and I'll see you in the next one.
+

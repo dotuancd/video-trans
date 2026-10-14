@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.egg-info/
+models/
+macos-arm64/
+*.cact
+*.wav
+*.mp4
+*.mkv
+.env

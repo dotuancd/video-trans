@@ -1,0 +1,508 @@
+1
+00:00:00,080 --> 00:00:04,160
+Trong bài trước, chúng ta đã nói về vùng ngốc (dumb zone) và vùng thông minh (smart zone), nơi
+
+2
+00:00:04,160 --> 00:00:09,040
+sự suy giảm attention xuất hiện khi phiên làm việc dài ra và model ngày càng
+
+3
+00:00:09,040 --> 00:00:12,960
+ngốc hơn và bắt đầu làm những điều ngốc nghếch, nhưng ta chưa thực sự nói những điều
+
+4
+00:00:12,960 --> 00:00:14,480
+ngốc nghếch đó là gì.
+
+5
+00:00:14,640 --> 00:00:20,240
+Bạn có thể sẽ thấy những triệu chứng nào trong vùng ngốc, và đôi khi ngay cả trong
+
+6
+00:00:20,240 --> 00:00:21,200
+chính vùng thông minh?
+
+7
+00:00:21,440 --> 00:00:27,760
+Triệu chứng lớn nhất, và là thứ chúng ta luôn cố ngăn chặn bằng mọi giá, chính là
+
+8
+00:00:27,760 --> 00:00:31,600
+ảo giác (hallucination): model đưa ra kết quả sai một cách đầy tự tin.
+
+9
+00:00:31,600 --> 00:00:35,200
+Một ảo giác có thể cực kỳ tai hại khi bạn lập trình.
+
+10
+00:00:35,600 --> 00:00:37,760
+Nó có thể tạo ra code lỗi.
+
+11
+00:00:38,320 --> 00:00:42,400
+Nó có thể kéo sản phẩm của bạn theo một hướng mà bạn không hề muốn.
+
+12
+00:00:42,720 --> 00:00:47,200
+Nó có thể khuyên bạn dùng một API không còn an toàn nữa.
+
+13
+00:00:47,680 --> 00:00:50,400
+Nó có thể làm đủ thứ chuyện thực sự nguy hiểm.
+
+14
+00:00:50,400 --> 00:00:55,360
+Vì vậy, điều chúng ta thường cố làm là tạo ra một môi trường cho model,
+
+15
+00:00:55,440 --> 00:00:59,280
+cung cấp những thứ giúp giảm khả năng xảy ra ảo giác.
+
+16
+00:00:59,440 --> 00:01:03,440
+Trong bài này, tôi muốn đưa cho bạn một kiểu từ điển về ảo giác, một cách
+
+17
+00:01:03,440 --> 00:01:07,280
+để hiểu cách ngăn chặn chúng, và hiểu thực sự chúng là gì.
+
+18
+00:01:07,440 --> 00:01:12,560
+Có hai loại ảo giác chính: sai sự thật (factuality) và không trung thành (faithfulness).
+
+19
+00:01:12,720 --> 00:01:17,840
+Ảo giác sai sự thật là bịa ra hoặc đưa ra thông tin sai về thế giới.
+
+20
+00:01:18,000 --> 00:01:22,480
+Ví dụ một hàm không tồn tại, một chữ ký API sai, một trích dẫn tới bài viết
+
+21
+00:01:22,480 --> 00:01:23,040
+không hề tồn tại.
+
+22
+00:01:23,280 --> 00:01:27,040
+Nhìn chung, chúng xảy ra do thiếu kiến thức tham số (parametric knowledge).
+
+23
+00:01:27,200 --> 00:01:28,960
+Vậy kiến thức tham số là gì?
+
+24
+00:01:29,120 --> 00:01:31,200
+Nhân tiện, tất cả các bài viết này đều có link bên dưới.
+
+25
+00:01:31,360 --> 00:01:33,200
+Chúng nằm trong cuốn từ điển AI coding.
+
+26
+00:01:33,520 --> 00:01:37,760
+Khi model được huấn luyện ban đầu, thông tin trong quá trình huấn luyện được
+
+27
+00:01:37,760 --> 00:01:39,120
+lưu vào các tham số của nó.
+
+28
+00:01:39,680 --> 00:01:41,360
+Bộ não của mỗi model,
+
+29
+00:01:41,600 --> 00:01:45,840
+trí nhớ của nó về cơ bản được lưu trong những mảng số khổng lồ này.
+
+30
+00:01:46,080 --> 00:01:48,080
+Đôi khi là hàng tỷ và hàng tỷ con số.
+
+31
+00:01:48,240 --> 00:01:50,800
+Có thể bạn từng nghe chúng được gọi là trọng số (weights).
+
+32
+00:01:51,360 --> 00:01:56,800
+Kiến thức tham số là kiến thức được mã hoá trong các tham số này, và nó
+
+33
+00:01:56,800 --> 00:01:59,680
+chỉ được mã hoá một lần, vào lúc model được huấn luyện.
+
+34
+00:01:59,840 --> 00:02:04,240
+Lý do model không có trạng thái (stateless) là vì sau đó các tham số này không bao giờ thay đổi
+
+35
+00:02:04,240 --> 00:02:08,080
+nữa, chúng đơn giản là bị đóng băng sau quá trình huấn luyện.
+
+36
+00:02:08,320 --> 00:02:13,600
+Vậy kiến thức tham số là kiến thức mà model có sẵn trong
+
+37
+00:02:13,600 --> 00:02:14,080
+các tham số của nó.
+
+38
+00:02:14,320 --> 00:02:18,320
+Tuy nhiên, nếu bạn nghĩ kỹ, hãy nghĩ tới tất cả hàng terabyte và
+
+39
+00:02:18,320 --> 00:02:23,040
+terabyte dữ liệu huấn luyện được đưa vào một agent, rồi nó phải nén
+
+40
+00:02:23,040 --> 00:02:27,840
+tất cả xuống còn vài tỷ con số, thì rất nhiều thứ sẽ bị mất
+
+41
+00:02:27,840 --> 00:02:28,160
+ở đó.
+
+42
+00:02:29,360 --> 00:02:32,720
+Giống như khi bạn có một bức ảnh rất chi tiết rồi nén nó
+
+43
+00:02:32,720 --> 00:02:36,080
+xuống kích thước thật nhỏ, đôi khi bạn không còn thấy được các chi tiết nhỏ nữa.
+
+44
+00:02:36,240 --> 00:02:42,000
+Không chỉ vậy, kiến thức tham số còn có mốc giới hạn (cut-off): model được
+
+45
+00:02:42,000 --> 00:02:47,360
+huấn luyện tại một thời điểm nhất định, và những dữ liệu đến sau đó, như
+
+46
+00:02:47,360 --> 00:02:53,120
+sự kiện mới, thư viện mới, API mới, đều nằm ngoài tầm của model, nên model
+
+47
+00:02:53,120 --> 00:02:56,800
+thường phải được cập nhật liên tục để đảm bảo chúng có những thứ
+
+48
+00:02:56,800 --> 00:02:57,200
+mới.
+
+49
+00:02:57,600 --> 00:03:01,760
+Mọi model đều có mốc giới hạn kiến thức, và với cách huấn luyện hoạt động, bạn không thể
+
+50
+00:03:01,760 --> 00:03:06,400
+chỉ vá thêm thông tin vào model mà phải huấn luyện lại từ đầu.
+
+51
+00:03:06,560 --> 00:03:10,880
+Điều đó nghĩa là ảo giác sai sự thật có thể đến từ hai nguồn: hoặc bạn đang
+
+52
+00:03:10,880 --> 00:03:15,600
+hỏi thông tin sau mốc giới hạn kiến thức, hoặc bạn đang hỏi
+
+53
+00:03:15,600 --> 00:03:19,280
+thông tin trước mốc giới hạn, nhưng nó chỉ có
+
+54
+00:03:19,280 --> 00:03:22,000
+một kiểu ảnh JPEG mờ, một hình ảnh mờ để tham chiếu.
+
+55
+00:03:22,480 --> 00:03:26,400
+Nó sẽ không giỏi lắm trong việc truy xuất thông tin từ kiến thức
+
+56
+00:03:26,400 --> 00:03:28,160
+tham số, vì cách thông tin được lưu trữ.
+
+57
+00:03:28,240 --> 00:03:30,720
+Nó không được lưu như một cơ sở dữ liệu các sự kiện.
+
+58
+00:03:30,720 --> 00:03:33,200
+Nó chỉ được lưu như những "cảm giác" mơ hồ.
+
+59
+00:03:33,280 --> 00:03:37,360
+Ví dụ, đây là một ảo giác tôi vừa nhận được từ Opus 4.8 với mức effort
+
+60
+00:03:37,360 --> 00:03:37,680
+medium.
+
+61
+00:03:38,160 --> 00:03:40,320
+Tôi đã hỏi nó: X API đắt cỡ nào?
+
+62
+00:03:40,560 --> 00:03:41,520
+Đừng tìm kiếm thông tin.
+
+63
+00:03:41,920 --> 00:03:43,600
+Chỉ trả lời dựa trên những gì bạn biết.
+
+64
+00:03:44,000 --> 00:03:46,400
+Và nó nói: dựa trên kiến thức của tôi, có thể đã lỗi thời,
+
+65
+00:03:46,800 --> 00:03:49,520
+đây là các gói giá ước tính của X/Twitter API tại thời điểm tôi được huấn luyện.
+
+66
+00:03:49,920 --> 00:03:51,120
+Gói Free rất hạn chế.
+
+67
+00:03:51,360 --> 00:03:56,480
+Basic giá 100 đô một tháng, Pro 5.000 đô một tháng, Enterprise giá tuỳ chỉnh.
+
+68
+00:03:56,640 --> 00:03:58,400
+Thực ra điều này không đúng.
+
+69
+00:03:58,720 --> 00:04:02,000
+Giá đã giảm rất mạnh trong thời gian gần đây.
+
+70
+00:04:02,160 --> 00:04:05,440
+Giờ tôi sẽ bảo nó tìm kiếm thông tin, và nó sẽ đi
+
+71
+00:04:05,440 --> 00:04:09,920
+tìm thông tin rồi kiểm tra xem kiến thức tham số
+
+72
+00:04:09,920 --> 00:04:10,960
+của nó có đúng không.
+
+73
+00:04:11,120 --> 00:04:15,200
+Ta thấy nó đang tìm kiếm web, dùng công cụ web search tích hợp của
+
+74
+00:04:15,200 --> 00:04:18,720
+Anthropic, và nó phát hiện câu trả lời trước đó đã lỗi thời, mô hình giá
+
+75
+00:04:18,720 --> 00:04:22,720
+thực tế đã thay đổi đáng kể, và giờ nó có thông tin thật. Thực ra
+
+76
+00:04:22,720 --> 00:04:26,560
+nó đã thay đổi từ khá lâu, vào ngày 6 tháng 2, trước cả mốc giới hạn
+
+77
+00:04:26,560 --> 00:04:31,200
+kiến thức của model này. Vậy cái ta vừa gặp là ảo giác sai sự thật: bịa ra hoặc
+
+78
+00:04:31,200 --> 00:04:35,200
+đưa ra thông tin sai về thế giới. Và bạn để ý cột bên phải này có một cột
+
+79
+00:04:35,200 --> 00:04:39,920
+cách khắc phục, đó là nạp vào kiến thức ngữ cảnh đúng. Kiến thức ngữ cảnh
+
+80
+00:04:39,920 --> 00:04:43,920
+(contextual knowledge) là kiến thức nằm trong context window của model.
+
+81
+00:04:44,000 --> 00:04:47,920
+Theo trích dẫn bên dưới, ảo giác ít xảy ra hơn nhiều khi agent làm việc từ
+
+82
+00:04:47,920 --> 00:04:48,720
+kiến thức ngữ cảnh.
+
+83
+00:04:49,120 --> 00:04:52,160
+Câu trả lời nằm ngay trước mặt nó, chứ không phải moi ra từ một trí nhớ mờ nhạt.
+
+84
+00:04:52,400 --> 00:04:58,560
+Tuy nhiên, đó không phải là thuốc chữa ảo giác, vì ta còn có ảo giác
+
+85
+00:04:58,560 --> 00:04:59,360
+không trung thành.
+
+86
+00:04:59,600 --> 00:05:04,160
+Đây là khi, dù bạn đã đưa thông tin cho LLM trong ngữ cảnh,
+
+87
+00:05:04,800 --> 00:05:09,120
+nó vẫn phớt lờ, lệch khỏi thông tin đó, hoặc xử lý nó theo cách hơi kỳ lạ.
+
+88
+00:05:09,120 --> 00:05:13,520
+Đây chính là thứ mà vùng ngốc làm trầm trọng hơn rất nhiều, do
+
+89
+00:05:13,520 --> 00:05:14,640
+sự suy giảm attention.
+
+90
+00:05:14,880 --> 00:05:18,960
+Vì có quá nhiều thông tin trong ngữ cảnh, nó không tìm được
+
+91
+00:05:18,960 --> 00:05:22,880
+những thứ liên quan, vì có quá nhiều mối quan hệ attention cần theo dõi.
+
+92
+00:05:23,120 --> 00:05:25,120
+Nó không biết cái nào mới là quan trọng.
+
+93
+00:05:25,280 --> 00:05:28,080
+Điều này có nghĩa là bạn có thể đưa cho agent mọi thông tin liên quan.
+
+94
+00:05:28,560 --> 00:05:30,480
+Bạn có thể thiết lập mọi thứ hoàn hảo.
+
+95
+00:05:30,640 --> 00:05:34,320
+Nhưng nếu có quá nhiều thứ trong context window, nó sẽ không làm theo
+
+96
+00:05:34,320 --> 00:05:37,120
+chỉ dẫn tốt được và sẽ ảo giác nhiều hơn.
+
+97
+00:05:37,120 --> 00:05:38,880
+Nghĩa là nó sẽ viết code tệ hơn.
+
+98
+00:05:39,120 --> 00:05:41,120
+Nó sẽ khiến bạn gặp rủi ro bảo mật.
+
+99
+00:05:41,200 --> 00:05:42,640
+Nó sẽ làm những điều rất kỳ quặc.
+
+100
+00:05:42,880 --> 00:05:45,840
+Đây là một cây quyết định bạn có thể dùng khi gặp ảo giác.
+
+101
+00:05:46,240 --> 00:05:51,360
+Bùm, bạn gặp một ảo giác, và bạn tự hỏi: thông tin có nằm trong
+
+102
+00:05:51,360 --> 00:05:52,400
+context window của model không?
+
+103
+00:05:52,560 --> 00:05:54,960
+Nếu không, đó là vấn đề sai sự thật.
+
+104
+00:05:55,120 --> 00:05:58,480
+Nó đang dựa vào kiến thức tham số và không đủ đáp ứng.
+
+105
+00:05:58,960 --> 00:06:01,200
+Vì vậy bạn cần nạp thông tin vào ngữ cảnh.
+
+106
+00:06:01,360 --> 00:06:06,960
+Với nhánh này của hình lục giác nhỏ đây, tôi muốn nói: đừng bao giờ tin một LLM không có nguồn.
+
+107
+00:06:07,120 --> 00:06:12,720
+Luôn đảm bảo agent làm việc với thông tin có nguồn, từ thông tin
+
+108
+00:06:12,720 --> 00:06:13,040
+ngữ cảnh.
+
+109
+00:06:13,280 --> 00:06:16,880
+Nhưng có thể bạn sẽ quay ngay lại đây với một ảo giác khác.
+
+110
+00:06:17,280 --> 00:06:21,280
+Và nếu thông tin đã có trong ngữ cảnh, thì đó là vấn đề không trung thành.
+
+111
+00:06:21,600 --> 00:06:25,520
+Agent không trung thành với thông tin bạn đã cung cấp cho nó.
+
+112
+00:06:25,520 --> 00:06:30,480
+Điều này có thể xảy ra trong vùng thông minh, nhưng phần lớn thời gian bạn chỉ cần
+
+113
+00:06:30,480 --> 00:06:34,640
+thoát khỏi vùng ngốc, xoá context window, đảm bảo sự suy giảm attention
+
+114
+00:06:34,640 --> 00:06:37,680
+giảm xuống để agent được "thở" một chút.
+
+115
+00:06:37,840 --> 00:06:42,480
+Nó thường không xảy ra trong vùng thông minh, nhưng vì LLM hay các model
+
+116
+00:06:42,480 --> 00:06:47,680
+không tất định (non-deterministic), thỉnh thoảng bạn vẫn gặp lỗi không trung thành trong vùng
+
+117
+00:06:47,680 --> 00:06:47,920
+thông minh.
+
+118
+00:06:47,920 --> 00:06:52,960
+Hy vọng là các nhà cung cấp model sẽ cải thiện model đến mức ta không
+
+119
+00:06:52,960 --> 00:06:55,440
+phải lo nhiều về ảo giác nữa.
+
+120
+00:06:55,920 --> 00:07:00,480
+Lỗi sai sự thật và lỗi không trung thành là những thứ họ có kiểm thử, nhưng tôi
+
+121
+00:07:00,480 --> 00:07:04,240
+không thể hình dung một thế giới mà đôi khi ta không phải đối mặt với chúng.
+
+122
+00:07:04,800 --> 00:07:09,200
+Và việc biết chúng hoạt động thế nào, hiểu chúng ở mức sâu, là một
+
+123
+00:07:09,200 --> 00:07:11,280
+phần thực sự quan trọng của AI coding.
+
+124
+00:07:11,360 --> 00:07:15,520
+Tôi hy vọng trong phần còn lại của khoá học, bạn sẽ luôn để ý các lỗi sai sự thật
+
+125
+00:07:15,520 --> 00:07:16,400
+và lỗi không trung thành.
+
+126
+00:07:16,480 --> 00:07:18,480
+Và giờ bạn đã biết cách xử lý chúng.
+
+127
+00:07:18,560 --> 00:07:20,240
+Làm tốt lắm, hẹn gặp bạn ở bài tiếp theo.
+
