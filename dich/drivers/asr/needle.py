@@ -42,4 +42,4 @@ class NeedleAsr(Driver):
                                    max_chars=params.max_chars, max_duration=params.max_duration,
                                    min_chars=params.min_chars)
         ctx.log.info(f"{len(transcript.cues)} câu phụ đề")
-        return {"transcript": transcript.save(ctx.output("transcript.json"))}
+        return {"transcript": transcript.save(ctx.output("transcript.jsonl"))}

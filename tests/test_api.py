@@ -192,3 +192,50 @@ def test_presets(app):
     assert client.put("/api/presets/%20", json={}).status_code == 400
     assert client.delete("/api/presets/Anime JP").status_code == 204
     assert client.delete("/api/presets/Anime JP").status_code == 404
+
+
+def test_projects(app):
+    client, ctx = app
+    assert client.post("/api/projects", json={"name": "  "}).status_code == 400
+    assert client.post("/api/projects", json={"name": "x", "export_dir": "/etc"}).status_code == 403
+    project = client.post("/api/projects", json={"name": "Khoá học", "langs": ["vi", "ja"],
+                                                 "options": {"export": True, "stages": {"asr": {"driver": "fake"}}},
+                                                 "export_dir": "out"}).json()
+    assert project["id"].startswith("prj_") and project["export_dir"] == str(ctx.root / "out")
+    assert project["options"]["stages"]["asr"]["driver"] == "fake" and project["jobs"] == 0
+
+    assert client.post("/api/jobs", json={"sources": [str(ctx.root / "a.mp4")], "project": "prj_nope"}).status_code == 404
+    [job_id] = create(client, ctx, project=project["id"])
+    job = client.get(f"/api/jobs/{job_id}").json()
+    assert job["project_id"] == project["id"] and job["export_dir"] == str(ctx.root / "out")
+    run_job(ctx.store, job_id)
+    assert (ctx.root / "out" / "a.vi.srt").exists() and not (ctx.root / "a.vi.srt").exists()
+    assert client.get("/api/projects").json()[0]["jobs"] == 1
+
+    saved = client.put(f"/api/projects/{project['id']}", json={**project, "name": "Đổi tên", "color": "#e0456b"}).json()
+    assert saved["name"] == "Đổi tên" and saved["langs"] == ["vi", "ja"]
+    assert client.put("/api/projects/prj_nope", json={"name": "x"}).status_code == 404
+
+    assert client.patch(f"/api/jobs/{job_id}", json={"project_id": "prj_nope"}).status_code == 404
+    assert client.patch(f"/api/jobs/{job_id}", json={"project_id": None}).json()["project_id"] is None
+    assert client.patch(f"/api/jobs/{job_id}", json={"project_id": project["id"]}).json()["project_id"] == project["id"]
+
+    assert client.delete(f"/api/projects/{project['id']}").status_code == 204
+    assert client.get("/api/projects").json() == []
+    assert client.get(f"/api/jobs/{job_id}").json()["project_id"] is None
+
+
+def test_prune_uploads(app):
+    import os
+    from dich.api.system import prune_uploads
+    from dich.core.ids import new_id
+    client, ctx = app
+    old, used, fresh = (ctx.uploads / new_id("upl") for _ in range(3))
+    for folder in (old, used, fresh):
+        folder.mkdir(parents=True)
+        (folder / "a.mp4").write_bytes(b"video")
+    for folder in (old, used):
+        os.utime(folder, (0, 0))
+    create(client, ctx, sources=[str(used / "a.mp4")])
+    assert prune_uploads(ctx.store, ctx.uploads) == [old.name]
+    assert not old.exists() and used.exists() and fresh.exists()

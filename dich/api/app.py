@@ -47,7 +47,7 @@ class Context:
 
 def create_app(root=None, db_path=None, data_dir=None, workers=True):
     """workers: start the worker processes with the app (False in tests)."""
-    from dich.api import jobs, presets, system
+    from dich.api import jobs, presets, projects, system
 
     data_dir = Path(data_dir or settings.DATA_DIR)
     db_path = Path(db_path or data_dir / "dich.sqlite")
@@ -57,6 +57,7 @@ def create_app(root=None, db_path=None, data_dir=None, workers=True):
 
     @asynccontextmanager
     async def lifespan(_app):
+        system.prune_uploads(store, ctx.uploads)
         supervisor = None
         if workers:
             from dich.runtime.supervisor import Supervisor
@@ -70,6 +71,7 @@ def create_app(root=None, db_path=None, data_dir=None, workers=True):
     app.include_router(jobs.router(ctx), prefix="/api")
     app.include_router(system.router(ctx), prefix="/api")
     app.include_router(presets.router(ctx), prefix="/api")
+    app.include_router(projects.router(ctx), prefix="/api")
 
     if WEB_DIST.is_dir():
         app.mount("/", StaticFiles(directory=WEB_DIST, html=True), name="web")

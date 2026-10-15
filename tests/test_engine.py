@@ -86,7 +86,7 @@ def test_human_edit_marks_later_stale_and_guards_rerun(store, video, tmp_path):
     job_id = make_job(store, video, export=False)
     run_job(store, job_id)
     translate = store.task_by_key(job_id, "translate@vi")
-    edited = tmp_path / "edit.json"
+    edited = tmp_path / "edit.jsonl"
     Transcript("vi", []).save(edited)
     store.save_human(translate["id"], "transcript", edited)
     assert statuses(store, job_id)["dub@vi"] == "stale"
@@ -263,7 +263,7 @@ def test_human_edit_of_stale_task_runs_only_later_steps(store, video, tmp_path):
     run_job(store, job_id)
     assert statuses(store, job_id)["translate@vi"] == "stale"
     runs = dict(fake_drivers.RUNS)
-    edited = tmp_path / "edit.json"
+    edited = tmp_path / "edit.jsonl"
     Transcript("vi", []).save(edited)
     store.save_human(store.task_by_key(job_id, "translate@vi")["id"], "transcript", edited)
     assert statuses(store, job_id)["translate@vi"] == "done"
@@ -285,7 +285,7 @@ def test_human_edit_of_failed_task_unblocks_later_steps(store, video, tmp_path):
     attempt = store.start_attempt(task)
     store.fail(task["id"], attempt["id"], "boom")
     assert statuses(store, job_id)["dub@vi"] == "blocked"
-    edited = tmp_path / "edit.json"
+    edited = tmp_path / "edit.jsonl"
     Transcript("vi", []).save(edited)
     store.save_human(translate["id"], "transcript", edited)
     assert statuses(store, job_id)["translate@vi"] == "done"

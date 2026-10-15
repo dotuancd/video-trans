@@ -108,6 +108,17 @@ create table if not exists events (
     data text
 );
 create index if not exists events_job on events(job_id, id);
+create table if not exists projects (
+    id text primary key,
+    name text not null,
+    color text not null,
+    template text not null,
+    langs text not null,
+    options text not null default '{}',
+    preset text,
+    export_dir text,
+    created_at real not null
+);
 create table if not exists calls (
     id text primary key,
     kind text not null,
@@ -143,6 +154,8 @@ class Store:
             self.db.execute("pragma foreign_keys=on")
             self.db.execute("pragma synchronous=normal")
             self.db.executescript(SCHEMA)
+            if not any(c[1] == "project_id" for c in self.db.execute("pragma table_info(jobs)")):
+                self.db.execute("alter table jobs add column project_id text references projects(id) on delete set null")
 
     def _retire_numeric_ids(self):
         """A database from before job_…/task_… ids (integer ids) is set aside as *.old, with its job folders."""
@@ -223,12 +236,13 @@ class Store:
 
     # --- jobs ---
 
-    def create_job(self, title, source, template, langs, specs, overrides=None, export_dir=None):
+    def create_job(self, title, source, template, langs, specs, overrides=None, export_dir=None, project_id=None):
         with self.tx():
             job_id = new_id("job")
-            self.x("insert into jobs (id, title, source, template, langs, overrides, export_dir, trace_id, created_at)"
-                   " values (?, ?, ?, ?, ?, ?, ?, ?, ?)", job_id, title, str(source), template, json.dumps(langs),
-                   json.dumps(overrides or {}), str(export_dir) if export_dir else None, new_trace_id(), time.time())
+            self.x("insert into jobs (id, title, source, template, langs, overrides, export_dir, trace_id, created_at,"
+                   " project_id) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", job_id, title, str(source), template,
+                   json.dumps(langs), json.dumps(overrides or {}), str(export_dir) if export_dir else None,
+                   new_trace_id(), time.time(), project_id)
             self._insert_tasks(job_id, specs)
             self.event(job_id, "job", data={"created": True})
             self.advance(job_id)
@@ -289,8 +303,43 @@ class Store:
             self.event(job_id, "job", data={"deleted": True})
         shutil.rmtree(self.job_dir(job_id), ignore_errors=True)
 
+    def set_job_project(self, job_id, project_id):
+        self.x("update jobs set project_id = ? where id = ?", project_id, job_id)
+        self.event(job_id, "job", data={"project_id": project_id})
+
     def job_dir(self, job_id):
         return self.data_dir / "jobs" / str(job_id)
+
+    # --- projects ---
+
+    def projects(self):
+        counts = {r["project_id"]: r["n"] for r in self.q("select project_id, count(*) as n from jobs group by project_id")}
+        return [project_dict(r, counts.get(r["id"], 0)) for r in self.q("select * from projects order by created_at")]
+
+    def project(self, project_id):
+        row = self.one("select * from projects where id = ?", project_id)
+        if not row:
+            return None
+        return project_dict(row, self.one("select count(*) as n from jobs where project_id = ?", project_id)["n"])
+
+    def create_project(self, fields):
+        project_id = new_id("prj")
+        self.x("insert into projects (id, name, color, template, langs, options, preset, export_dir, created_at)"
+               " values (?, ?, ?, ?, ?, ?, ?, ?, ?)", project_id, *project_row(fields), time.time())
+        self.event(None, "project", data={"id": project_id})
+        return project_id
+
+    def update_project(self, project_id, fields):
+        self.x("update projects set name = ?, color = ?, template = ?, langs = ?, options = ?, preset = ?,"
+               " export_dir = ? where id = ?", *project_row(fields), project_id)
+        self.event(None, "project", data={"id": project_id})
+
+    def delete_project(self, project_id):
+        """Its jobs stay, as jobs of no project."""
+        with self.tx():
+            self.x("update jobs set project_id = null where project_id = ?", project_id)
+            self.x("delete from projects where id = ?", project_id)
+            self.event(None, "project", data={"id": project_id, "deleted": True})
 
     # --- tasks ---
 
@@ -709,7 +758,19 @@ def job_status(tasks):
 def job_dict(row, tasks):
     return {"id": row["id"], "title": row["title"], "source": row["source"], "template": row["template"],
             "langs": loads(row["langs"], []), "export_dir": row["export_dir"], "trace_id": row["trace_id"],
-            "created_at": row["created_at"], "status": job_status(tasks), "tasks": tasks}
+            "created_at": row["created_at"], "project_id": row["project_id"], "status": job_status(tasks),
+            "tasks": tasks}
+
+
+def project_row(fields):
+    return (fields["name"], fields["color"], fields["template"], json.dumps(fields["langs"]),
+            json.dumps(fields.get("options") or {}, ensure_ascii=False), fields.get("preset"), fields.get("export_dir"))
+
+
+def project_dict(row, jobs=0):
+    return {"id": row["id"], "name": row["name"], "color": row["color"], "template": row["template"],
+            "langs": loads(row["langs"], []), "options": loads(row["options"], {}), "preset": row["preset"],
+            "export_dir": row["export_dir"], "created_at": row["created_at"], "jobs": jobs}
 
 
 def attempt_dict(row):

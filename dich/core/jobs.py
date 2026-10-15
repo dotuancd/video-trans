@@ -13,10 +13,12 @@ def plan_job(source, langs, template="default", overrides=None):
     return plan(resolve(get_template(template), source, overrides), langs)
 
 
-def create_job(store, source, langs, template="default", overrides=None, export=True, use_subtitles=False):
-    """A job for a file path or a URL, translated into langs. Results are exported next to the file
-    (or into the job's export folder for a URL) unless export is False. use_subtitles: the .srt files
-    named like the video next to it are used instead of transcribing / translating."""
+def create_job(store, source, langs, template="default", overrides=None, export=True, use_subtitles=False,
+               project_id=None):
+    """A job for a file path or a URL, translated into langs. Results are exported unless export is False:
+    into the project's export folder when it has one, else next to the file (or into the job's export folder
+    for a URL). use_subtitles: the .srt files named like the video next to it are used instead of
+    transcribing / translating."""
     langs = list(dict.fromkeys(langs))
     if use_subtitles and not is_url(source):
         from dich.drivers.source.file import siblings
@@ -29,9 +31,15 @@ def create_job(store, source, langs, template="default", overrides=None, export=
             overrides["source"] = source_override
     specs = plan_job(source, langs, template, overrides)
     title = str(source) if is_url(source) else Path(source).name
-    export_dir = None if not export or is_url(source) else Path(source).parent
-    job_id = store.create_job(title, source, template, langs, specs, overrides, export_dir)
-    if export and is_url(source):
+    project = store.project(project_id) if project_id else None
+    if not export:
+        export_dir = None
+    elif project and project["export_dir"]:
+        export_dir = Path(project["export_dir"]).expanduser()
+    else:
+        export_dir = None if is_url(source) else Path(source).parent
+    job_id = store.create_job(title, source, template, langs, specs, overrides, export_dir, project_id)
+    if export and not export_dir:
         folder = store.job_dir(job_id) / "export"
         store.x("update jobs set export_dir = ? where id = ?", str(folder), job_id)
     return job_id

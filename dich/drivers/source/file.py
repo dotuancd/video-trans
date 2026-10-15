@@ -68,7 +68,7 @@ class FileSource(Driver):
         if is_subtitle(path.name):
             transcript = read_srt(path, subtitle_lang(path))
             ctx.log.info(f"Đọc {len(transcript.cues)} câu phụ đề từ {path.name}")
-            return {"transcript": transcript.save(ctx.output("transcript.json"))}
+            return {"transcript": transcript.save(ctx.output("transcript.jsonl"))}
         if not is_media(path.name):
             raise UserError(f"{path.name} không phải video/audio hay .srt")
         outputs = {"video": path, "audio": path}   # external: referenced, not copied
@@ -76,7 +76,7 @@ class FileSource(Driver):
             if not Path(srt).is_file():
                 raise UserError(f"Không tìm thấy phụ đề {srt}")
             transcript = read_srt(srt, None if key == "src" else key)
-            outputs[f"subtitles_{key}"] = transcript.save(ctx.output(f"transcript.{key}.json"))
+            outputs[f"subtitles_{key}"] = transcript.save(ctx.output(f"transcript.{key}.jsonl"))
             ctx.log.info(f"Dùng phụ đề có sẵn {Path(srt).name} ({len(transcript.cues)} câu)")
         ctx.log.info(f"Nguồn: {path.name}" + ("" if has_video(path) else " (chỉ có âm thanh)"))
         return outputs

@@ -36,3 +36,21 @@ def test_workers_run_cancel_and_capture_fd(store, video, tmp_path):
         assert wait(lambda: store.task(asr["id"])["status"] == "done")
     finally:
         supervisor.stop()
+
+
+def test_old_database_gets_project_column(tmp_path):
+    import sqlite3
+    from dich.queue.sqlite import Store
+    path = tmp_path / "dich.sqlite"
+    db = sqlite3.connect(path)
+    db.execute("create table jobs (id text primary key, title text not null, source text not null, template text not null,"
+               " langs text not null, overrides text not null default '{}', export_dir text, trace_id text not null,"
+               " created_at real not null)")
+    db.execute("insert into jobs values ('job_old', 'a.mp4', '/a.mp4', 'default', '[\"vi\"]', '{}', null, 't', 0)")
+    db.commit()
+    db.close()
+    store = Store(path)
+    try:
+        assert store.job("job_old")["project_id"] is None
+    finally:
+        store.close()

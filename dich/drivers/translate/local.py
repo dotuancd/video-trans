@@ -97,4 +97,4 @@ class LocalTranslate(Driver):
             self.translators[key] = Translator(params.model, params.beam, log=ctx.log.info)
         ctx.log.info(f"Dịch {len(source.cues)} câu")
         texts = self.translators[key].translate_cues(source.cues, ctx.progress)
-        return {"transcript": translated(source, texts, ctx.lang).save(ctx.output("transcript.json"))}
+        return {"transcript": translated(source, texts, ctx.lang).save(ctx.output("transcript.jsonl"))}

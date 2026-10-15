@@ -7,8 +7,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import ValidationError
 
-from dich.api.models import (AddLangs, Attempt, EditCue, Event, Job, JobCreate, JobsCreated, Rerun, TranscriptSave,
-                             TranscriptSaved, TranscriptView, Word)
+from dich.api.models import (AddLangs, Attempt, EditCue, Event, Job, JobCreate, JobPatch, JobsCreated, Rerun,
+                             TranscriptSave, TranscriptSaved, TranscriptView, Word)
 from dich.core import jobs as job_service
 from dich.formats.transcript import Cue, Transcript, ensure_ids, to_srt, to_vtt
 from dich.media import is_media, is_subtitle, sha256
@@ -74,6 +74,8 @@ def router(ctx):
     def create_jobs(body: JobCreate) -> JobsCreated:
         if not body.langs and body.template not in ("transcribe",):
             raise HTTPException(400, "Chọn ít nhất một ngôn ngữ đích")
+        if body.project and not store.project(body.project):
+            raise HTTPException(404, "Không có project này")
         sources = []
         for raw in body.sources:
             raw = raw.strip()
@@ -103,10 +105,20 @@ def router(ctx):
                 continue
             try:
                 created.append(job_service.create_job(store, source, body.langs, body.template, overrides,
-                                                      export=body.export, use_subtitles=body.use_subtitles))
+                                                      export=body.export, use_subtitles=body.use_subtitles,
+                                                      project_id=body.project))
             except (KeyError, ValidationError) as error:
                 raise HTTPException(400, str(error).strip("'"))
         return JobsCreated(jobs=created, skipped=skipped)
+
+    @api.patch("/jobs/{job_id}")
+    def update_job(job_id: str, body: JobPatch) -> Job:
+        """Moves the job into another project (or out of any)."""
+        job_or_404(job_id)
+        if body.project_id and not store.project(body.project_id):
+            raise HTTPException(404, "Không có project này")
+        store.set_job_project(job_id, body.project_id)
+        return job_or_404(job_id)
 
     @api.post("/jobs/{job_id}/langs")
     def add_langs(job_id: str, body: AddLangs) -> Job:
@@ -257,7 +269,7 @@ def router(ctx):
                               words=flat_words(source or transcript), edited=edited(task))
 
     def save(task, transcript, slot):
-        path = store.job_dir(task["job_id"]) / "edits" / f"{slot}-{time.time_ns()}.json"
+        path = store.job_dir(task["job_id"]) / "edits" / f"{slot}-{time.time_ns()}.jsonl"
         transcript.save(path)
         name = next(n for n, s in task["outputs"].items() if s == slot)
         try:

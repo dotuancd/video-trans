@@ -319,6 +319,10 @@ export type Job = {
      */
     created_at: number;
     /**
+     * Project Id
+     */
+    project_id?: string | null;
+    /**
      * Status
      */
     status: 'blocked' | 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'waiting_review' | 'stale';
@@ -365,9 +369,27 @@ export type JobCreate = {
     /**
      * Export
      *
-     * Copy results next to the source file
+     * Copy results next to the source file (or the project's export folder)
      */
     export?: boolean;
+    /**
+     * Project
+     *
+     * The project the jobs go into
+     */
+    project?: string | null;
+};
+
+/**
+ * JobPatch
+ */
+export type JobPatch = {
+    /**
+     * Project Id
+     *
+     * Move the job into this project; null: no project
+     */
+    project_id: string | null;
 };
 
 /**
@@ -524,6 +546,98 @@ export type Preview = {
      * Or a video (with <name>.srt / <name>.vi.srt next to it)
      */
     path?: string | null;
+};
+
+/**
+ * Project
+ */
+export type Project = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Color
+     */
+    color?: string;
+    /**
+     * Template
+     */
+    template?: string;
+    /**
+     * Langs
+     */
+    langs?: Array<string>;
+    /**
+     * Advanced options, shaped like a preset
+     */
+    options?: PresetBody;
+    /**
+     * Preset
+     *
+     * The preset the options were taken from
+     */
+    preset?: string | null;
+    /**
+     * Export Dir
+     *
+     * Results go here instead of next to the source file
+     */
+    export_dir?: string | null;
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Created At
+     */
+    created_at: number;
+    /**
+     * Jobs
+     *
+     * Number of jobs in the project
+     */
+    jobs: number;
+};
+
+/**
+ * ProjectBody
+ *
+ * What new videos of the project run with by default; the web form sends it with each job it creates.
+ */
+export type ProjectBody = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Color
+     */
+    color?: string;
+    /**
+     * Template
+     */
+    template?: string;
+    /**
+     * Langs
+     */
+    langs?: Array<string>;
+    /**
+     * Advanced options, shaped like a preset
+     */
+    options?: PresetBody;
+    /**
+     * Preset
+     *
+     * The preset the options were taken from
+     */
+    preset?: string | null;
+    /**
+     * Export Dir
+     *
+     * Results go here instead of next to the source file
+     */
+    export_dir?: string | null;
 };
 
 /**
@@ -952,6 +1066,36 @@ export type GetJobResponses = {
 };
 
 export type GetJobResponse = GetJobResponses[keyof GetJobResponses];
+
+export type UpdateJobData = {
+    body: JobPatch;
+    path: {
+        /**
+         * Job Id
+         */
+        job_id: string;
+    };
+    query?: never;
+    url: '/api/jobs/{job_id}';
+};
+
+export type UpdateJobErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateJobError = UpdateJobErrors[keyof UpdateJobErrors];
+
+export type UpdateJobResponses = {
+    /**
+     * Successful Response
+     */
+    200: Job;
+};
+
+export type UpdateJobResponse = UpdateJobResponses[keyof UpdateJobResponses];
 
 export type AddLangsData = {
     body: AddLangs;
@@ -1735,3 +1879,106 @@ export type SavePresetResponses = {
 };
 
 export type SavePresetResponse = SavePresetResponses[keyof SavePresetResponses];
+
+export type ListProjectsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/projects';
+};
+
+export type ListProjectsResponses = {
+    /**
+     * Response List Projects
+     *
+     * Successful Response
+     */
+    200: Array<Project>;
+};
+
+export type ListProjectsResponse = ListProjectsResponses[keyof ListProjectsResponses];
+
+export type CreateProjectData = {
+    body: ProjectBody;
+    path?: never;
+    query?: never;
+    url: '/api/projects';
+};
+
+export type CreateProjectErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateProjectError = CreateProjectErrors[keyof CreateProjectErrors];
+
+export type CreateProjectResponses = {
+    /**
+     * Successful Response
+     */
+    200: Project;
+};
+
+export type CreateProjectResponse = CreateProjectResponses[keyof CreateProjectResponses];
+
+export type DeleteProjectData = {
+    body?: never;
+    path: {
+        /**
+         * Project Id
+         */
+        project_id: string;
+    };
+    query?: never;
+    url: '/api/projects/{project_id}';
+};
+
+export type DeleteProjectErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteProjectError = DeleteProjectErrors[keyof DeleteProjectErrors];
+
+export type DeleteProjectResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteProjectResponse = DeleteProjectResponses[keyof DeleteProjectResponses];
+
+export type SaveProjectData = {
+    body: ProjectBody;
+    path: {
+        /**
+         * Project Id
+         */
+        project_id: string;
+    };
+    query?: never;
+    url: '/api/projects/{project_id}';
+};
+
+export type SaveProjectErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SaveProjectError = SaveProjectErrors[keyof SaveProjectErrors];
+
+export type SaveProjectResponses = {
+    /**
+     * Successful Response
+     */
+    200: Project;
+};
+
+export type SaveProjectResponse = SaveProjectResponses[keyof SaveProjectResponses];

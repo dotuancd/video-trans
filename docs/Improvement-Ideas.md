@@ -85,3 +85,11 @@ Thứ tự nên làm: (1) bộ đo → (2) bản tóm tắt toàn video → (3) 
 - **Sửa tay = bước hoàn tất (đã làm):** sửa bản dịch khi bước dịch đang `stale/failed/cancelled/chờ duyệt` thì bản sửa thành kết quả (`done`), "Cập nhật phía sau" chỉ chạy lồng tiếng/ghép. Ý tiếp theo: nút "Cập nhật phía sau" ngay trong trình sửa phụ đề (không phải đợi toast), và tuỳ chọn tự chạy phía sau sau khi lưu (debounce vài giây).
 
 - **So sánh hai lần chạy:** đã có xem/tải/"Dùng lần này" cho lần cũ (audio `keep="last"` giữ `DICH_KEEP_DAYS` ngày). Ý tiếp: xem song song phụ đề/audio của 2 lần (diff cue theo cue) để chọn nhanh hơn; hiện dung lượng đang chiếm bởi các lần cũ và nút dọn ngay.
+
+- **Projects (prototype: https://claude.ai/artifact/HdNCDyfJyir8xYXZ4ShSNA):** phần 1 (sidebar workspace, phương án 1) **đã làm**: bảng `projects` lưu đủ bộ cấu hình (cùng khuôn preset), khay tải lên ngay, "Chạy & lưu cấu hình", chuyển job giữa project. Còn lại:
+  - **Trang thư viện (phương án 5):** khi chọn project, cột phải là bảng video × ngôn ngữ (tải về, chờ duyệt, lỗi ngay trong ô).
+  - **Kéo thả job vào project ở sidebar** thay cho Select trong chi tiết job.
+  - **Thêm ngôn ngữ cho cả project:** tạo việc dịch cho mọi video, dùng lại bản bóc băng đã có (cache theo slot).
+  - **Tự đoán project theo tên file** khi tải lên ở chế độ "Tất cả" (tiền tố tên giống video đã có).
+  - **Thuật ngữ theo project:** gộp với ý Glossary ở trên, nạp vào prompt dịch mọi video trong project.
+  - **Để sau — watch folder:** project gắn thư mục, file mới chép vào tự vào hàng đợi; cần watcher ở supervisor.

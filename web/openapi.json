@@ -101,6 +101,54 @@
      }
     }
    },
+   "patch": {
+    "summary": "Update Job",
+    "description": "Moves the job into another project (or out of any).",
+    "operationId": "update_job",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/JobPatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Job"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
    "delete": {
     "summary": "Delete Job",
     "description": "Removes the job and its workspace; exported files stay.",
@@ -1209,6 +1257,144 @@
      }
     }
    }
+  },
+  "/api/projects": {
+   "get": {
+    "summary": "List Projects",
+    "operationId": "list_projects",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Project"
+         },
+         "type": "array",
+         "title": "Response List Projects"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "Create Project",
+    "operationId": "create_project",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ProjectBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Project"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/projects/{project_id}": {
+   "put": {
+    "summary": "Save Project",
+    "operationId": "save_project",
+    "parameters": [
+     {
+      "name": "project_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Project Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ProjectBody"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Project"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "summary": "Delete Project",
+    "description": "Its jobs stay, without a project.",
+    "operationId": "delete_project",
+    "parameters": [
+     {
+      "name": "project_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Project Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -1718,6 +1904,17 @@
       "type": "number",
       "title": "Created At"
      },
+     "project_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Project Id"
+     },
      "status": {
       "type": "string",
       "enum": [
@@ -1798,8 +1995,20 @@
      "export": {
       "type": "boolean",
       "title": "Export",
-      "description": "Copy results next to the source file",
+      "description": "Copy results next to the source file (or the project's export folder)",
       "default": true
+     },
+     "project": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Project",
+      "description": "The project the jobs go into"
      }
     },
     "type": "object",
@@ -1807,6 +2016,27 @@
      "sources"
     ],
     "title": "JobCreate"
+   },
+   "JobPatch": {
+    "properties": {
+     "project_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Project Id",
+      "description": "Move the job into this project; null: no project"
+     }
+    },
+    "type": "object",
+    "required": [
+     "project_id"
+    ],
+    "title": "JobPatch"
    },
    "JobsCreated": {
     "properties": {
@@ -2043,6 +2273,139 @@
     },
     "type": "object",
     "title": "Preview"
+   },
+   "Project": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "color": {
+      "type": "string",
+      "title": "Color",
+      "default": "#14a394"
+     },
+     "template": {
+      "type": "string",
+      "title": "Template",
+      "default": "default"
+     },
+     "langs": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Langs"
+     },
+     "options": {
+      "$ref": "#/components/schemas/PresetBody",
+      "description": "Advanced options, shaped like a preset"
+     },
+     "preset": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Preset",
+      "description": "The preset the options were taken from"
+     },
+     "export_dir": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Export Dir",
+      "description": "Results go here instead of next to the source file"
+     },
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "created_at": {
+      "type": "number",
+      "title": "Created At"
+     },
+     "jobs": {
+      "type": "integer",
+      "title": "Jobs",
+      "description": "Number of jobs in the project"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "id",
+     "created_at",
+     "jobs"
+    ],
+    "title": "Project"
+   },
+   "ProjectBody": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "color": {
+      "type": "string",
+      "title": "Color",
+      "default": "#14a394"
+     },
+     "template": {
+      "type": "string",
+      "title": "Template",
+      "default": "default"
+     },
+     "langs": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Langs"
+     },
+     "options": {
+      "$ref": "#/components/schemas/PresetBody",
+      "description": "Advanced options, shaped like a preset"
+     },
+     "preset": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Preset",
+      "description": "The preset the options were taken from"
+     },
+     "export_dir": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Export Dir",
+      "description": "Results go here instead of next to the source file"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name"
+    ],
+    "title": "ProjectBody",
+    "description": "What new videos of the project run with by default; the web form sends it with each job it creates."
    },
    "Rerun": {
     "properties": {

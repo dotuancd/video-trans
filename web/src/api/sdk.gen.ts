@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type ServerSentEventsResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddLangsData, AddLangsErrors, AddLangsResponses, ArtifactVttData, ArtifactVttErrors, ArtifactVttResponses, AttemptEventsData, AttemptEventsErrors, AttemptEventsResponses, AttemptSystemLogData, AttemptSystemLogErrors, AttemptSystemLogResponses, CancelJobData, CancelJobErrors, CancelJobResponses, CreateJobsData, CreateJobsErrors, CreateJobsResponses, DeleteJobData, DeleteJobErrors, DeleteJobResponses, DeletePresetData, DeletePresetErrors, DeletePresetResponses, DownloadArtifactData, DownloadArtifactErrors, DownloadArtifactResponses, EventsData, EventsResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetConfigData, GetConfigResponses, GetJobData, GetJobErrors, GetJobResponses, GetTranscriptData, GetTranscriptErrors, GetTranscriptResponses, ListAttemptsData, ListAttemptsErrors, ListAttemptsResponses, ListDirData, ListDirErrors, ListDirResponses, ListDriversData, ListDriversResponses, ListJobsData, ListJobsResponses, ListPresetsData, ListPresetsResponses, ListTemplatesData, ListTemplatesResponses, ListVoicesData, ListVoicesResponses, PickAttemptData, PickAttemptErrors, PickAttemptResponses, PreviewVoiceData, PreviewVoiceErrors, PreviewVoiceResponses, RefreshJobData, RefreshJobErrors, RefreshJobResponses, RerunTaskData, RerunTaskErrors, RerunTaskResponses, ResumeJobData, ResumeJobErrors, ResumeJobResponses, RevealData, RevealErrors, RevealResponses, SavePresetData, SavePresetErrors, SavePresetResponses, SaveTranscriptData, SaveTranscriptErrors, SaveTranscriptResponses, TraceData, TraceErrors, TraceResponses, UploadData, UploadErrors, UploadResponses, UploadVoiceData, UploadVoiceErrors, UploadVoiceResponses } from './types.gen';
+import type { AddLangsData, AddLangsErrors, AddLangsResponses, ArtifactVttData, ArtifactVttErrors, ArtifactVttResponses, AttemptEventsData, AttemptEventsErrors, AttemptEventsResponses, AttemptSystemLogData, AttemptSystemLogErrors, AttemptSystemLogResponses, CancelJobData, CancelJobErrors, CancelJobResponses, CreateJobsData, CreateJobsErrors, CreateJobsResponses, CreateProjectData, CreateProjectErrors, CreateProjectResponses, DeleteJobData, DeleteJobErrors, DeleteJobResponses, DeletePresetData, DeletePresetErrors, DeletePresetResponses, DeleteProjectData, DeleteProjectErrors, DeleteProjectResponses, DownloadArtifactData, DownloadArtifactErrors, DownloadArtifactResponses, EventsData, EventsResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetConfigData, GetConfigResponses, GetJobData, GetJobErrors, GetJobResponses, GetTranscriptData, GetTranscriptErrors, GetTranscriptResponses, ListAttemptsData, ListAttemptsErrors, ListAttemptsResponses, ListDirData, ListDirErrors, ListDirResponses, ListDriversData, ListDriversResponses, ListJobsData, ListJobsResponses, ListPresetsData, ListPresetsResponses, ListProjectsData, ListProjectsResponses, ListTemplatesData, ListTemplatesResponses, ListVoicesData, ListVoicesResponses, PickAttemptData, PickAttemptErrors, PickAttemptResponses, PreviewVoiceData, PreviewVoiceErrors, PreviewVoiceResponses, RefreshJobData, RefreshJobErrors, RefreshJobResponses, RerunTaskData, RerunTaskErrors, RerunTaskResponses, ResumeJobData, ResumeJobErrors, ResumeJobResponses, RevealData, RevealErrors, RevealResponses, SavePresetData, SavePresetErrors, SavePresetResponses, SaveProjectData, SaveProjectErrors, SaveProjectResponses, SaveTranscriptData, SaveTranscriptErrors, SaveTranscriptResponses, TraceData, TraceErrors, TraceResponses, UpdateJobData, UpdateJobErrors, UpdateJobResponses, UploadData, UploadErrors, UploadResponses, UploadVoiceData, UploadVoiceErrors, UploadVoiceResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -46,6 +46,20 @@ export const deleteJob = <ThrowOnError extends boolean = true>(options: Options<
  * Get Job
  */
 export const getJob = <ThrowOnError extends boolean = true>(options: Options<GetJobData, ThrowOnError>): RequestResult<GetJobResponses, GetJobErrors, ThrowOnError> => (options.client ?? client).get<GetJobResponses, GetJobErrors, ThrowOnError>({ url: '/api/jobs/{job_id}', ...options });
+
+/**
+ * Update Job
+ *
+ * Moves the job into another project (or out of any).
+ */
+export const updateJob = <ThrowOnError extends boolean = true>(options: Options<UpdateJobData, ThrowOnError>): RequestResult<UpdateJobResponses, UpdateJobErrors, ThrowOnError> => (options.client ?? client).patch<UpdateJobResponses, UpdateJobErrors, ThrowOnError>({
+    url: '/api/jobs/{job_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * Add Langs
@@ -269,6 +283,42 @@ export const deletePreset = <ThrowOnError extends boolean = true>(options: Optio
  */
 export const savePreset = <ThrowOnError extends boolean = true>(options: Options<SavePresetData, ThrowOnError>): RequestResult<SavePresetResponses, SavePresetErrors, ThrowOnError> => (options.client ?? client).put<SavePresetResponses, SavePresetErrors, ThrowOnError>({
     url: '/api/presets/{name}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List Projects
+ */
+export const listProjects = <ThrowOnError extends boolean = true>(options?: Options<ListProjectsData, ThrowOnError>): RequestResult<ListProjectsResponses, unknown, ThrowOnError> => (options?.client ?? client).get<ListProjectsResponses, unknown, ThrowOnError>({ url: '/api/projects', ...options });
+
+/**
+ * Create Project
+ */
+export const createProject = <ThrowOnError extends boolean = true>(options: Options<CreateProjectData, ThrowOnError>): RequestResult<CreateProjectResponses, CreateProjectErrors, ThrowOnError> => (options.client ?? client).post<CreateProjectResponses, CreateProjectErrors, ThrowOnError>({
+    url: '/api/projects',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete Project
+ *
+ * Its jobs stay, without a project.
+ */
+export const deleteProject = <ThrowOnError extends boolean = true>(options: Options<DeleteProjectData, ThrowOnError>): RequestResult<DeleteProjectResponses, DeleteProjectErrors, ThrowOnError> => (options.client ?? client).delete<DeleteProjectResponses, DeleteProjectErrors, ThrowOnError>({ url: '/api/projects/{project_id}', ...options });
+
+/**
+ * Save Project
+ */
+export const saveProject = <ThrowOnError extends boolean = true>(options: Options<SaveProjectData, ThrowOnError>): RequestResult<SaveProjectResponses, SaveProjectErrors, ThrowOnError> => (options.client ?? client).put<SaveProjectResponses, SaveProjectErrors, ThrowOnError>({
+    url: '/api/projects/{project_id}',
     ...options,
     headers: {
         'Content-Type': 'application/json',

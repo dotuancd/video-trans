@@ -41,8 +41,15 @@ def test_transcript_keeps_words_and_ids(tmp_path):
     t = from_words(words(" Hello there. How are you?") + [{"word": " ", "start": 9, "end": 9.1}], "en")
     assert [c.id for c in t.cues] == ["c_0001", "c_0002"]
     assert t.cues[0].words[0] == {"w": "Hello", "s": 0.0, "e": 0.24}
-    path = t.save(tmp_path / "t.json")
+    path = t.save(tmp_path / "t.jsonl")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == '{"lang": "en"}' and len(lines) == 3
     assert Transcript.load(path) == t
+
+
+def test_empty_transcript_round_trips(tmp_path):
+    t = Transcript("vi", [])
+    assert Transcript.load(t.save(tmp_path / "t.jsonl")) == t
 
 
 def test_srt_and_vtt():

@@ -43,4 +43,4 @@ class RulesRefine(Driver):
                         word["w"] = new
                 cue.text = text
         ctx.log.info(f"Sửa {changed}/{len(transcript.cues)} câu")
-        return {"transcript": transcript.save(ctx.output("transcript.json"))}
+        return {"transcript": transcript.save(ctx.output("transcript.jsonl"))}

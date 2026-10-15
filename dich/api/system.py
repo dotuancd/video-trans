@@ -30,6 +30,22 @@ def kind_of(path):
     return "media" if is_media(path.name) else "other"
 
 
+def prune_uploads(store, uploads, days=7):
+    """Removes upload folders older than `days` that no job starts from (dropped, never started)."""
+    import shutil
+    import time
+    if not uploads.is_dir():
+        return []
+    used = {Path(r["source"]).parent.name for r in store.q("select source from jobs")}
+    cutoff = time.time() - days * 86400
+    removed = []
+    for folder in uploads.iterdir():
+        if folder.is_dir() and is_id(folder.name, "upl") and folder.name not in used and folder.stat().st_mtime < cutoff:
+            shutil.rmtree(folder, ignore_errors=True)
+            removed.append(folder.name)
+    return removed
+
+
 def router(ctx):
     api = APIRouter()
     store = ctx.store
@@ -158,7 +174,8 @@ def router(ctx):
     @api.get("/events", response_class=StreamingResponse, responses={200: {"content": {"text/event-stream": {}}}})
     async def events(request: Request):
         """{"type": "job", "job"} when a job or one of its tasks changed, {"type": "progress", "job_id", "task_id",
-        "done", "total"}, {"type": "log", "job_id", "task_id", "event"}, {"type": "deleted", "id"}."""
+        "done", "total"}, {"type": "log", "job_id", "task_id", "event"}, {"type": "deleted", "id"},
+        {"type": "project", "id", "deleted"} when a project was created, changed or deleted."""
 
         async def stream():
             cursor = await asyncio.to_thread(store.last_event_id)
@@ -188,6 +205,8 @@ def router(ctx):
                                     "done": data.get("done"), "total": data.get("total")})
                     elif row["type"] == "log":
                         out.append({"type": "log", "job_id": row["job_id"], "task_id": row["task_id"], "event": row})
+                    elif row["type"] == "project":
+                        out.append({"type": "project", "id": data.get("id"), "deleted": bool(data.get("deleted"))})
                 for job_id in changed:
                     job = await asyncio.to_thread(job_with_artifacts, job_id)
                     if job:

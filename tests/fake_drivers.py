@@ -41,7 +41,7 @@ class FakeAsr(Driver):
             raise ValueError("boom")
         ctx.log.info("2 câu")
         t = Transcript("en", [Cue("c_0001", 0, 1, "hello."), Cue("c_0002", 1, 2, "world.")])
-        return {"transcript": t.save(ctx.output("transcript.json"))}
+        return {"transcript": t.save(ctx.output("transcript.jsonl"))}
 
 
 @register
@@ -57,7 +57,7 @@ class FakeTranslate(Driver):
         source = Transcript.load(inputs["transcript"].path)
         ctx.progress(1, 1)
         t = Transcript(ctx.lang, [Cue(c.id, c.start, c.end, f"{ctx.lang}:{c.text}", src_id=c.id) for c in source.cues])
-        return {"transcript": t.save(ctx.output("transcript.json"))}
+        return {"transcript": t.save(ctx.output("transcript.jsonl"))}
 
 
 @register

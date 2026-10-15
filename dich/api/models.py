@@ -53,8 +53,13 @@ class Job(BaseModel):
     export_dir: str | None
     trace_id: str
     created_at: float
+    project_id: str | None = None
     status: Literal["blocked", "queued", "running", "done", "failed", "cancelled", "waiting_review", "stale"]
     tasks: list[Task]
+
+
+class JobPatch(BaseModel):
+    project_id: str | None = Field(description="Move the job into this project; null: no project")
 
 
 class StageOverride(BaseModel):
@@ -80,6 +85,23 @@ class Preset(PresetBody):
     name: str
 
 
+class ProjectBody(BaseModel):
+    """What new videos of the project run with by default; the web form sends it with each job it creates."""
+    name: str
+    color: str = "#14a394"
+    template: str = "default"
+    langs: list[str] = Field(default_factory=lambda: ["vi"])
+    options: PresetBody = Field(default_factory=PresetBody, description="Advanced options, shaped like a preset")
+    preset: str | None = Field(None, description="The preset the options were taken from")
+    export_dir: str | None = Field(None, description="Results go here instead of next to the source file")
+
+
+class Project(ProjectBody):
+    id: str
+    created_at: float
+    jobs: int = Field(description="Number of jobs in the project")
+
+
 class JobCreate(BaseModel):
     sources: list[str] = Field(description="Files, folders (their videos), or URLs")
     langs: list[str] = Field(default_factory=lambda: ["vi"])
@@ -87,7 +109,8 @@ class JobCreate(BaseModel):
     overrides: dict[str, StageOverride] = Field(default_factory=dict)
     recursive: bool = False
     use_subtitles: bool = Field(False, description="Use <name>.srt / <name>.<lang>.srt found next to each video")
-    export: bool = Field(True, description="Copy results next to the source file")
+    export: bool = Field(True, description="Copy results next to the source file (or the project's export folder)")
+    project: str | None = Field(None, description="The project the jobs go into")
 
 
 class JobsCreated(BaseModel):

@@ -1,7 +1,9 @@
-# The transcript every stage reads and writes: JSON, not SRT (SRT/VTT are exports).
+# The transcript every stage reads and writes: JSONL, not SRT (SRT/VTT are exports).
+# The first line is the header, then one cue per line:
 #
-#   {"lang": "en", "cues": [{"id": "c_0007", "start": 12.34, "end": 15.10, "text": "...", "speaker": null,
-#                            "words": [{"w": "Hello", "s": 12.34, "e": 12.70}], "src_id": null}]}
+#   {"lang": "en"}
+#   {"id": "c_0007", "start": 12.34, "end": 15.10, "text": "...", "speaker": null,
+#    "words": [{"w": "Hello", "s": 12.34, "e": 12.70}], "src_id": null}
 #
 # Cue ids stay the same through the stages: translate writes src_id = the id of the cue it translated,
 # so the editor pairs a translation with its original and later stages know which cue changed.
@@ -30,22 +32,18 @@ class Transcript:
     lang: str | None
     cues: list = field(default_factory=list)
 
-    def to_dict(self):
-        return {"lang": self.lang, "cues": [asdict(c) for c in self.cues]}
-
-    @classmethod
-    def from_dict(cls, data):
-        return cls(data.get("lang"), [Cue(**{k: v for k, v in c.items() if k in Cue.__dataclass_fields__})
-                                      for c in data.get("cues", [])])
-
     @classmethod
     def load(cls, path):
-        return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+        header, *cues = [json.loads(line) for line in Path(path).read_text(encoding="utf-8").splitlines()
+                         if line.strip()]
+        return cls(header.get("lang"), [Cue(**{k: v for k, v in c.items() if k in Cue.__dataclass_fields__})
+                                        for c in cues])
 
     def save(self, path):
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(self.to_dict(), ensure_ascii=False), encoding="utf-8")
+        lines = [{"lang": self.lang}] + [asdict(c) for c in self.cues]
+        path.write_text("".join(json.dumps(line, ensure_ascii=False) + "\n" for line in lines), encoding="utf-8")
         return path
 
     def by_id(self):

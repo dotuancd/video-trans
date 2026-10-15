@@ -95,13 +95,11 @@ Driver dự kiến:
 
 ## 4. Định dạng dữ liệu chuẩn
 
-Transcript nội bộ là **JSON**, không phải SRT. SRT/VTT/ASS chỉ là export.
+Transcript nội bộ là **JSONL** (`transcript.jsonl`), không phải SRT. SRT/VTT/ASS chỉ là export. Dòng đầu là header, mỗi dòng sau là một cue:
 
-```json
-{"lang": "en", "cues": [
-  {"id": "c_0007", "start": 12.34, "end": 15.10, "text": "...", "speaker": null,
-   "words": [{"w": "Hello", "s": 12.34, "e": 12.70}], "src_id": null}
-]}
+```jsonl
+{"lang": "en"}
+{"id": "c_0007", "start": 12.34, "end": 15.10, "text": "...", "speaker": null, "words": [{"w": "Hello", "s": 12.34, "e": 12.70}], "src_id": null}
 ```
 
 - `id` ổn định qua các bước; `translate` ghi `src_id` → dịch lại *chỉ câu gốc đã đổi*, editor đối chiếu song song, dub biết câu nào cần đọc lại.
@@ -113,7 +111,7 @@ Transcript nội bộ là **JSON**, không phải SRT. SRT/VTT/ASS chỉ là exp
 FastAPI (chỉ ghi/đọc DB, không chạy model)
    │ enqueue                       ▲ SSE: tiến độ, log người dùng
    ▼                               │
-SQLite: jobs, tasks, attempts, artifacts, events
+SQLite: projects, jobs, tasks, attempts, artifacts, events
    ▲ claim (UPDATE … RETURNING, lease)
    │
 Supervisor ── worker[cpu] ── worker[gpu] ── worker[net] ×N
@@ -128,6 +126,12 @@ Supervisor ── worker[cpu] ── worker[gpu] ── worker[net] ×N
 - Một lệnh duy nhất `dich serve` khởi động API + supervisor (người dùng không phải mở 2 terminal); `dich worker --lanes gpu` cho máy phụ khi cần.
 
 Trạng thái task: `blocked → queued → running → done | failed | cancelled`, cộng `stale` (input đã đổi sau khi chạy) và `waiting_review` (gate).
+
+**Projects** (`prj_…`, bảng `projects`, `jobs.project_id` có thể null = "Chưa phân loại"): tên, màu và cấu hình mặc định cho video mới — `template`, `langs`, `options` (cùng khuôn với một preset: `export` + `stages`) và `preset` (tên preset gốc, chỉ để hiển thị).
+- API: `GET/POST /projects`, `PUT/DELETE /projects/{id}` (xoá project: job giữ lại, về null), `POST /jobs` nhận `project`, `PATCH /jobs/{id}` chuyển job sang project khác. SSE phát `{"type": "project"}` khi project đổi.
+- Server **không** tự gộp cấu hình project vào job: web gửi template/langs/overrides đã resolve (cho phép "sửa cho lần này"); CLI không đổi.
+- Export: `export=false` → không export; project có `export_dir` → vào đó; không thì cạnh file gốc (URL: thư mục export của job).
+- Web tải lên ngay khi thả file (khay theo project, nhớ trong localStorage); `prune_uploads` lúc khởi động xoá thư mục `upl_*` quá 7 ngày mà không job nào dùng.
 
 ## 6. Log: hai kênh tách biệt
 
@@ -148,7 +152,7 @@ Trạng thái task: `blocked → queued → running → done | failed | cancelle
 data/
   jobs.sqlite
   jobs/<job_id>/<task_key>/<attempt>/
-      outputs/…          transcript.json, dub.wav, out.mp4
+      outputs/…          transcript.jsonl, dub.wav, out.mp4
       events.jsonl
       system.log
   blobs/<sha256>          (tuỳ chọn: dedupe file lớn)

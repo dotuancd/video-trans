@@ -5,8 +5,8 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
-  addLangs, cancelJob, deleteJob, listAttempts, pickAttempt, refreshJob, rerunTask, resumeJob, reveal,
-  type Config, type DriverInfo, type Job, type Task, type TranscriptSaved,
+  addLangs, cancelJob, deleteJob, listAttempts, pickAttempt, refreshJob, rerunTask, resumeJob, reveal, updateJob,
+  type Config, type DriverInfo, type Job, type Project, type Task, type TranscriptSaved,
 } from '@/api'
 import { STATUS_STYLE, taskLabel } from '@/components/JobList'
 import { DriverParams, DriverSelect, SwitchField } from '@/components/Params'
@@ -14,6 +14,7 @@ import { SubtitleEditor, useSubtitleDraft, type SubtitleDraft } from '@/componen
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import {
@@ -21,15 +22,18 @@ import {
   STATUS_LABELS, useAttemptEvents, type Params,
 } from '@/lib/api'
 
+/** Select value of "no project" */
+const NO_PROJECT = '-'
 const VIDEO = /\.(mp4|mov|m4v|webm|mkv)$/i
 const SYSTEM_ERROR = /mã ([0-9a-f]{8})/
 
 type RerunArgs = { task: Task; mode: 'only' | 'cascade'; params?: Params; driver?: string; confirm?: boolean }
 
-export function JobDetail({ job, drivers, config, onClose }: {
+export function JobDetail({ job, drivers, config, projects, onClose }: {
   job?: Job
   drivers: DriverInfo[]
   config: Config
+  projects: Project[]
   onClose: () => void
 }) {
   return (
@@ -39,13 +43,19 @@ export function JobDetail({ job, drivers, config, onClose }: {
         // toasts (e.g. "Cập nhật phía sau" after saving subtitles) live outside the sheet: clicking them must not close it
         onInteractOutside={(e) => (e.target as Element | null)?.closest('[data-sonner-toaster]') && e.preventDefault()}
       >
-        {job && <JobBody key={job.id} job={job} drivers={drivers} config={config} onClose={onClose} />}
+        {job && <JobBody key={job.id} job={job} drivers={drivers} config={config} projects={projects} onClose={onClose} />}
       </SheetContent>
     </Sheet>
   )
 }
 
-function JobBody({ job, drivers, config, onClose }: { job: Job; drivers: DriverInfo[]; config: Config; onClose: () => void }) {
+function JobBody({ job, drivers, config, projects, onClose }: {
+  job: Job
+  drivers: DriverInfo[]
+  config: Config
+  projects: Project[]
+  onClose: () => void
+}) {
   const queryClient = useQueryClient()
   const [media, setMedia] = useState<HTMLMediaElement | null>(null)
   const [playing, setPlaying] = useState(-1) // cue under the playhead
@@ -70,6 +80,11 @@ function JobBody({ job, drivers, config, onClose }: { job: Job; drivers: DriverI
   const cancel = useJobAction(job.id, cancelJob)
   const resume = useJobAction(job.id, resumeJob)
   const refresh = useJobAction(job.id, refreshJob)
+  const move = useMutation({
+    mutationFn: async (project: string | null) => (await updateJob({ path: { job_id: job.id }, body: { project_id: project } })).data,
+    onSuccess: updated,
+    onError,
+  })
   const remove = useMutation({
     mutationFn: async () => deleteJob({ path: { job_id: job.id } }),
     onSuccess: () => {
@@ -124,6 +139,13 @@ function JobBody({ job, drivers, config, onClose }: { job: Job; drivers: DriverI
         <SheetTitle className="pr-8 break-all">{job.title}</SheetTitle>
         <SheetDescription className="font-mono text-xs break-all">{job.source}</SheetDescription>
         <div className="flex flex-wrap gap-2 pt-2">
+          <Select value={job.project_id ?? NO_PROJECT} onValueChange={(v) => move.mutate(v === NO_PROJECT ? null : v)}>
+            <SelectTrigger size="sm" className="max-w-48" aria-label="Project"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_PROJECT}>Chưa phân loại</SelectItem>
+              {projects.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
           {(exported[0] || !job.source.startsWith('http')) && (
             <Button size="sm" variant="outline" onClick={() => reveal({ body: { path: exported.at(-1) ?? job.source } })}>
               <FolderSearch /> Mở thư mục

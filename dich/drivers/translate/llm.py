@@ -226,7 +226,7 @@ class LLMDriver(Driver):
         empty = sum(1 for t, c in zip(texts, source.cues) if c.text.strip() and not t)
         if empty:
             ctx.log.warn(f"{empty} câu không có bản dịch")
-        return {"transcript": translated(source, texts, ctx.lang).save(ctx.output("transcript.json"))}
+        return {"transcript": translated(source, texts, ctx.lang).save(ctx.output("transcript.jsonl"))}
 
 
 class OpenAIParams(BaseModel):
