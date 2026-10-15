@@ -150,16 +150,18 @@ function Preview({ sources, draft, media, onMedia, onActive }: {
   const [choice, setChoice] = useState(sources[0].path)
   const src = sources.find((s) => s.path === choice)?.path ?? sources[0].path
   const resume = useRef(0) // keep the position when switching between sources
-  const { cues, texts } = draft
-  const latestTexts = useRef(texts)
-  useEffect(() => { latestTexts.current = texts })
+  const { rows } = draft
+  const latestRows = useRef(rows)
+  useEffect(() => { latestRows.current = rows })
+  // the track is rebuilt when cues are merged, split or retimed, and its texts follow typing in place
+  const timing = rows.map((r) => `${r.start}-${r.end}`).join()
   const vtt = useRef<VTTCue[]>([])
 
   // a script-made text track instead of <track src=…>: its cue texts can follow the editor live
   useEffect(() => {
-    if (!(media instanceof HTMLVideoElement) || !cues) return
+    if (!(media instanceof HTMLVideoElement) || !timing) return
     const track = media.addTextTrack('subtitles', 'Tiếng Việt', 'vi')
-    vtt.current = cues.map((c, i) => new VTTCue(c.start, c.end, escapeVtt(latestTexts.current[i] ?? c.text)))
+    vtt.current = latestRows.current.map((r) => new VTTCue(r.start, r.end, escapeVtt(r.text)))
     vtt.current.forEach((c) => track.addCue(c))
     track.mode = 'showing'
     return () => {
@@ -167,18 +169,18 @@ function Preview({ sources, draft, media, onMedia, onActive }: {
       track.mode = 'disabled'
       vtt.current = []
     }
-  }, [media, cues])
+  }, [media, timing])
   useEffect(() => {
     vtt.current.forEach((c, i) => {
-      const text = texts[i] === undefined ? undefined : escapeVtt(texts[i])
+      const text = rows[i] === undefined ? undefined : escapeVtt(rows[i].text)
       if (text !== undefined && c.text !== text) c.text = text
     })
-  }, [texts])
+  }, [rows])
 
   const onTimeUpdate = (e: SyntheticEvent<HTMLMediaElement>) => {
     const t = e.currentTarget.currentTime
     resume.current = t
-    onActive(cues?.findIndex((c) => c.start <= t && t < c.end) ?? -1)
+    onActive(latestRows.current.findIndex((r) => r.start <= t && t < r.end))
   }
   const props = {
     ref: onMedia, src: mediaUrl(src), controls: true, onTimeUpdate,

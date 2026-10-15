@@ -29,7 +29,7 @@ uv run dich "<folder>"                        # video/audio → .srt → .vi.srt
 uv run dich "<folder>" -r -e openai           # dịch bằng OpenAI
 uv run dich "<folder>" --dub --mux            # + .vi.wav lồng tiếng + <name>.dub.mp4
 
-uv run dich sub "<folder>" --language en      # chỉ tạo .srt
+uv run dich sub "<folder>" --language en      # chỉ tạo .srt (+ .words.json: thời điểm từng từ, editor dùng để tách câu)
 uv run dich translate file.srt -e claude      # .srt → .vi.srt
 uv run dich dub file.vi.srt --voice "Ngọc Huyền"   # .vi.srt → .vi.wav (mặc định clone giọng trong video)
 uv run dich voices                            # danh sách giọng có sẵn
@@ -45,7 +45,7 @@ uv run dich ui                      # mở http://127.0.0.1:7860 trong trình du
 uv run dich ui --root ~/Videos      # chỉ cho UI đọc/ghi trong thư mục này (mặc định: ~)
 ```
 
-- **Việc mới**: chọn video / `.srt` / `.vi.srt` hoặc cả thư mục ("Duyệt"), chọn bước cuối cần làm (Phụ đề → Dịch → Lồng tiếng → Ghép video), engine và giọng (mặc định **Giọng gốc**: tự clone người nói trong video; hoặc chọn giọng có sẵn, nút ⬆ clone từ clip 3–8s tự chọn), bấm Bắt đầu. Lựa chọn được nhớ cho lần sau.
+- **Việc mới**: tab **Tải lên** — kéo thả / chọn nhiều video, `.srt`, `.vi.srt` từ máy (file cùng tên đi chung một việc, bắt đầu từ file đi xa nhất; lưu ở `storage/uploads/<ULID>/`, kết quả nằm cùng thư mục, đổi bằng `DICH_STORAGE_DIR`); tab **Trên máy chủ** — chọn video / `.srt` / `.vi.srt` hoặc cả thư mục ("Duyệt"), chọn bước cuối cần làm (Phụ đề → Dịch → Lồng tiếng → Ghép video), engine và giọng (mặc định **Giọng gốc**: tự clone người nói trong video; hoặc chọn giọng có sẵn, nút ⬆ clone từ clip 3–8s tự chọn), bấm Bắt đầu. Lựa chọn được nhớ cho lần sau.
 - **Danh sách việc**: mỗi file một việc, mỗi bước có trạng thái riêng (Đang chờ / Đang chạy % / Xong / Lỗi / Cần chạy lại), cập nhật trực tiếp.
 - **Chi tiết việc**: bước lỗi có nút **Thử lại**; bước nào cũng **Chạy lại…** được với tuỳ chọn khác (vd. đổi engine dịch, đổi giọng) — các bước sau tự chạy lại, hoặc tắt để chỉ đánh dấu "Cần chạy lại". Video nằm ngay trên bảng sửa phụ đề song ngữ: phụ đề trên video hiện luôn bản đang gõ (chưa cần lưu), câu đang phát được tô sáng và tự cuộn tới; bấm mốc thời gian để phát từ đó, chuyển qua lại **Bản lồng tiếng / Bản gốc** mà giữ nguyên vị trí. Lưu xong bấm "Lồng tiếng lại". Trong **Chạy lại…** của bước Lồng tiếng, nút ▶ đọc thử một câu của chính bản dịch — với Giọng gốc là câu ở đúng đoạn được lấy làm mẫu, để so với bản gốc.
 

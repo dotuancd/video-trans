@@ -232,13 +232,18 @@ class Steps:
         """One needle call, no progress: it runs ~70× real time, and splitting the audio changes the
         transcript (3–9% of words, sentence-ending punctuation most) because the model loses context."""
         import needle
-        from subtitle import write_srt
+        from subtitle import words_path, write_srt, write_words
 
         audio = load_audio(media)
-        log.info("Nhận dạng %.1f phút audio…", len(audio) / 4 / ASR_SAMPLE_RATE / 60)
-        transcript = needle.transcribe(audio, language=o.language or None, word_timestamps=True)
+        seconds = len(audio) / 4 / ASR_SAMPLE_RATE
+        log.info("Nhận dạng %.1f phút audio…", seconds / 60)
+        # needle writes the JSON result into a fixed buffer (256 KB by default) and cuts it off there:
+        # ~40 min of words with timestamps. Words take ~250 B per second of speech; allow 1 KB.
+        whistle = needle.Whistle(buffer_size=max(1 << 18, int(seconds) * 1024))
+        transcript = whistle.transcribe(audio, language=o.language or None, word_timestamps=True)
         target.parent.mkdir(parents=True, exist_ok=True)
         cues = write_srt(transcript["words"], target)
+        write_words(transcript["words"], words_path(target))
         return f"{len(cues)} cues, audio {len(audio) / 4 / ASR_SAMPLE_RATE / 60:.1f} min"
 
     def translate(self, source, target, o, progress=None):

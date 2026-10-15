@@ -27,3 +27,22 @@
 
 - **Dịch lại chỉ câu gốc đã sửa:** sửa phụ đề gốc rồi "Dịch lại" sẽ dịch cả file và ghi đè các câu tiếng Việt đã sửa tay. Có thể chỉ dịch lại các nhóm câu có câu gốc đổi (so với bản `.srt` lúc dịch), giữ nguyên phần còn lại.
 - **Sửa phụ đề gốc khi đang dịch:** editor cho sửa `.srt` ngay sau bước Phụ đề, nhưng nếu bước Dịch đang chạy thì nó dùng bản cũ. Có thể khoá cột gốc hoặc báo "Dịch lại" khi bước Dịch xong.
+
+- **Dọn thư mục upload:** xoá job không xoá `storage/uploads/<id>/`. Có thể hỏi "Xoá cả file" khi xoá job tải lên, hoặc dọn upload cũ hơn N ngày.
+- **Tải kết quả về:** job từ file tải lên chỉ có "Mở trong Finder"; thêm nút tải `.vi.srt` / `.dub.mp4` (cần khi mở UI từ máy khác).
+- **Upload tiếp tục khi đứt:** video rất lớn đứt giữa chừng phải tải lại từ đầu; có thể chia chunk + `Content-Range`.
+
+
+- **Báo lỗi bộ đệm cho needle:** `needle.Whistle` cắt JSON ở `buffer_size` (256 KB) mà không báo lỗi; `dich.Steps.transcribe` đang cấp 1 KB/giây audio. Nên báo upstream để thư viện trả về kích thước cần hoặc tự nới bộ đệm.
+
+- **Thư mục riêng cho job trên máy chủ**: Output cạnh file gốc là chủ đích (thấy ngay trong Finder, CLI/UI như nhau, chạy lại bỏ qua output đã có; mux/editor/nghe thử tìm file theo tên cạnh nhau). Cần tách thì dùng ô "Thư mục ra" (`out`).
+- ~~**Lưu word timestamps khi phiên âm**~~: bước Phụ đề ghi `<stem>.words.json`; editor tách/chuyển chữ ở cột gốc đặt ranh giới đúng khoảng lặng giữa hai từ. Câu gốc đã sửa (số từ khác bản phiên âm) hoặc cắt giữa từ thì quay về ước lượng theo ký tự.
+- **Hiện word timestamps cho job cũ:** job phiên âm trước khi có `.words.json` phải chạy lại bước Phụ đề (ghi đè `.srt` đã sửa). Có thể thêm lệnh chỉ ghi `.words.json` mà giữ `.srt`.
+- **Hoàn tác thống nhất:** nút "Hoàn tác" chỉ lùi thao tác gộp/tách/chuyển chữ (gõ chữ dùng ⌘Z của ô nhập); một lịch sử chung cho cả hai sẽ ít bất ngờ hơn.
+- **Tham số ngắt câu trên UI:** `MAX_CHARS`, `MIN_CHARS`, `MAX_DURATION` trong `subtitle.py` có thể đưa vào tham số bước Phụ đề để chỉnh theo kiểu video (vlog nói nhanh vs. bài giảng).
+
+## Kiến trúc (xem `docs/Architecture.md`)
+
+- **Glossary theo job/dự án:** danh sách tên riêng/thuật ngữ dùng chung cho `refine` (sửa ASR) và `translate` (dịch nhất quán), sửa được trong UI.
+- **Template pipeline chọn khi tạo job:** "Chỉ phụ đề", "Phụ đề + dịch", "Lồng tiếng đầy đủ" — người dùng không phải bật/tắt từng bước.
+- **Ước lượng thời gian/chi phí trước khi chạy:** dựa trên thời lượng video và lịch sử attempt (tốc độ driver, số token LLM).

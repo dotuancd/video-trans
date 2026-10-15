@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { client } from '@/api/client.gen'
-import { listJobs, getConfig, getStepLog, type Job, type Step, type StepLog } from '@/api'
+import { listJobs, getConfig, getStepLog, type Entry, type Job, type Step, type StepLog, type Uploaded } from '@/api'
 
 client.setConfig({ baseUrl: '', throwOnError: true })
 
@@ -9,6 +9,17 @@ export type StepName = Step['name']
 export type Status = Step['status']
 export type StepOptions = Record<string, string | number | boolean | null>
 export type Options = Record<StepName, StepOptions>
+
+/** The file a job starts from: a video/audio, an original .srt or a translated .vi.srt. */
+export type Start = 'media' | 'srt' | 'vi_srt'
+
+export function guessStart(path: string, kind?: Entry['kind']): Start | null {
+  const name = path.toLowerCase()
+  if (kind === 'vi_srt' || name.endsWith('.vi.srt')) return 'vi_srt'
+  if (kind === 'srt' || name.endsWith('.srt')) return 'srt'
+  if (kind === 'media' || /\.(mp4|mkv|mov|m4v|webm|avi|wav|mp3|m4a|aac|flac|ogg)$/.test(name)) return 'media'
+  return null   // a folder: keep what the user chose
+}
 
 export const STEP_LABELS: Record<StepName, string> = {
   transcribe: 'Phụ đề',
@@ -40,6 +51,29 @@ export function errorMessage(error: unknown): string {
 export const fileName = (path: string) => path.split('/').pop() ?? path
 export const mediaUrl = (path: string) => `/api/media?path=${encodeURIComponent(path)}`
 export const vttUrl = (path: string) => `/api/subtitles/vtt?path=${encodeURIComponent(path)}`
+
+/** PUT a file to /api/uploads (into folder `id` when given) with upload progress, which fetch lacks. */
+export function uploadFile(file: File, id: string | undefined, onProgress: (fraction: number) => void) {
+  const query = new URLSearchParams({ name: file.name, ...(id ? { id } : {}) })
+  return new Promise<Uploaded>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', `/api/uploads?${query}`)
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream')
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
+    xhr.onload = () => {
+      let body: unknown = xhr.responseText
+      try {
+        body = JSON.parse(xhr.responseText)
+      } catch {
+        /* plain-text error */
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(body as Uploaded)
+      else reject(typeof body === 'string' ? new Error(body || `${file.name}: lỗi ${xhr.status}`) : body)
+    }
+    xhr.onerror = () => reject(new Error(`${file.name}: mất kết nối khi tải lên`))
+    xhr.send(file)
+  })
+}
 
 export function useConfig() {
   return useQuery({ queryKey: ['config'], queryFn: async () => (await getConfig()).data, staleTime: Infinity })

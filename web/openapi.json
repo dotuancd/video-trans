@@ -412,7 +412,7 @@
    },
    "put": {
     "summary": "Save Subtitles",
-    "description": "Replace the cue texts (timing kept), and those of the original .srt when `sources` is given.",
+    "description": "Rewrite the cues (texts, and timings when cues were merged or split), and the original .srt with\nthe same timings when every cue carries its `source`.",
     "operationId": "save_subtitles",
     "requestBody": {
      "required": true,
@@ -483,6 +483,67 @@
         }
        }
       }
+     }
+    }
+   }
+  },
+  "/api/uploads": {
+   "put": {
+    "summary": "Upload",
+    "description": "The request body is the file. Each video gets a folder; upload its .srt / .vi.srt with the\nsame `id` so the steps find them next to it. Outputs are written in that folder too.",
+    "operationId": "upload",
+    "parameters": [
+     {
+      "name": "name",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Name"
+      }
+     },
+     {
+      "name": "id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Uploaded"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/octet-stream": {}
      }
     }
    }
@@ -719,6 +780,41 @@
     ],
     "title": "Cue"
    },
+   "CueEdit": {
+    "properties": {
+     "start": {
+      "type": "number",
+      "title": "Start"
+     },
+     "end": {
+      "type": "number",
+      "title": "End"
+     },
+     "text": {
+      "type": "string",
+      "title": "Text"
+     },
+     "source": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source",
+      "description": "the original line; given on every cue to rewrite the original .srt too"
+     }
+    },
+    "type": "object",
+    "required": [
+     "start",
+     "end",
+     "text"
+    ],
+    "title": "CueEdit"
+   },
    "Entry": {
     "properties": {
      "name": {
@@ -826,8 +922,24 @@
    "JobCreate": {
     "properties": {
      "path": {
-      "type": "string",
-      "title": "Path"
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Path",
+      "description": "a file or a folder of them; or give `paths`"
+     },
+     "paths": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Paths",
+      "description": "files, each its own job with outputs next to it"
      },
      "start": {
       "type": "string",
@@ -883,9 +995,6 @@
      }
     },
     "type": "object",
-    "required": [
-     "path"
-    ],
     "title": "JobCreate"
    },
    "JobCreated": {
@@ -1250,6 +1359,21 @@
       },
       "type": "array",
       "title": "Cues"
+     },
+     "words": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/components/schemas/Word"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Words",
+      "description": "the timed words the original .srt was grouped from (<stem>.words.json), to cut cues where a word is spoken; none for older jobs"
      }
     },
     "type": "object",
@@ -1266,33 +1390,19 @@
       "type": "string",
       "title": "Path"
      },
-     "texts": {
+     "cues": {
       "items": {
-       "type": "string"
+       "$ref": "#/components/schemas/CueEdit"
       },
       "type": "array",
-      "title": "Texts"
-     },
-     "sources": {
-      "anyOf": [
-       {
-        "items": {
-         "type": "string"
-        },
-        "type": "array"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Sources",
-      "description": "new texts of `source_path`, cue by cue"
+      "title": "Cues",
+      "description": "the whole new list: cues may have been merged, split or retimed"
      }
     },
     "type": "object",
     "required": [
      "path",
-     "texts"
+     "cues"
     ],
     "title": "SubtitlesSave"
    },
@@ -1315,6 +1425,39 @@
      "sources"
     ],
     "title": "SubtitlesSaved"
+   },
+   "Uploaded": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id",
+      "description": "the upload folder: pass it with the other files of the same video"
+     },
+     "path": {
+      "type": "string",
+      "title": "Path"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "dir",
+       "media",
+       "srt",
+       "vi_srt",
+       "dub",
+       "audio",
+       "other"
+      ],
+      "title": "Kind"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "path",
+     "kind"
+    ],
+    "title": "Uploaded"
    },
    "ValidationError": {
     "properties": {
@@ -1373,6 +1516,29 @@
      "name"
     ],
     "title": "Voice"
+   },
+   "Word": {
+    "properties": {
+     "word": {
+      "type": "string",
+      "title": "Word"
+     },
+     "start": {
+      "type": "number",
+      "title": "Start"
+     },
+     "end": {
+      "type": "number",
+      "title": "End"
+     }
+    },
+    "type": "object",
+    "required": [
+     "word",
+     "start",
+     "end"
+    ],
+    "title": "Word"
    }
   }
  }

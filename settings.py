@@ -45,3 +45,4 @@ UI_PORT = int(env("DICH_UI_PORT", "7860"))
 MODELS_DIR = env_path("DICH_MODELS_DIR", Path(__file__).parent / "models")    # local translation models
 DATA_DIR = env_path("DICH_DATA_DIR", "~/.local/share/dich-video")            # web UI jobs + uploaded voice clips
 CACHE_DIR = env_path("DICH_CACHE_DIR", "~/.cache/dich-video")                # TTS sentence cache
+STORAGE_DIR = env_path("DICH_STORAGE_DIR", Path(__file__).parent / "storage")  # files uploaded from the web UI

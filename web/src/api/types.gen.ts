@@ -59,6 +59,30 @@ export type Cue = {
 };
 
 /**
+ * CueEdit
+ */
+export type CueEdit = {
+    /**
+     * Start
+     */
+    start: number;
+    /**
+     * End
+     */
+    end: number;
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Source
+     *
+     * the original line; given on every cue to rewrite the original .srt too
+     */
+    source?: string | null;
+};
+
+/**
  * Entry
  */
 export type Entry = {
@@ -126,8 +150,16 @@ export type Job = {
 export type JobCreate = {
     /**
      * Path
+     *
+     * a file or a folder of them; or give `paths`
      */
-    path: string;
+    path?: string | null;
+    /**
+     * Paths
+     *
+     * files, each its own job with outputs next to it
+     */
+    paths?: Array<string>;
     /**
      * Start
      */
@@ -378,6 +410,12 @@ export type Subtitles = {
      * Cues
      */
     cues: Array<Cue>;
+    /**
+     * Words
+     *
+     * the timed words the original .srt was grouped from (<stem>.words.json), to cut cues where a word is spoken; none for older jobs
+     */
+    words?: Array<Word> | null;
 };
 
 /**
@@ -389,15 +427,11 @@ export type SubtitlesSave = {
      */
     path: string;
     /**
-     * Texts
-     */
-    texts: Array<string>;
-    /**
-     * Sources
+     * Cues
      *
-     * new texts of `source_path`, cue by cue
+     * the whole new list: cues may have been merged, split or retimed
      */
-    sources?: Array<string> | null;
+    cues: Array<CueEdit>;
 };
 
 /**
@@ -416,6 +450,26 @@ export type SubtitlesSaved = {
      * cues changed in the original .srt
      */
     sources: number;
+};
+
+/**
+ * Uploaded
+ */
+export type Uploaded = {
+    /**
+     * Id
+     *
+     * the upload folder: pass it with the other files of the same video
+     */
+    id: string;
+    /**
+     * Path
+     */
+    path: string;
+    /**
+     * Kind
+     */
+    kind: 'dir' | 'media' | 'srt' | 'vi_srt' | 'dub' | 'audio' | 'other';
 };
 
 /**
@@ -458,6 +512,24 @@ export type Voice = {
      * Name
      */
     name: string;
+};
+
+/**
+ * Word
+ */
+export type Word = {
+    /**
+     * Word
+     */
+    word: string;
+    /**
+     * Start
+     */
+    start: number;
+    /**
+     * End
+     */
+    end: number;
 };
 
 export type GetConfigData = {
@@ -810,6 +882,40 @@ export type SubtitlesVttResponses = {
 };
 
 export type SubtitlesVttResponse = SubtitlesVttResponses[keyof SubtitlesVttResponses];
+
+export type UploadData = {
+    body?: unknown;
+    path?: never;
+    query: {
+        /**
+         * Name
+         */
+        name: string;
+        /**
+         * Id
+         */
+        id?: string | null;
+    };
+    url: '/api/uploads';
+};
+
+export type UploadErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UploadError = UploadErrors[keyof UploadErrors];
+
+export type UploadResponses = {
+    /**
+     * Successful Response
+     */
+    200: Uploaded;
+};
+
+export type UploadResponse = UploadResponses[keyof UploadResponses];
 
 export type MediaData = {
     body?: never;

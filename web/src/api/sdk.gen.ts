@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type ServerSentEventsResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddJobsData, AddJobsErrors, AddJobsResponses, CancelJobData, CancelJobErrors, CancelJobResponses, DeleteJobData, DeleteJobErrors, DeleteJobResponses, EventsData, EventsResponses, GetConfigData, GetConfigResponses, GetJobData, GetJobErrors, GetJobResponses, GetStepLogData, GetStepLogErrors, GetStepLogResponses, GetSubtitlesData, GetSubtitlesErrors, GetSubtitlesResponses, ListDirData, ListDirErrors, ListDirResponses, ListJobsData, ListJobsResponses, ListVoicesData, ListVoicesResponses, MediaData, MediaErrors, MediaResponses, PreviewVoiceData, PreviewVoiceErrors, PreviewVoiceResponses, RevealData, RevealErrors, RevealResponses, RunStepData, RunStepErrors, RunStepResponses, SaveSubtitlesData, SaveSubtitlesErrors, SaveSubtitlesResponses, SubtitlesVttData, SubtitlesVttErrors, SubtitlesVttResponses, UploadVoiceData, UploadVoiceErrors, UploadVoiceResponses } from './types.gen';
+import type { AddJobsData, AddJobsErrors, AddJobsResponses, CancelJobData, CancelJobErrors, CancelJobResponses, DeleteJobData, DeleteJobErrors, DeleteJobResponses, EventsData, EventsResponses, GetConfigData, GetConfigResponses, GetJobData, GetJobErrors, GetJobResponses, GetStepLogData, GetStepLogErrors, GetStepLogResponses, GetSubtitlesData, GetSubtitlesErrors, GetSubtitlesResponses, ListDirData, ListDirErrors, ListDirResponses, ListJobsData, ListJobsResponses, ListVoicesData, ListVoicesResponses, MediaData, MediaErrors, MediaResponses, PreviewVoiceData, PreviewVoiceErrors, PreviewVoiceResponses, RevealData, RevealErrors, RevealResponses, RunStepData, RunStepErrors, RunStepResponses, SaveSubtitlesData, SaveSubtitlesErrors, SaveSubtitlesResponses, SubtitlesVttData, SubtitlesVttErrors, SubtitlesVttResponses, UploadData, UploadErrors, UploadResponses, UploadVoiceData, UploadVoiceErrors, UploadVoiceResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -92,7 +92,8 @@ export const getSubtitles = <ThrowOnError extends boolean = true>(options: Optio
 /**
  * Save Subtitles
  *
- * Replace the cue texts (timing kept), and those of the original .srt when `sources` is given.
+ * Rewrite the cues (texts, and timings when cues were merged or split), and the original .srt with
+ * the same timings when every cue carries its `source`.
  */
 export const saveSubtitles = <ThrowOnError extends boolean = true>(options: Options<SaveSubtitlesData, ThrowOnError>): RequestResult<SaveSubtitlesResponses, SaveSubtitlesErrors, ThrowOnError> => (options.client ?? client).put<SaveSubtitlesResponses, SaveSubtitlesErrors, ThrowOnError>({
     url: '/api/subtitles',
@@ -107,6 +108,22 @@ export const saveSubtitles = <ThrowOnError extends boolean = true>(options: Opti
  * Subtitles Vtt
  */
 export const subtitlesVtt = <ThrowOnError extends boolean = true>(options: Options<SubtitlesVttData, ThrowOnError>): RequestResult<SubtitlesVttResponses, SubtitlesVttErrors, ThrowOnError> => (options.client ?? client).get<SubtitlesVttResponses, SubtitlesVttErrors, ThrowOnError>({ url: '/api/subtitles/vtt', ...options });
+
+/**
+ * Upload
+ *
+ * The request body is the file. Each video gets a folder; upload its .srt / .vi.srt with the
+ * same `id` so the steps find them next to it. Outputs are written in that folder too.
+ */
+export const upload = <ThrowOnError extends boolean = true>(options: Options<UploadData, ThrowOnError>): RequestResult<UploadResponses, UploadErrors, ThrowOnError> => (options.client ?? client).put<UploadResponses, UploadErrors, ThrowOnError>({
+    bodySerializer: null,
+    url: '/api/uploads',
+    ...options,
+    headers: {
+        'Content-Type': 'application/octet-stream',
+        ...options.headers
+    }
+});
 
 /**
  * Media

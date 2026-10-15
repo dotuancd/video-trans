@@ -1,28 +1,37 @@
 # HTTP API for the web UI (`uv run dich ui`): REST for jobs/files, Server-Sent Events for live
 # step status, and the built React app (web/dist) served from /. Listens on 127.0.0.1 only and
-# reads/writes files under --root only (plus the uploaded voice clips).
+# reads/writes files under --root only (plus the files and voice clips uploaded from it).
 import asyncio
 import hashlib
 import io
 import json
+import os
+import re
 import subprocess
 import sys
+import time
 from urllib.parse import quote
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from pathlib import Path
 from typing import Literal
 
 import srt
-from fastapi import FastAPI, HTTPException, Query, UploadFile
+from fastapi import FastAPI, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+import settings
 from dich import STEP_OPTIONS, DichError, find_files, find_media, is_media, is_source_srt, read_srt
 from dich_server.pipeline import DEFAULT_DB, Busy, Pipeline, Store
+from subtitle import words_path
 
 WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
 VOICES_DIR = DEFAULT_DB.parent / "voices"
+UPLOADS_DIR = settings.STORAGE_DIR / "uploads"
+ULID = re.compile(r"[0-9A-HJKMNP-TV-Z]{26}")
+CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 ACCEPT = {"media": is_media, "srt": is_source_srt, "vi_srt": lambda name: name.endswith(".vi.srt")}
 SAMPLE_TEXT = "Xin chào, đây là giọng đọc thử cho video của bạn."
 MIN_PREVIEW_CHARS = 40
@@ -61,7 +70,8 @@ class Job(BaseModel):
 
 
 class JobCreate(BaseModel):
-    path: str
+    path: str | None = Field(None, description="a file or a folder of them; or give `paths`")
+    paths: list[str] = Field(default_factory=list, description="files, each its own job with outputs next to it")
     start: Literal["media", "srt", "vi_srt"] = "media"
     recursive: bool = False
     translate: bool = True
@@ -114,16 +124,30 @@ class Cue(BaseModel):
     text: str
 
 
+class Word(BaseModel):
+    word: str
+    start: float
+    end: float
+
+
 class Subtitles(BaseModel):
     path: str = Field(description="the file whose cues are `text`: a .vi.srt, or an original .srt")
     source_path: str | None = Field(description="the original .srt whose cues are `source`, when `path` is a .vi.srt")
     cues: list[Cue]
+    words: list[Word] | None = Field(None, description="the timed words the original .srt was grouped from "
+                                     "(<stem>.words.json), to cut cues where a word is spoken; none for older jobs")
+
+
+class CueEdit(BaseModel):
+    start: float
+    end: float
+    text: str
+    source: str | None = Field(None, description="the original line; given on every cue to rewrite the original .srt too")
 
 
 class SubtitlesSave(BaseModel):
     path: str
-    texts: list[str]
-    sources: list[str] | None = Field(None, description="new texts of `source_path`, cue by cue")
+    cues: list[CueEdit] = Field(description="the whole new list: cues may have been merged, split or retimed")
 
 
 class SubtitlesSaved(BaseModel):
@@ -150,6 +174,18 @@ class PathBody(BaseModel):
     path: str
 
 
+class Uploaded(BaseModel):
+    id: str = Field(description="the upload folder: pass it with the other files of the same video")
+    path: str
+    kind: Literal["dir", "media", "srt", "vi_srt", "dub", "audio", "other"]
+
+
+def ulid():
+    """26 chars, sortable by creation time: 48 bits of milliseconds then 80 random bits."""
+    value = (int(time.time() * 1000) << 80) | int.from_bytes(os.urandom(10), "big")
+    return "".join(CROCKFORD[(value >> shift) & 31] for shift in range(125, -1, -5))
+
+
 def kind_of(path):
     name = path.name.lower()
     if path.is_dir():
@@ -172,7 +208,7 @@ def create_app(root, db_path=DEFAULT_DB):
     def inside(path, allow_voices=False):
         path = Path(path).expanduser()
         path = (path if path.is_absolute() else root / path).resolve()
-        allowed = [root] + ([VOICES_DIR.resolve()] if allow_voices else [])
+        allowed = [root, UPLOADS_DIR.resolve()] + ([VOICES_DIR.resolve()] if allow_voices else [])
         if not any(path == base or base in path.parents for base in allowed):
             raise HTTPException(403, f"Chỉ được dùng file trong {root}")
         return path
@@ -221,6 +257,18 @@ def create_app(root, db_path=DEFAULT_DB):
 
     @app.post("/api/jobs")
     def add_jobs(body: JobCreate) -> JobCreated:
+        options = (body.translate, body.dub, body.mux, body.overwrite, body.params)
+        if body.paths:
+            added, skipped = [], []
+            for source in map(existing, body.paths):
+                if not source.is_file() or not ACCEPT[body.start](source.name.lower()):
+                    raise HTTPException(400, f"{source.name} không phải file cần cho bước đầu")
+                more, notes = pipeline.add([source], body.start, source.parent, None, *options)
+                added += more
+                skipped += notes
+            return JobCreated(jobs=added, skipped=skipped)
+        if not body.path:
+            raise HTTPException(400, "Chưa chọn file hoặc thư mục")
         path = existing(body.path)
         out = inside(body.out) if body.out else None
         base = path.parent if path.is_file() else path
@@ -228,8 +276,7 @@ def create_app(root, db_path=DEFAULT_DB):
         if not sources:
             kind = {"media": "video/audio", "srt": ".srt", "vi_srt": ".vi.srt"}[body.start]
             raise HTTPException(400, f"Không có file {kind} nào trong {path}")
-        added, skipped = pipeline.add(sources, body.start, base, out, body.translate, body.dub, body.mux,
-                                      body.overwrite, body.params)
+        added, skipped = pipeline.add(sources, body.start, base, out, *options)
         return JobCreated(jobs=added, skipped=skipped)
 
     @app.post("/api/jobs/{job_id}/steps/{name}/run")
@@ -304,23 +351,25 @@ def create_app(root, db_path=DEFAULT_DB):
         sources = {s.start: s.content for s in read_srt(original)} if original else {}
         cues = [Cue(index=s.index, start=s.start.total_seconds(), end=s.end.total_seconds(),
                     source=sources.get(s.start, ""), text=s.content) for s in read_srt(path)]
-        return Subtitles(path=str(path), source_path=str(original) if original else None, cues=cues)
+        return Subtitles(path=str(path), source_path=str(original) if original else None, cues=cues,
+                         words=read_words(original or path))
 
     @app.put("/api/subtitles")
     def save_subtitles(body: SubtitlesSave) -> SubtitlesSaved:
-        """Replace the cue texts (timing kept), and those of the original .srt when `sources` is given."""
+        """Rewrite the cues (texts, and timings when cues were merged or split), and the original .srt with
+        the same timings when every cue carries its `source`."""
         path = existing(body.path)
-        cues = read_srt(path)
-        if len(body.texts) != len(cues):
-            raise HTTPException(400, "Số câu đã thay đổi — chỉ được sửa nội dung")
-        original = original_of(path) if body.sources is not None else None
-        if body.sources is not None and not original:
+        cues = sorted(body.cues, key=lambda c: c.start)
+        if not cues or any(c.end <= c.start for c in cues):
+            raise HTTPException(400, "Câu phụ đề phải có thời gian kết thúc sau thời gian bắt đầu")
+        with_source = all(c.source is not None for c in cues)
+        if any(c.source is not None for c in cues) and not with_source:
+            raise HTTPException(400, "Thiếu câu gốc ở vài câu")
+        original = original_of(path) if with_source else None
+        if with_source and not original:
             raise HTTPException(400, "Không có phụ đề gốc cạnh file này")
-        if body.sources is not None and len(body.sources) != len(cues):
-            raise HTTPException(400, "Số câu gốc đã thay đổi — chỉ được sửa nội dung")
-        changed = replace_texts(path, cues, {c.start: t for c, t in zip(cues, body.texts)})
-        source_changed = (replace_texts(original, read_srt(original), {c.start: t for c, t in zip(cues, body.sources)})
-                          if original else 0)
+        changed = write_cues(path, [(c.start, c.end, c.text) for c in cues])
+        source_changed = write_cues(original, [(c.start, c.end, c.source) for c in cues]) if original else 0
         return SubtitlesSaved(texts=changed, sources=source_changed)
 
     @app.get("/api/subtitles/vtt", response_class=PlainTextResponse)
@@ -332,6 +381,30 @@ def create_app(root, db_path=DEFAULT_DB):
             end = srt.timedelta_to_srt_timestamp(cue.end).replace(",", ".")
             lines += [f"{start} --> {end}", cue.content, ""]
         return PlainTextResponse("\n".join(lines), media_type="text/vtt")
+
+    # --- uploads ---
+
+    @app.put("/api/uploads", openapi_extra={"requestBody": {"content": {"application/octet-stream": {}}}})
+    async def upload(request: Request, name: str, id: str | None = None) -> Uploaded:
+        """The request body is the file. Each video gets a folder; upload its .srt / .vi.srt with the
+        same `id` so the steps find them next to it. Outputs are written in that folder too."""
+        name = Path(name).name
+        if not (is_media(name.lower()) or name.lower().endswith(".srt")):
+            raise HTTPException(400, f"{name}: chỉ nhận video/audio, .srt hoặc .vi.srt")
+        if id is not None and not (ULID.fullmatch(id) and (UPLOADS_DIR / id).is_dir()):
+            raise HTTPException(400, "Thư mục upload không hợp lệ")
+        id = id or ulid()
+        target = UPLOADS_DIR / id / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        part = target.with_name(target.name + ".part")
+        try:
+            with part.open("wb") as file:
+                async for chunk in request.stream():
+                    file.write(chunk)
+            part.replace(target)
+        finally:
+            part.unlink(missing_ok=True)
+        return Uploaded(id=id, path=str(target), kind=kind_of(target))
 
     # --- media ---
 
@@ -416,16 +489,27 @@ def create_app(root, db_path=DEFAULT_DB):
     return app
 
 
-def replace_texts(path, cues, texts):
-    """Writes cues back with the text given for their start time; returns how many changed."""
-    changed = 0
-    for cue in cues:
-        text = texts.get(cue.start, cue.content).strip()
-        if text != cue.content:
-            cue.content = text
-            changed += 1
-    if changed:
-        path.write_text(srt.compose(cues, reindex=False), encoding="utf-8")
+def read_words(srt_path):
+    """The words saved next to an original .srt by the Subtitles step, if any."""
+    path = words_path(srt_path)
+    if srt_path.name.endswith(".vi.srt") or not path.is_file():
+        return None
+    try:
+        return [Word(**w) for w in json.loads(path.read_text(encoding="utf-8"))]
+    except (ValueError, TypeError):
+        return None
+
+
+def write_cues(path, cues):
+    """Rewrites path with (start, end, text) cues; returns how many are not in it as they were."""
+    before = {(c.start, c.end, c.content) for c in read_srt(path)}
+    subtitles = [srt.Subtitle(index=i + 1, start=timedelta(milliseconds=round(start * 1000)),
+                              end=timedelta(milliseconds=round(end * 1000)),
+                              content=text.strip())
+                 for i, (start, end, text) in enumerate(cues)]
+    changed = sum((s.start, s.end, s.content) not in before for s in subtitles)
+    if changed or len(subtitles) != len(before):
+        path.write_text(srt.compose(subtitles, reindex=False), encoding="utf-8")
     return changed
 
 
