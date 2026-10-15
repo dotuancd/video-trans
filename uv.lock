@@ -804,6 +804,8 @@ dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
     { name = "soundfile" },
     { name = "srt" },
 ]
@@ -828,6 +830,9 @@ tts = [
 ui = [
     { name = "fastapi", extra = ["standard"] },
 ]
+url = [
+    { name = "yt-dlp" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -845,13 +850,16 @@ requires-dist = [
     { name = "onnxruntime", marker = "extra == 'tts'", specifier = "==1.23.2" },
     { name = "openai", marker = "extra == 'openai'" },
     { name = "protobuf", marker = "extra == 'local'" },
+    { name = "pydantic", specifier = ">=2" },
+    { name = "pyyaml" },
     { name = "sentencepiece", marker = "extra == 'local'" },
     { name = "soundfile" },
     { name = "srt" },
     { name = "transformers", marker = "extra == 'local'" },
     { name = "vieneu", marker = "extra == 'tts'" },
+    { name = "yt-dlp", marker = "extra == 'url'" },
 ]
-provides-extras = ["local", "openai", "tts", "ui", "experiments"]
+provides-extras = ["local", "openai", "tts", "ui", "url", "experiments"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest" }]
@@ -5634,4 +5642,13 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/e5/35/e3b276473f7f38984990eb29cf525ffaed131f6136bedb929b5c2ce7151e/websockets-17.2-pp311-pypy311_pp73-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:80cbc645af23ac5c12096545c161626960114a1bc10f864760558d3b3e82ba18", size = 217355, upload-time = "2026-10-03T14:56:48.654Z" },
     { url = "https://files.pythonhosted.org/packages/aa/a1/459ab96c5cda8a2164f594be6dc9f868de7971e6abafa696ea07534139a6/websockets-17.2-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:063508ce9e0db745f30ab52fc652f4e59efc79c2b74934b3837d5cdb974da620", size = 218612, upload-time = "2026-10-03T14:56:50.287Z" },
     { url = "https://files.pythonhosted.org/packages/8a/58/835cd51934d6780fa586f275b5d9901eead6d81569b4343b3767cdbaae4c/websockets-17.2-py3-none-any.whl", hash = "sha256:6aa59f0ef92e796b2db6f5f26550c4713c0e4036899fadf02f55e2ed4db0b7ae", size = 211883, upload-time = "2026-10-03T14:56:51.898Z" },
+]
+
+[[package]]
+name = "yt-dlp"
+version = "2026.8.19"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1e/e0/832fa4ca334b766a06933a196066edc3dba37cdb6f14cd98d59bcc69a4b4/yt_dlp-2026.8.19.tar.gz", hash = "sha256:9e213e48cea35c66b378e4447903f118f6392a5fa380a2b6d7070ec86f4e0af1", size = 3052025, upload-time = "2026-08-19T23:48:59.291Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/69/b2/8cd1613f56eed7ceb64fbd4df3f1c01246bfb098e6f398228bafda22b80b/yt_dlp-2026.8.19-py3-none-any.whl", hash = "sha256:1d57897e94c6665a0a6f9bc54b34e584284e32c034ffab3a7df25d8f7b24eedf", size = 3185533, upload-time = "2026-08-19T23:48:56.925Z" },
 ]

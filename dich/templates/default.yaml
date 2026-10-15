@@ -1,0 +1,11 @@
+name: default
+title: Phụ đề + dịch + lồng tiếng
+description: Phiên âm, dịch sang các ngôn ngữ đã chọn, lồng tiếng và ghép vào video.
+stages:
+  - {stage: source,    driver: auto}            # file | url, chosen from the input
+  - {stage: separate,  driver: demucs, enabled: false}
+  - {stage: asr,       driver: needle}
+  - {stage: refine,    driver: rules, enabled: false}
+  - {stage: translate, driver: env}             # $DICH_ENGINE
+  - {stage: dub,       driver: vieneu}
+  - {stage: mux,       driver: ffmpeg}

@@ -1,0 +1,7 @@
+name: transcribe
+title: Chỉ phụ đề gốc
+description: Phiên âm ra phụ đề ngôn ngữ gốc.
+stages:
+  - {stage: source,    driver: auto}
+  - {stage: asr,       driver: needle}
+  - {stage: refine,    driver: rules, enabled: false}

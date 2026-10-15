@@ -3,141 +3,167 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from dich_server import api
+from dich.api.app import create_app
+from dich.formats.transcript import Transcript
+from dich.runtime.local import run_job
+
+FAKE = {"asr": {"driver": "fake"}, "translate": {"driver": "fake"}, "dub": {"driver": "fake"},
+        "mux": {"enabled": False}}
 
 
 @pytest.fixture
-def client(tmp_path, monkeypatch):
-    monkeypatch.setattr(api, "UPLOADS_DIR", tmp_path / "storage" / "uploads")
-    (tmp_path / "a.mp4").write_bytes(b"")
-    (tmp_path / "a.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nHello\n\n", encoding="utf-8")
-    (tmp_path / "a.vi.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nXin chào\n\n", encoding="utf-8")
-    app = api.create_app(tmp_path, ":memory:")
-
-    def fake_run(spec, params, progress):
-        spec.output.write_text("x")
-        return "ok"
-
+def app(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "a.mp4").write_bytes(b"video")
+    (root / "notes.txt").write_text("x")
+    app = create_app(root, data_dir=tmp_path / "data", workers=False)
     with TestClient(app) as client:
-        monkeypatch.setattr(app.state.pipeline, "run_step", fake_run)
-        yield client, tmp_path
+        yield client, app.state.ctx
 
 
-def test_listing_and_root_guard(client):
-    client, root = client
+def create(client, ctx, **body):
+    response = client.post("/api/jobs", json={"sources": [str(ctx.root / "a.mp4")], "overrides": FAKE, **body})
+    assert response.status_code == 200, response.text
+    return response.json()["jobs"]
+
+
+def test_listing_and_root_guard(app):
+    client, ctx = app
     listing = client.get("/api/fs").json()
-    assert {e["name"]: e["kind"] for e in listing["entries"]} == {"a.mp4": "media", "a.srt": "srt",
-                                                                 "a.vi.srt": "vi_srt"}
+    assert {e["name"]: e["kind"] for e in listing["entries"]} == {"a.mp4": "media", "notes.txt": "other"}
     assert client.get("/api/fs", params={"path": "/etc"}).status_code == 403
 
 
-def test_create_job_and_rerun(client):
-    client, root = client
-    created = client.post("/api/jobs", json={"path": str(root), "dub": True, "overwrite": True}).json()
-    [job_id] = created["jobs"]
-    for _ in range(200):
-        job = client.get(f"/api/jobs/{job_id}").json()
-        if job["status"] == "done":
-            break
-        time.sleep(0.01)
-    assert [s["name"] for s in job["steps"]] == ["transcribe", "translate", "dub"]
+def test_drivers_and_templates(app):
+    client, _ctx = app
+    drivers = {(d["stage"], d["name"]): d for d in client.get("/api/drivers").json()}
+    assert ("translate", "claude") in drivers and ("asr", "fake") not in drivers
+    assert drivers[("dub", "vieneu")]["langs"] == ["vi"]
+    assert "max_speed" in drivers[("dub", "vieneu")]["params_schema"]["properties"]
+    names = {t["name"] for t in client.get("/api/templates").json()}
+    assert {"default", "subs-only", "dub-review", "transcribe"} <= names
+
+
+def test_create_run_rerun_and_duplicates(app):
+    client, ctx = app
+    [job_id] = create(client, ctx, langs=["vi", "ja"])
+    run_job(ctx.store, job_id)
+    job = client.get(f"/api/jobs/{job_id}").json()
     assert job["status"] == "done"
-    job = client.post(f"/api/jobs/{job_id}/steps/translate/run",
-                      json={"params": {"engine": "openai"}, "cascade": False}).json()
-    assert job["steps"][1]["params"]["engine"] == "openai"
+    tasks = {t["key"]: t for t in job["tasks"]}
+    assert tasks["dub@ja"]["status"] == "skipped"
+    assert tasks["translate@vi"]["artifacts"][0]["slot"] == "transcript.vi"
+    assert (ctx.root / "a.vi.srt").exists()
+    assert client.post("/api/jobs", json={"sources": [str(ctx.root / "a.mp4")]}).json()["skipped"]
+
+    rerun = client.post(f"/api/tasks/{tasks['translate@vi']['id']}/rerun", json={"mode": "only"}).json()
+    assert {t["key"]: t["status"] for t in rerun["tasks"]}["dub@vi"] == "stale"
+    art = tasks["translate@vi"]["artifacts"][0]["id"]
+    assert client.get(f"/api/artifacts/{art}/vtt").text.startswith("WEBVTT")
+    download = client.get(f"/api/artifacts/{art}/download")
+    assert "a.vi.srt" in download.headers["content-disposition"]
 
 
-def test_subtitles_roundtrip(client):
-    client, root = client
-    path = str(root / "a.vi.srt")
-    subs = client.get("/api/subtitles", params={"path": path}).json()
-    assert subs["cues"][0] == {"index": 1, "start": 0.0, "end": 1.0, "source": "Hello", "text": "Xin chào"}
-    assert subs["source_path"] == str(root / "a.srt")
-    saved = client.put("/api/subtitles", json={"path": path, "cues": [
-        {"start": 0, "end": 1, "text": "Chào bạn", "source": "Hi"}]}).json()
-    assert saved == {"texts": 1, "sources": 1}
-    assert "Chào bạn" in (root / "a.vi.srt").read_text(encoding="utf-8")
-    assert "Hi" in (root / "a.srt").read_text(encoding="utf-8")
-    assert client.get("/api/subtitles/vtt", params={"path": path}).text.startswith("WEBVTT")
+def test_bad_params_and_unknown_driver(app):
+    client, ctx = app
+    bad = client.post("/api/jobs", json={"sources": [str(ctx.root / "a.mp4")],
+                                         "overrides": {**FAKE, "dub": {"driver": "fake"}, "asr": {"driver": "nope"}}})
+    assert bad.status_code == 400
+    assert client.post("/api/jobs", json={"sources": ["/etc/passwd"]}).status_code == 403
 
 
-def test_original_subtitles_alone(client):
-    client, root = client
-    path = str(root / "a.srt")
-    subs = client.get("/api/subtitles", params={"path": path}).json()
-    assert subs["source_path"] is None and subs["cues"][0]["text"] == "Hello"
-    hey = {"start": 0, "end": 1, "text": "Hey"}
-    assert client.put("/api/subtitles", json={"path": path, "cues": [hey]}).json() == {"texts": 1, "sources": 0}
-    assert client.put("/api/subtitles", json={"path": path, "cues": [{**hey, "source": "x"}]}).status_code == 400
+def test_transcript_edit_marks_stale_and_needs_confirm(app):
+    client, ctx = app
+    [job_id] = create(client, ctx)
+    run_job(ctx.store, job_id)
+    view = client.get(f"/api/jobs/{job_id}/transcript", params={"lang": "vi"}).json()
+    assert view["cues"][0] == {"id": "c_0001", "start": 0.0, "end": 1.0, "text": "vi:hello.", "source": "hello."}
+    cues = view["cues"]
+    cues[0]["text"] = "Xin chào."
+    saved = client.put(f"/api/jobs/{job_id}/transcript", params={"lang": "vi"}, json={"cues": cues}).json()
+    assert saved == {"texts": 1, "sources": 0, "source_text_changed": False}
+    assert "Xin chào." in (ctx.root / "a.vi.srt").read_text(encoding="utf-8")
+    job = client.get(f"/api/jobs/{job_id}").json()
+    tasks = {t["key"]: t for t in job["tasks"]}
+    assert tasks["dub@vi"]["status"] == "stale" and tasks["translate@vi"]["status"] == "done"
+    assert client.get(f"/api/jobs/{job_id}/transcript", params={"lang": "vi"}).json()["edited"]
+
+    conflict = client.post(f"/api/tasks/{tasks['translate@vi']['id']}/rerun", json={"mode": "only"})
+    assert conflict.status_code == 409 and conflict.json()["detail"]["confirm"]
+    assert client.post(f"/api/jobs/{job_id}/refresh").json()["status"] == "queued"
 
 
-def test_subtitles_split_and_merge(client):
-    client, root = client
-    path = str(root / "a.vi.srt")
-    split = [{"start": 0, "end": 0.4, "text": "Xin", "source": "Hel"},
-             {"start": 0.4, "end": 1, "text": "chào", "source": "lo"}]
-    assert client.put("/api/subtitles", json={"path": path, "cues": split}).json() == {"texts": 2, "sources": 2}
-    subs = client.get("/api/subtitles", params={"path": path}).json()["cues"]
-    assert [(c["start"], c["end"], c["source"], c["text"]) for c in subs] == [
-        (0.0, 0.4, "Hel", "Xin"), (0.4, 1.0, "lo", "chào")]
-    merged = [{"start": 0, "end": 1, "text": "Xin chào", "source": "Hello"}]
-    assert client.put("/api/subtitles", json={"path": path, "cues": merged}).json() == {"texts": 1, "sources": 1}
-    assert len(client.get("/api/subtitles", params={"path": path}).json()["cues"]) == 1
-    bad = [{"start": 1, "end": 1, "text": "x"}]
-    assert client.put("/api/subtitles", json={"path": path, "cues": bad}).status_code == 400
+def test_merge_in_editor_keeps_translation_fresh(app):
+    client, ctx = app
+    [job_id] = create(client, ctx)
+    run_job(ctx.store, job_id)
+    cues = client.get(f"/api/jobs/{job_id}/transcript", params={"lang": "vi"}).json()["cues"]
+    merged = [{**cues[0], "end": cues[1]["end"], "text": cues[0]["text"] + " " + cues[1]["text"],
+               "source": cues[0]["source"] + " " + cues[1]["source"]}]
+    saved = client.put(f"/api/jobs/{job_id}/transcript", params={"lang": "vi"}, json={"cues": merged}).json()
+    assert saved["sources"] == 1 and not saved["source_text_changed"]
+    tasks = {t["key"]: t["status"] for t in client.get(f"/api/jobs/{job_id}").json()["tasks"]}
+    assert tasks["translate@vi"] == "done" and tasks["dub@vi"] == "stale"
+    src = client.get(f"/api/jobs/{job_id}/transcript").json()
+    assert [c["text"] for c in src["cues"]] == ["hello. world."]
 
 
-def test_step_log(client):
-    client, root = client
-    [job_id] = client.post("/api/jobs", json={"path": str(root / "a.mp4"), "overwrite": True}).json()["jobs"]
-    for _ in range(200):
-        if client.get(f"/api/jobs/{job_id}").json()["status"] == "done":
-            break
-        time.sleep(0.01)
-    log = client.get(f"/api/jobs/{job_id}/steps/transcribe/log").json()
-    assert "Lần 1" in log["text"] and log["offset"] == 0 and log["size"] == len(log["text"].encode())
-    assert client.get(f"/api/jobs/{job_id}/steps/transcribe/log", params={"offset": log["size"]}).json()["text"] == ""
-    assert client.get(f"/api/jobs/{job_id}/steps/mux/log").status_code == 404
+def test_add_language_cancel_resume_delete(app):
+    client, ctx = app
+    [job_id] = create(client, ctx)
+    run_job(ctx.store, job_id)
+    job = client.post(f"/api/jobs/{job_id}/langs", json={"langs": ["fr"]}).json()
+    assert job["langs"] == ["vi", "fr"]
+    assert {t["key"]: t["status"] for t in job["tasks"]}["translate@fr"] == "queued"
+    assert client.post(f"/api/jobs/{job_id}/cancel").json()["status"] == "cancelled"
+    assert client.post(f"/api/jobs/{job_id}/resume").json()["status"] == "queued"
+    assert client.delete(f"/api/jobs/{job_id}").status_code == 204
+    assert client.get(f"/api/jobs/{job_id}").status_code == 404
 
 
-def wait_done(client, job_id):
-    for _ in range(200):
-        job = client.get(f"/api/jobs/{job_id}").json()
-        if job["status"] == "done":
-            return job
-        time.sleep(0.01)
-    return job
+def test_system_error_has_trace(app):
+    client, ctx = app
+    [job_id] = create(client, ctx, overrides={**FAKE, "asr": {"driver": "fake", "params": {"fail": "system"}}})
+    run_job(ctx.store, job_id)
+    job = client.get(f"/api/jobs/{job_id}").json()
+    asr = next(t for t in job["tasks"] if t["key"] == "asr")
+    code = asr["message"].split("mã ")[1].rstrip(")")
+    assert "ValueError: boom" in client.get(f"/api/admin/traces/{code}").text
+    assert "ValueError: boom" in client.get(f"/api/admin/traces/{job['trace_id']}").text
+    [attempt] = client.get(f"/api/tasks/{asr['id']}/attempts").json()
+    events = client.get(f"/api/attempts/{attempt['id']}/events").json()
+    assert events[-1]["message"] == asr["message"]
 
 
-def test_upload_files_of_a_video_together(client):
-    client, root = client
-    video = client.put("/api/uploads", params={"name": "../b.mp4"}, content=b"video").json()
-    assert video["kind"] == "media" and len(video["id"]) == 26
-    folder = root / "storage" / "uploads" / video["id"]
-    assert video["path"] == str(folder / "b.mp4") and (folder / "b.mp4").read_bytes() == b"video"
-    subs = client.put("/api/uploads", params={"name": "b.srt", "id": video["id"]},
-                      content="1\n00:00:00,000 --> 00:00:01,000\nHi\n\n".encode()).json()
-    assert subs == {"id": video["id"], "path": str(folder / "b.srt"), "kind": "srt"}
-    assert sorted(p.name for p in folder.iterdir()) == ["b.mp4", "b.srt"]
-
-    assert client.put("/api/uploads", params={"name": "x.txt"}, content=b"").status_code == 400
-    assert client.put("/api/uploads", params={"name": "c.srt", "id": "../../etc"}, content=b"").status_code == 400
-    assert client.put("/api/uploads", params={"name": "c.srt", "id": "0" * 26}, content=b"").status_code == 400
-
-    [job_id] = client.post("/api/jobs", json={"paths": [subs["path"]], "start": "srt", "dub": True, "mux": True}).json()["jobs"]
-    job = wait_done(client, job_id)
-    assert [s["name"] for s in job["steps"]] == ["translate", "dub", "mux"]
-    assert job["steps"][0]["output"] == str(folder / "b.vi.srt")
-    assert client.get("/api/subtitles", params={"path": subs["path"]}).status_code == 200
-    assert client.post("/api/jobs", json={"paths": [video["path"]], "start": "srt"}).status_code == 400
-    assert client.post("/api/jobs", json={}).status_code == 400
+def test_upload_and_url_job(app):
+    client, ctx = app
+    up = client.put("/api/uploads", params={"name": "b.mp4"}, content=b"video").json()
+    assert up["kind"] == "media"
+    [job_id] = client.post("/api/jobs", json={"sources": [up["path"]], "overrides": FAKE}).json()["jobs"]
+    assert client.get(f"/api/jobs/{job_id}").json()["export_dir"] == str(ctx.uploads / up["id"])
+    [url_job] = client.post("/api/jobs", json={"sources": ["https://example.com/v"], "overrides": FAKE}).json()["jobs"]
+    job = client.get(f"/api/jobs/{url_job}").json()
+    assert job["tasks"][0]["driver"] == "url" and job["export_dir"].endswith("export")
 
 
-def test_subtitles_words(client):
-    client, root = client
-    get = lambda name: client.get("/api/subtitles", params={"path": str(root / name)}).json()["words"]
-    assert get("a.vi.srt") is None
-    (root / "a.words.json").write_text('[{"word": "Hello", "start": 0.1, "end": 0.9}]', encoding="utf-8")
-    assert get("a.vi.srt") == get("a.srt") == [{"word": "Hello", "start": 0.1, "end": 0.9}]
-    (root / "a.words.json").write_text("{broken", encoding="utf-8")
-    assert get("a.srt") is None
+def test_preview_goes_through_a_worker_call(app, monkeypatch):
+    import threading
+    client, ctx = app
+    [job_id] = create(client, ctx)
+    run_job(ctx.store, job_id)
+    wav = ctx.data_dir / "p.wav"
+    wav.write_bytes(b"RIFF")
+
+    def answer():
+        for _ in range(100):
+            call = ctx.store.claim_call()
+            if call:
+                assert call["args"]["cues"][0][2] == "vi:hello."
+                ctx.store.answer_call(call["id"], {"path": str(wav), "text": "vi:hello."})
+                return
+            time.sleep(0.02)
+
+    threading.Thread(target=answer).start()
+    response = client.post("/api/voices/preview", json={"job_id": job_id})
+    assert response.status_code == 200 and response.headers["x-preview-text"] == "vi%3Ahello."

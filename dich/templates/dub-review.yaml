@@ -1,0 +1,11 @@
+name: dub-review
+title: Lồng tiếng, duyệt bản dịch trước
+description: Như đầy đủ, nhưng dừng trước bước lồng tiếng để sửa bản dịch và nghe thử giọng.
+stages:
+  - {stage: source,    driver: auto}
+  - {stage: separate,  driver: demucs, enabled: false}
+  - {stage: asr,       driver: needle}
+  - {stage: refine,    driver: rules, enabled: false}
+  - {stage: translate, driver: env}
+  - {stage: dub,       driver: vieneu, gate: review}
+  - {stage: mux,       driver: ffmpeg}

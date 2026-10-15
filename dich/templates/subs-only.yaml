@@ -1,0 +1,8 @@
+name: subs-only
+title: Phụ đề + dịch
+description: Phiên âm và dịch phụ đề, không lồng tiếng.
+stages:
+  - {stage: source,    driver: auto}
+  - {stage: asr,       driver: needle}
+  - {stage: refine,    driver: rules, enabled: false}
+  - {stage: translate, driver: env}
