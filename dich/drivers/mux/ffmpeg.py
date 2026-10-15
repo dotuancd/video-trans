@@ -60,9 +60,9 @@ def mux_command(media, dub, target, subtitles=(), background=None, original_volu
 
 
 class Params(BaseModel):
-    original_volume: float = Field(0.15, ge=0, le=1, description="Âm lượng tiếng gốc dưới bản lồng tiếng, 0 = bỏ")
-    add_track: bool = Field(False, description="Giữ tiếng gốc, thêm bản lồng tiếng thành track âm thanh mới")
-    subtitles: bool = Field(True, description="Gắn phụ đề (mp4/mov/mkv)")
+    original_volume: float = Field(0.15, title="Âm lượng tiếng gốc", ge=0, le=1, description="Âm lượng tiếng gốc dưới bản lồng tiếng, 0 = bỏ")
+    add_track: bool = Field(False, title="Giữ tiếng gốc", description="Giữ tiếng gốc, thêm bản lồng tiếng thành track âm thanh mới")
+    subtitles: bool = Field(True, title="Gắn phụ đề", description="Gắn phụ đề (mp4/mov/mkv)")
 
 
 @register

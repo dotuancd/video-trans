@@ -15,60 +15,62 @@ Công cụ chuyển ngữ video
 # Cài đặt
 
 ```
-uv sync --all-extras        # hoặc chỉ chọn: uv sync --extra local --extra openai --extra tts
+uv sync --extra ui --extra local --extra openai --extra tts --extra url   # hoặc --all-extras
 ```
 
-Nhóm phụ thuộc: `local` (dịch bằng model local), `openai` (dịch bằng OpenAI API), `tts` (lồng tiếng), `ui` (giao diện web), `experiments` (moondream, cho `experiments/`). `--mux` cần thêm `ffmpeg` (`brew install ffmpeg`).
+Nhóm phụ thuộc: `local` (dịch bằng model local), `openai` (dịch bằng OpenAI API), `tts` (lồng tiếng), `ui` (giao diện web), `url` (tải video từ URL bằng yt-dlp), `experiments` (moondream). Ghép video cần `ffmpeg` (`brew install ffmpeg`). `uv run dich drivers` cho biết driver nào dùng được trên máy.
 
 # Sử dụng
 
-Mọi thứ chạy qua một lệnh `dich`. Lệnh nào cũng bỏ qua output đã có (trừ khi `--overwrite`), nên có thể chạy lại sau khi dừng giữa chừng. Option chung: `-r` quét cả thư mục con, `--out DIR` ghi output vào thư mục khác (giữ cấu trúc thư mục), `--overwrite`.
+Kiến trúc: xem `docs/Architecture.md`. Mỗi video là một **việc** (job) gồm các **bước** (task) nối với nhau theo dữ liệu: Nguồn → Phụ đề → (Hiệu chỉnh) → Dịch ×N ngôn ngữ → Lồng tiếng ×N → Ghép video ×N. Bước nào có cùng đầu vào + tham số với một lần chạy trước sẽ **dùng lại kết quả** (cache theo nội dung), nên chạy lại luôn rẻ. Kết quả được xuất ra cạnh file gốc: `<tên>.srt`, `<tên>.vi.srt`, `<tên>.vi.wav`, `<tên>.dub.vi.mp4`.
+
+## Dòng lệnh
 
 ```
-uv run dich "<folder>"                        # video/audio → .srt → .vi.srt (dịch local)
-uv run dich "<folder>" -r -e openai           # dịch bằng OpenAI
-uv run dich "<folder>" --dub --mux            # + .vi.wav lồng tiếng + <name>.dub.mp4
-
-uv run dich sub "<folder>" --language en      # chỉ tạo .srt (+ .words.json: thời điểm từng từ, editor dùng để tách câu)
-uv run dich translate file.srt -e claude      # .srt → .vi.srt
-uv run dich dub file.vi.srt --voice "Ngọc Huyền"   # .vi.srt → .vi.wav (mặc định clone giọng trong video)
-uv run dich voices                            # danh sách giọng có sẵn
+uv run dich video.mp4                          # phụ đề + dịch sang tiếng Việt (template subs-only)
+uv run dich "<folder>" -r --to vi,ja -e claude # cả thư mục, 2 ngôn ngữ, dịch bằng Claude Code
+uv run dich video.mp4 --dub                    # + lồng tiếng + ghép video (template default)
+uv run dich "https://youtu.be/…" --dub         # tải từ URL
+uv run dich video.mp4 --use-srt --dub          # dùng video.srt / video.vi.srt có sẵn, chỉ lồng tiếng
+uv run dich video.mp4 --dub --voice "Ngọc Huyền" --set dub.max_speed=1.5 --set mux.add_track=true
+uv run dich templates | drivers | voices
 ```
 
-`dich <path>` là viết tắt của `dich run <path>`. Xem toàn bộ option: `uv run dich run --help`.
+`--set stage.param=value` đặt tham số bất kỳ của driver (`--set refine.enabled=true`, `--set asr.driver=…`). Việc tạo từ CLI cũng hiện trong giao diện web (chung database).
 
 ## Giao diện web
 
 ```
-uv sync --extra ui --extra local --extra tts
-uv run dich ui                      # mở http://127.0.0.1:7860 trong trình duyệt
-uv run dich ui --root ~/Videos      # chỉ cho UI đọc/ghi trong thư mục này (mặc định: ~)
+uv run dich serve                   # API + workers, mở http://127.0.0.1:7860
+uv run dich serve --root ~/Videos   # chỉ cho UI đọc/ghi trong thư mục này (mặc định: ~)
+uv run dich worker --lanes cpu      # (tuỳ chọn) thêm worker ở terminal khác
 ```
 
-- **Việc mới**: tab **Tải lên** — kéo thả / chọn nhiều video, `.srt`, `.vi.srt` từ máy (file cùng tên đi chung một việc, bắt đầu từ file đi xa nhất; lưu ở `storage/uploads/<ULID>/`, kết quả nằm cùng thư mục, đổi bằng `DICH_STORAGE_DIR`); tab **Trên máy chủ** — chọn video / `.srt` / `.vi.srt` hoặc cả thư mục ("Duyệt"), chọn bước cuối cần làm (Phụ đề → Dịch → Lồng tiếng → Ghép video), engine và giọng (mặc định **Giọng gốc**: tự clone người nói trong video; hoặc chọn giọng có sẵn, nút ⬆ clone từ clip 3–8s tự chọn), bấm Bắt đầu. Lựa chọn được nhớ cho lần sau.
-- **Danh sách việc**: mỗi file một việc, mỗi bước có trạng thái riêng (Đang chờ / Đang chạy % / Xong / Lỗi / Cần chạy lại), cập nhật trực tiếp.
-- **Chi tiết việc**: bước lỗi có nút **Thử lại**; bước nào cũng **Chạy lại…** được với tuỳ chọn khác (vd. đổi engine dịch, đổi giọng) — các bước sau tự chạy lại, hoặc tắt để chỉ đánh dấu "Cần chạy lại". Video nằm ngay trên bảng sửa phụ đề song ngữ: phụ đề trên video hiện luôn bản đang gõ (chưa cần lưu), câu đang phát được tô sáng và tự cuộn tới; bấm mốc thời gian để phát từ đó, chuyển qua lại **Bản lồng tiếng / Bản gốc** mà giữ nguyên vị trí. Lưu xong bấm "Lồng tiếng lại". Trong **Chạy lại…** của bước Lồng tiếng, nút ▶ đọc thử một câu của chính bản dịch — với Giọng gốc là câu ở đúng đoạn được lấy làm mẫu, để so với bản gốc.
+- **Việc mới**: nguồn từ **Tải lên** (nhiều file; `a.srt`/`a.vi.srt` tải cùng `a.mp4` được dùng luôn), **Trên máy** (file hoặc thư mục) hoặc **URL**. Chọn việc cần làm (template), các ngôn ngữ đích, driver dịch, giọng đọc (mặc định clone giọng gốc; ▶ nghe thử). Tham số của mọi driver nằm trong "Tuỳ chọn nâng cao" (form tự sinh từ driver).
+- **Chi tiết việc**: từng bước với trạng thái, tiến độ, **Log** theo từng lần chạy (log pipeline; "Log hệ thống" cho lỗi kỹ thuật), **Chạy lại…** (đổi driver/tham số; chỉ bước này hoặc cả các bước sau), **Dừng** (dừng được giữa bất kỳ bước nào), **Tiếp tục**, **+ Ngôn ngữ** (dịch thêm, dùng lại phụ đề đã có), tải kết quả về.
+- **Sửa phụ đề**: song ngữ ngay dưới video, phụ đề trên video theo bản đang gõ; tách/gộp/chuyển chữ. Lưu = bản sửa tay mới; các bước sau thành "Cần chạy lại" → **Cập nhật phía sau**. Chạy lại một bước sẽ hỏi trước khi thay bản đã sửa tay.
+- Template **Lồng tiếng, duyệt bản dịch trước** dừng trước bước lồng tiếng để bạn sửa bản dịch/nghe thử giọng rồi bấm Tiếp tục.
 
-Trạng thái lưu ở `~/.local/share/dich-video/jobs.sqlite` nên tắt/mở lại server không mất danh sách; bước đang chạy dở khi tắt sẽ thành Lỗi và Thử lại được. Một worker chạy lần lượt từng bước (model nặng, dùng chung CPU). UI chỉ lắng nghe trên 127.0.0.1, dùng chung code pipeline với CLI (`dich.plan_steps` / `dich.Steps`).
+Dữ liệu ở `~/.local/share/dich-video/` (`dich.sqlite`, `jobs/<id>/<bước>/<lần>/` chứa outputs, `events.jsonl`, `system.log`; `uploads/`). Worker là process riêng theo lane (`cpu`, `net`, `interactive`); worker chết thì việc tự chạy lại (tối đa 2 lần). Lỗi hệ thống hiện mã ngắn; xem chi tiết tại `/api/admin/traces/<mã>`.
 
-### Phát triển giao diện
+### Phát triển
 
-Kiến trúc: React 19 + Vite + Tailwind 4 + shadcn/ui (`web/`) ⇄ FastAPI (`dich_server/api.py`, REST + Server-Sent Events) ⇄ pipeline SQLite (`dich_server/pipeline.py`). `web/dist` đã build sẵn nên người dùng không cần Node.
+React 19 + Vite + Tailwind 4 + shadcn/ui (`web/`) ⇄ FastAPI (`dich/api/`, REST + SSE) ⇄ SQLite queue (`dich/queue/`) ⇄ worker processes (`dich/runtime/`) ⇄ drivers (`dich/drivers/<stage>/`). Driver mới: subclass `dich.drivers.Driver` với `@register`, khai báo `consumes`/`produces` theo slot; plugin ngoài đăng ký qua entry point `dich.drivers`.
 
 ```
-uv run dich ui --no-browser         # API ở :7860
+uv run dich serve --no-browser      # API ở :7860
 cd web && npm install && npm run dev  # UI ở :5173, proxy /api sang :7860
-npm run api                         # sau khi đổi API: sinh lại client TypeScript (src/api) từ OpenAPI
+npm run api                         # sau khi đổi API: sinh lại client TypeScript (src/api)
 npm run build                       # cập nhật web/dist
-uv run pytest                       # test pipeline + API
+uv run pytest
 ```
 
 # Tạo subtitle (needle-whistle)
 
-Model: https://huggingface.co/Cactus-Compute/whistle. Không cần trích audio thủ công: PyAV (đã kèm sẵn thư viện FFmpeg trong wheel) decode video/audio (mp4, mkv, mov, mp3, m4a, wav…) sang 16 kHz mono cho model, ngay trong Python. File `<name>.vi.wav` và `<name>.dub.*` do tool tạo ra không bị coi là media đầu vào.
+Model: https://huggingface.co/Cactus-Compute/whistle. Không cần trích audio thủ công: PyAV (đã kèm sẵn thư viện FFmpeg trong wheel) decode video/audio (mp4, mkv, mov, mp3, m4a, wav…) sang 16 kHz mono cho model, ngay trong Python. File `<name>.dub.*` do tool tạo ra không bị coi là media đầu vào khi quét thư mục.
 
 ```
-uv run dich sub "<folder>" -r --out subs
+uv run dich "<folder>" -r --template transcribe
 ```
 
 Chạy trực tiếp binary needle (không cần Python):
@@ -82,7 +84,7 @@ ffmpeg -i video.mp4 -vn -acodec pcm_s16le audio.wav
 
 # Dịch subtitle Anh → Việt
 
-Chọn engine bằng `-e/--engine` (cho `dich run` và `dich translate`).
+Chọn driver dịch bằng `-e/--engine` (CLI) hoặc "Dịch bằng" (UI).
 
 ## Local (`-e local`, mặc định)
 
@@ -106,24 +108,23 @@ OPENAI_BASE_URL=...            # tuỳ chọn, endpoint tương thích OpenAI
 
 Gọi CLI `claude -p` nên lượt dịch tính vào limit gói Claude (5 giờ/tuần, dùng chung với Claude Code bình thường), không tính tiền API. Cần cài Claude Code và đăng nhập bằng tài khoản claude.ai một lần (`claude`). Script tự bỏ `ANTHROPIC_API_KEY` khỏi env để không bị tính phí API, và tắt tool/MCP/skill/CLAUDE.md để mỗi lần gọi chỉ là một lượt dịch. Chunk 100 cue, tối đa 3 lần gọi song song. Video ~9 phút dịch mất ~26s với `sonnet`; `--claude-model haiku` để tiết kiệm limit.
 
-Khi hết limit, file đó báo lỗi `claude failed: ...` và script chuyển sang file tiếp theo; chạy lại sau sẽ bỏ qua các file `.vi.srt` đã có.
+Khi hết limit, bước Dịch báo lỗi "Claude Code báo lỗi: …"; bấm Thử lại sau (các bước đã xong được dùng lại).
 
 # Lồng tiếng từ subtitle tiếng Việt (local)
 
-Dùng [VieNeu-TTS v3 Turbo](https://github.com/pnnbao97/VieNeu-TTS) (Apache 2.0): TTS tiếng Việt chạy trên CPU qua ONNX Runtime (không cần PyTorch), output 48 kHz. Mặc định (`--voice source`) clone giọng người nói trong chính video: lấy đoạn nói liền 3–8s dài nhất theo timing phụ đề (bỏ qua 10% đầu nếu có đoạn tương đương), cắt vào `~/.cache/dich-video/ref`; không tìm thấy video cạnh `.vi.srt` thì dùng giọng mặc định (`DICH_VOICE`). Ngoài ra có 25 giọng sẵn (`dich voices`) và clone từ clip mẫu tự chọn (`--ref-audio`). Video nhiều người nói chỉ clone được một giọng. Lần chạy đầu tự tải model từ Hugging Face. Video ~7 phút lồng tiếng mất ~2 phút trên M1 Pro (RTF ~0.3). `onnxruntime` được ghim ở 1.23.2 vì bản ≥1.31 từ chối load model từ cache Hugging Face.
+Dùng [VieNeu-TTS v3 Turbo](https://github.com/pnnbao97/VieNeu-TTS) (Apache 2.0): TTS tiếng Việt chạy trên CPU qua ONNX Runtime (không cần PyTorch), output 48 kHz. Mặc định (giọng `source`) clone giọng người nói trong chính video: lấy đoạn nói liền 3–8s dài nhất theo timing phụ đề (bỏ qua 10% đầu nếu có đoạn tương đương), cắt vào `~/.cache/dich-video/ref`; không có video thì dùng giọng mặc định (`DICH_VOICE`). Ngoài ra có 25 giọng sẵn (`dich voices`) và clone từ clip mẫu tự chọn (`--ref-audio`). Video nhiều người nói chỉ clone được một giọng. Lần chạy đầu tự tải model từ Hugging Face. Video ~7 phút lồng tiếng mất ~2 phút trên M1 Pro (RTF ~0.3). `onnxruntime` được ghim ở 1.23.2 vì bản ≥1.31 từ chối load model từ cache Hugging Face.
 
 ```
-uv run dich dub file.vi.srt                               # ghi file.vi.wav, clone giọng trong file.mp4 cạnh đó
-uv run dich dub "<folder>" -r --voice "Ngọc Huyền"
-uv run dich dub file.vi.srt --ref-audio giong_mau.wav     # clone giọng
-uv run dich dub file.vi.srt --mux                         # + file.dub.mp4 từ file.mp4 cùng tên
-uv run dich dub file.vi.srt --mux --original-volume 0     # chỉ giọng lồng tiếng, bỏ audio gốc
-uv run dich dub file.vi.srt --mux --add-track             # giữ audio gốc, thêm track lồng tiếng
+uv run dich file.mp4 --dub                                 # clone giọng trong video
+uv run dich "<folder>" -r --dub --voice "Ngọc Huyền"
+uv run dich file.mp4 --dub --ref-audio giong_mau.wav       # clone giọng từ clip
+uv run dich file.mp4 --dub --set mux.original_volume=0     # chỉ giọng lồng tiếng, bỏ audio gốc
+uv run dich file.mp4 --dub --set mux.add_track=true        # giữ audio gốc, thêm track lồng tiếng
 ```
 
-Các cue được gộp thành câu để đọc tự nhiên. Mỗi câu bắt đầu đúng lúc cue đầu tiên của nó. Câu tiếng Việt dài hơn slot thì được đọc tràn sang khoảng lặng phía sau. Nếu vẫn không đủ chỗ thì tăng tốc (không đổi cao độ), tối đa `--max-speed` (mặc định 1.3). Đến mức đó vẫn dài thì câu sau bị lùi lại; script in ra số câu bị lùi và độ trễ lớn nhất.
+Các cue được gộp thành câu để đọc tự nhiên. Mỗi câu bắt đầu đúng lúc cue đầu tiên của nó. Câu tiếng Việt dài hơn slot thì được đọc tràn sang khoảng lặng phía sau. Nếu vẫn không đủ chỗ thì tăng tốc (không đổi cao độ), tối đa `max_speed` (mặc định 1.3). Đến mức đó vẫn dài thì câu sau bị lùi lại; log báo số câu bị lùi và độ trễ lớn nhất.
 
-`--mux` trộn giọng đọc lên audio gốc (mặc định giữ audio gốc ở mức 15%) và mặc định thay audio gốc; `--add-track` giữ nguyên audio gốc và thêm giọng lồng tiếng thành audio track mới (track mặc định, chọn lại track gốc trong player). `--mux` nhúng mọi `<name>.srt` / `<name>.<lang>.srt` tìm thấy cạnh file `.vi.wav` làm phụ đề (tiếng Việt là phụ đề mặc định). Audio từng câu được cache trong `~/.cache/dich-video/tts`, nên chạy lại với cùng giọng sẽ nhanh. `--int8` chạy nhanh hơn nhưng audio có thể bị méo. Audio có watermark AI (mặc định của VieNeu).
+Bước Ghép video trộn giọng đọc lên audio gốc (mặc định giữ audio gốc ở mức 15%; khi có bước Tách nền thì dùng nhạc nền đã tách) và mặc định thay audio gốc; `add_track` giữ nguyên audio gốc và thêm giọng lồng tiếng thành audio track mới. Phụ đề bản dịch (mặc định) và phụ đề gốc được nhúng vào video. Audio từng câu được cache trong `~/.cache/dich-video/tts`, nên chạy lại với cùng giọng sẽ nhanh. `int8` chạy nhanh hơn nhưng audio có thể bị méo. Audio có watermark AI (mặc định của VieNeu).
 
 Hạn chế: thuật ngữ tiếng Anh trong bản dịch (model, prompt, API…) được đọc theo kiểu Việt hoá.
 

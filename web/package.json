@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint src --ignore-pattern 'src/api/**'",
     "preview": "vite preview",
-    "api": "cd .. && uv run python -m dich_server.api > web/openapi.json && cd web && openapi-ts"
+    "api": "cd .. && uv run python -m dich.api.app > web/openapi.json && cd web && openapi-ts"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",

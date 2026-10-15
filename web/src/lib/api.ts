@@ -1,56 +1,74 @@
 import { useEffect, useRef } from 'react'
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { client } from '@/api/client.gen'
-import { listJobs, getConfig, getStepLog, type Entry, type Job, type Step, type StepLog, type Uploaded } from '@/api'
+import {
+  attemptEvents, getConfig, listDrivers, listJobs, listTemplates,
+  type ArtifactInfo, type DriverInfo, type Event, type Job, type Task, type Uploaded,
+} from '@/api'
 
 client.setConfig({ baseUrl: '', throwOnError: true })
 
-export type StepName = Step['name']
-export type Status = Step['status']
-export type StepOptions = Record<string, string | number | boolean | null>
-export type Options = Record<StepName, StepOptions>
+export type Status = Task['status']
+export type JobStatus = Job['status']
+export type Params = Record<string, unknown>
 
-/** The file a job starts from: a video/audio, an original .srt or a translated .vi.srt. */
-export type Start = 'media' | 'srt' | 'vi_srt'
-
-export function guessStart(path: string, kind?: Entry['kind']): Start | null {
-  const name = path.toLowerCase()
-  if (kind === 'vi_srt' || name.endsWith('.vi.srt')) return 'vi_srt'
-  if (kind === 'srt' || name.endsWith('.srt')) return 'srt'
-  if (kind === 'media' || /\.(mp4|mkv|mov|m4v|webm|avi|wav|mp3|m4a|aac|flac|ogg)$/.test(name)) return 'media'
-  return null   // a folder: keep what the user chose
-}
-
-export const STEP_LABELS: Record<StepName, string> = {
-  transcribe: 'Phụ đề',
+export const STAGE_LABELS: Record<string, string> = {
+  source: 'Nguồn',
+  separate: 'Tách nền',
+  asr: 'Phụ đề',
+  refine: 'Hiệu chỉnh',
   translate: 'Dịch',
   dub: 'Lồng tiếng',
   mux: 'Ghép video',
 }
+export const stageLabel = (stage: string) => STAGE_LABELS[stage] ?? stage
 
 export const STATUS_LABELS: Record<Status, string> = {
+  blocked: 'Chờ bước trước',
   queued: 'Đang chờ',
   running: 'Đang chạy',
   done: 'Xong',
   failed: 'Lỗi',
   cancelled: 'Đã dừng',
+  skipped: 'Bỏ qua',
+  waiting_review: 'Chờ duyệt',
   stale: 'Cần chạy lại',
 }
+
+export const ACTIVE: JobStatus[] = ['running', 'queued', 'blocked']
+export const isActive = (status: JobStatus) => ACTIVE.includes(status)
 
 /** FastAPI errors come back as {detail}; turn anything thrown into a readable message. */
 export function errorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'detail' in error) {
     const detail = (error as { detail: unknown }).detail
     if (typeof detail === 'string') return detail
+    if (detail && typeof detail === 'object' && 'message' in detail) return String((detail as { message: unknown }).message)
+    if (Array.isArray(detail)) return detail.map((d) => d?.msg ?? JSON.stringify(d)).join('; ')
     return JSON.stringify(detail)
   }
   if (error instanceof Error) return error.message
   return String(error)
 }
 
+/** A 409 from a rerun that would replace edits made by hand: ask, then send again with confirm. */
+export function needsConfirm(error: unknown): boolean {
+  const detail = error && typeof error === 'object' && 'detail' in error ? (error as { detail: unknown }).detail : null
+  return !!detail && typeof detail === 'object' && 'confirm' in detail
+}
+
 export const fileName = (path: string) => path.split('/').pop() ?? path
-export const mediaUrl = (path: string) => `/api/media?path=${encodeURIComponent(path)}`
-export const vttUrl = (path: string) => `/api/subtitles/vtt?path=${encodeURIComponent(path)}`
+export const artifactUrl = (id: number) => `/api/artifacts/${id}`
+export const downloadUrl = (id: number) => `/api/artifacts/${id}/download`
+
+/** The current output of a job for a slot: the last task producing it that has one. */
+export function slotArtifact(job: Job, slot: string): (ArtifactInfo & { task: Task }) | undefined {
+  for (const task of [...job.tasks].reverse()) {
+    const artifact = task.artifacts?.find((a) => a.slot === slot)
+    if (artifact) return { ...artifact, task }
+  }
+  return undefined
+}
 
 /** PUT a file to /api/uploads (into folder `id` when given) with upload progress, which fetch lacks. */
 export function uploadFile(file: File, id: string | undefined, onProgress: (fraction: number) => void) {
@@ -79,71 +97,73 @@ export function useConfig() {
   return useQuery({ queryKey: ['config'], queryFn: async () => (await getConfig()).data, staleTime: Infinity })
 }
 
+export function useDrivers() {
+  return useQuery({ queryKey: ['drivers'], queryFn: async () => (await listDrivers()).data, staleTime: 60_000 })
+}
+
+export function useTemplates() {
+  return useQuery({ queryKey: ['templates'], queryFn: async () => (await listTemplates()).data, staleTime: Infinity })
+}
+
+export function driversOf(drivers: DriverInfo[] | undefined, stage: string) {
+  return drivers?.filter((d) => d.stage === stage) ?? []
+}
+
 export function useJobs() {
   return useQuery({ queryKey: ['jobs'], queryFn: async () => (await listJobs()).data })
 }
 
-function putJob(queryClient: QueryClient, job: Job) {
+export function putJob(queryClient: QueryClient, job: Job) {
   queryClient.setQueryData<Job[]>(['jobs'], (jobs = []) => {
     const index = jobs.findIndex((j) => j.id === job.id)
-    if (index < 0) return [...jobs, job]
+    if (index < 0) return [job, ...jobs]
     const next = jobs.slice()
     next[index] = job
     return next
   })
 }
 
-type Event =
+type LiveEvent =
   | { type: 'job'; job: Job }
-  | { type: 'progress'; job_id: number; step_id: number; done: number; total: number }
-  | { type: 'log'; job_id: number; step_id: number; offset: number; text: string }
+  | { type: 'progress'; job_id: number; task_id: number; done: number; total: number }
+  | { type: 'log'; job_id: number; task_id: number; event: Event }
   | { type: 'deleted'; id: number }
 
-const byteLength = (text: string) => new TextEncoder().encode(text).length
-
-/** Keeps the ['jobs'] cache in sync with the server's event stream; onJobFinished fires when a job ends. */
+/** Keeps the ['jobs'] cache (and open pipeline logs) in sync with the server's event stream;
+ * onJobFinished fires when a job stops running. */
 export function useLiveJobs(onJobFinished?: (job: Job) => void) {
   const queryClient = useQueryClient()
   const finished = useRef(onJobFinished)
-  finished.current = onJobFinished
+  useEffect(() => {
+    finished.current = onJobFinished
+  })
   useEffect(() => {
     const source = new EventSource('/api/events')
     // after a reconnect we may have missed events: reload the list and open logs
     source.onopen = () => {
       void queryClient.invalidateQueries({ queryKey: ['jobs'] })
-      void queryClient.invalidateQueries({ queryKey: ['log'] })
+      void queryClient.invalidateQueries({ queryKey: ['events'] })
     }
     source.onmessage = (message) => {
-      const event = JSON.parse(message.data) as Event
+      const event = JSON.parse(message.data) as LiveEvent
       if (event.type === 'job') {
         const before = queryClient.getQueryData<Job[]>(['jobs'])?.find((j) => j.id === event.job.id)
         putJob(queryClient, event.job)
-        const wasActive = before && (before.status === 'running' || before.status === 'queued')
-        const isOver = event.job.status !== 'running' && event.job.status !== 'queued'
-        if (wasActive && isOver) finished.current?.(event.job)
+        if (before && isActive(before.status) && !isActive(event.job.status)) finished.current?.(event.job)
+        void queryClient.invalidateQueries({ queryKey: ['transcript', event.job.id] })
       } else if (event.type === 'progress') {
         queryClient.setQueryData<Job[]>(['jobs'], (jobs = []) =>
-          jobs.map((job) =>
-            job.id !== event.job_id
-              ? job
-              : {
-                  ...job,
-                  steps: job.steps.map((s) => (s.id === event.step_id ? { ...s, done: event.done, total: event.total } : s)),
-                },
-          ),
+          jobs.map((job) => job.id !== event.job_id ? job : {
+            ...job,
+            tasks: job.tasks.map((t) => (t.id === event.task_id ? { ...t, done: event.done, total: event.total } : t)),
+          }),
         )
       } else if (event.type === 'log') {
-        // only logs someone has open are cached; a piece that does not follow on (missed one) refetches
-        let gap = false
-        queryClient.setQueriesData<StepLog>({ queryKey: ['log', event.step_id] }, (log) => {
-          if (!log || event.offset < log.size) return log
-          if (event.offset > log.size) {
-            gap = true
-            return log
-          }
-          return { ...log, text: log.text + event.text, size: log.size + byteLength(event.text) }
-        })
-        if (gap) void queryClient.invalidateQueries({ queryKey: ['log', event.step_id] })
+        const attempt = event.event.attempt_id
+        if (attempt) {
+          queryClient.setQueryData<Event[]>(['events', attempt], (events) =>
+            events && !events.some((e) => e.id === event.event.id) ? [...events, event.event] : events)
+        }
       } else if (event.type === 'deleted') {
         queryClient.setQueryData<Job[]>(['jobs'], (jobs = []) => jobs.filter((j) => j.id !== event.id))
       }
@@ -152,14 +172,13 @@ export function useLiveJobs(onJobFinished?: (job: Job) => void) {
   }, [queryClient])
 }
 
-/** A step's log while open, kept current by useLiveJobs; refetched for each new attempt (an old log may be trimmed then). */
-export function useStepLog(job: Job, step: Step, open: boolean) {
+/** The pipeline log of an attempt, kept current by useLiveJobs. */
+export function useAttemptEvents(attemptId: number | null | undefined) {
   return useQuery({
-    queryKey: ['log', step.id, step.attempt],
-    queryFn: async () => (await getStepLog({ path: { job_id: job.id, name: step.name } })).data,
-    enabled: open,
+    queryKey: ['events', attemptId],
+    queryFn: async () => (await attemptEvents({ path: { attempt_id: attemptId! } })).data,
+    enabled: !!attemptId,
     staleTime: Infinity,
-    gcTime: 0,
   })
 }
 

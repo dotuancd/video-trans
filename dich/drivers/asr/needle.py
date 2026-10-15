@@ -7,10 +7,10 @@ from dich.media import ASR_SAMPLE_RATE, load_audio
 
 
 class Params(BaseModel):
-    language: str | None = Field(None, description="Ngôn ngữ nói, VD en; để trống = tự nhận")
-    max_chars: int = Field(tr.MAX_CHARS, ge=20, le=200, description="Số ký tự tối đa một câu phụ đề")
-    max_duration: float = Field(tr.MAX_DURATION, ge=1, le=20, description="Thời lượng tối đa một câu (giây)")
-    min_chars: int = Field(tr.MIN_CHARS, ge=0, le=60, description="Câu ngắn hơn thì ghép vào câu bên cạnh")
+    language: str | None = Field(None, title="Ngôn ngữ nói", description="Ngôn ngữ nói, VD en; để trống = tự nhận")
+    max_chars: int = Field(tr.MAX_CHARS, title="Ký tự tối đa mỗi câu", ge=20, le=200, description="Số ký tự tối đa một câu phụ đề")
+    max_duration: float = Field(tr.MAX_DURATION, title="Thời lượng tối đa mỗi câu", ge=1, le=20, description="Thời lượng tối đa một câu (giây)")
+    min_chars: int = Field(tr.MIN_CHARS, title="Câu ngắn tối thiểu", ge=0, le=60, description="Câu ngắn hơn thì ghép vào câu bên cạnh")
 
 
 @register

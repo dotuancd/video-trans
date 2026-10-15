@@ -206,10 +206,10 @@ def clock(seconds):
 
 
 class Params(BaseModel):
-    voice: str = Field(SOURCE_VOICE, description="'source' = clone giọng người nói trong video, hoặc giọng mẫu")
-    ref_audio: str | None = Field(None, description="Clone giọng từ clip 3–8 giây này")
-    int8: bool = Field(False, description="Model int8: nhanh hơn, có thể kém hơn")
-    max_speed: float = Field(1.3, ge=1.0, le=2.0, description="Tăng tốc tối đa để vừa khung câu")
+    voice: str = Field(SOURCE_VOICE, title="Giọng đọc", description="'source' = clone giọng người nói trong video, hoặc giọng mẫu")
+    ref_audio: str | None = Field(None, title="Clip giọng mẫu", description="Clone giọng từ clip 3–8 giây này")
+    int8: bool = Field(False, title="Model int8", description="Model int8: nhanh hơn, có thể kém hơn")
+    max_speed: float = Field(1.3, title="Tăng tốc tối đa", ge=1.0, le=2.0, description="Tăng tốc tối đa để vừa khung câu")
 
 
 @register

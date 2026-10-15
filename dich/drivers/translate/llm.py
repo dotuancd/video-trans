@@ -200,8 +200,8 @@ class LLMDriver(Driver):
 
 
 class OpenAIParams(BaseModel):
-    model: str = Field(settings.OPENAI_MODEL, description="Model OpenAI (OPENAI_MODEL)")
-    workers: int = Field(4, ge=1, le=16, description="Số request song song")
+    model: str = Field(settings.OPENAI_MODEL, title="Model", description="Model OpenAI (OPENAI_MODEL)")
+    workers: int = Field(4, title="Request song song", ge=1, le=16, description="Số request song song")
 
 
 @register
@@ -224,9 +224,9 @@ class OpenAITranslate(LLMDriver):
 
 class ClaudeParams(BaseModel):
     model: Literal["sonnet", "haiku", "opus"] = Field(
-        settings.CLAUDE_MODEL if settings.CLAUDE_MODEL in ("sonnet", "haiku", "opus") else "sonnet")
-    workers: int = Field(3, ge=1, le=3, description="Số lệnh claude song song")
-    effort: Literal["low", "medium", "high"] = "medium"
+        settings.CLAUDE_MODEL if settings.CLAUDE_MODEL in ("sonnet", "haiku", "opus") else "sonnet", title="Model")
+    workers: int = Field(3, title="Lệnh claude song song", ge=1, le=3, description="Số lệnh claude song song")
+    effort: Literal["low", "medium", "high"] = Field("medium", title="Mức suy nghĩ")
 
 
 @register

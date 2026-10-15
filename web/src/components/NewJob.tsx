@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { ChevronDown, FolderOpen, HardDrive, Loader2, Rocket, Upload } from 'lucide-react'
+import { ChevronDown, FolderOpen, HardDrive, Link, Loader2, Rocket, Upload } from 'lucide-react'
 import { toast } from 'sonner'
-import { addJobs, type Entry } from '@/api'
+import { createJobs, type Config, type DriverInfo, type Entry, type TemplateInfo } from '@/api'
 import { FileBrowser } from '@/components/FileBrowser'
+import { DriverParams, DriverSelect, Field, SwitchField, type PreviewContext } from '@/components/Params'
 import { groupUploads, UploadDrop } from '@/components/UploadDrop'
-import { Field, StepParams, SwitchField, type PreviewContext } from '@/components/StepParams'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -13,83 +13,91 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import {
-  errorMessage, guessStart, loadSaved, save, STEP_LABELS, uploadFile, type Options, type Start, type StepName,
-} from '@/lib/api'
+import { driversOf, errorMessage, loadSaved, save, stageLabel, uploadFile, type Params } from '@/lib/api'
 
-const STEPS: StepName[] = ['transcribe', 'translate', 'dub', 'mux']
-const FIRST_STEP: Record<Start, number> = { media: 0, srt: 1, vi_srt: 2 }
-const START_LABELS: Record<Start, string> = { media: 'Video/audio', srt: 'Phụ đề gốc .srt', vi_srt: 'Phụ đề Việt .vi.srt' }
+const MEDIA = /\.(mp4|mkv|mov|m4v|webm|avi|wav|mp3|m4a|aac|flac|ogg)$/i
+
+/** What the user changed of a stage of the template: its driver, on/off, and params per driver. */
+type StageForm = { driver?: string; enabled?: boolean; params?: Record<string, Params> }
 
 type Form = {
-  /** files uploaded from this computer, or a path on the server */
-  from: 'upload' | 'server'
+  from: 'upload' | 'server' | 'url'
   path: string
-  start: Start
-  until: StepName
+  urls: string
   recursive: boolean
-  overwrite: boolean
-  out: string
-  options: Options
+  useSubtitles: boolean
+  export: boolean
+  template: string
+  langs: string[]
+  stages: Record<string, StageForm>
 }
 
-export function NewJob({ root, defaults, onCreated }: {
-  root: string
-  defaults: Options
+type Stage = { stage: string; enabled: boolean; driver: DriverInfo | undefined; drivers: DriverInfo[]; params: Params }
+
+export function NewJob({ config, templates, drivers, onCreated }: {
+  config: Config
+  templates: TemplateInfo[]
+  drivers: DriverInfo[]
   onCreated: (jobIds: number[]) => void
 }) {
-  const [form, setForm] = useState<Form>(() => {
-    const saved = loadSaved<Form>('new-job', {
-      from: 'upload', path: '', start: 'media', until: 'translate', recursive: false, overwrite: false, out: '', options: defaults,
-    })
-    // options saved by an older version may miss fields: fill from the server defaults
-    const options = Object.fromEntries(STEPS.map((s) => [s, { ...defaults[s], ...saved.options?.[s] }])) as Options
-    return { ...saved, options }
-  })
+  const [form, setForm] = useState<Form>(() => loadSaved<Form>('new-job-v2', {
+    from: 'upload', path: '', urls: '', recursive: false, useSubtitles: true, export: true,
+    template: 'default', langs: config.default_langs, stages: {},
+  }))
   const [browsing, setBrowsing] = useState(false)
   const [advanced, setAdvanced] = useState(false)
   const [files, setFiles] = useState<File[]>([])
   const [progress, setProgress] = useState(new Map<File, number>())
-  useEffect(() => save('new-job', form), [form])
-
-  const uploading = form.from === 'upload'
-  const groups = groupUploads(files)
-  // uploads may mix videos and subtitles: the steps shown start from the earliest of them
-  const first = uploading
-    ? Math.min(...groups.map((g) => FIRST_STEP[g.start]), groups.length ? Infinity : 0)
-    : FIRST_STEP[form.start]
-  const last = Math.max(STEPS.indexOf(form.until), first)
-  const included = STEPS.slice(first, last + 1)
+  useEffect(() => save('new-job-v2', form), [form])
   const update = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }))
-  const setPath = (path: string, kind?: Entry['kind']) => update({ path, start: guessStart(path, kind) ?? form.start })
-  const isFolder = guessStart(form.path) === null
-  // the voice preview clones and reads the chosen file (the server finds its .srt/.vi.srt or video)
+
+  const template = templates.find((t) => t.name === form.template) ?? templates[0]
+  // the template's stages as the user set them: driver, on/off and params
+  const stages: Stage[] = (template?.stages ?? []).filter((s) => s.stage !== 'source').map((conf) => {
+    const choices = driversOf(drivers, conf.stage as string)
+    const set = form.stages[conf.stage as string] ?? {}
+    const fallback = conf.driver === 'env' ? config.default_drivers[conf.stage as string] : (conf.driver as string)
+    const name = set.driver ?? fallback
+    const driver = choices.find((d) => d.name === name)
+    return {
+      stage: conf.stage as string,
+      enabled: !!driver && (set.enabled ?? (conf.enabled as boolean)),
+      driver, drivers: choices,
+      params: { ...(conf.params as Params), ...(set.params?.[name] ?? {}) },
+    }
+  })
+  const stageOf = (name: string) => stages.find((s) => s.stage === name && s.enabled)
+  const setStage = (stage: string, patch: StageForm) =>
+    update({ stages: { ...form.stages, [stage]: { ...form.stages[stage], ...patch } } })
+  const setParams = (s: Stage, params: Params) =>
+    setStage(s.stage, { params: { ...form.stages[s.stage]?.params, [s.driver!.name]: params } })
+  const perLang = stages.some((s) => s.enabled && s.driver?.per_lang)
+  const translate = stageOf('translate')
+  const dub = stageOf('dub')
+
   const path = form.path.trim()
-  const previewContext: PreviewContext | undefined = uploading || isFolder || !path ? undefined
-    : form.start === 'media' ? { media: path } : { subtitles: path }
+  const previewContext: PreviewContext | undefined =
+    form.from === 'server' && MEDIA.test(path) ? { path, lang: form.langs[0] ?? 'vi' } : undefined
 
   const create = useMutation({
     mutationFn: async () => {
-      const params = Object.assign({}, ...included.map((s) => form.options[s]))
-      if (uploading) return uploadAndAdd(params)
-      const { data } = await addJobs({
-        body: {
-          path: form.path.trim(),
-          start: form.start,
-          recursive: form.recursive,
-          overwrite: form.overwrite,
-          out: form.out.trim() || null,
-          translate: included.includes('translate'),
-          dub: included.includes('dub'),
-          mux: included.includes('mux'),
-          params,
-        },
-      })
-      return data
+      const overrides = Object.fromEntries(stages.map((s) => [s.stage, {
+        enabled: s.enabled, ...(s.driver && { driver: s.driver.name, params: s.params }),
+      }]))
+      const body = { langs: perLang ? form.langs : [], template: template.name, overrides, export: form.export }
+      if (form.from === 'upload') {
+        const sources = await uploadAll()
+        return (await createJobs({ body: { ...body, sources, use_subtitles: true } })).data
+      }
+      const sources = form.from === 'url' ? form.urls.split('\n') : [path]
+      return (await createJobs({
+        body: { ...body, sources, recursive: form.recursive, use_subtitles: form.useSubtitles },
+      })).data
     },
     onSuccess: (data) => {
-      if (uploading) {
+      if (form.from === 'upload') {
         setFiles([])
         setProgress(new Map())
       }
@@ -100,88 +108,121 @@ export function NewJob({ root, defaults, onCreated }: {
     onError: (error) => toast.error(errorMessage(error)),
   })
 
-  /** Each video with its subtitles into a folder of its own (two videos at a time), then a job per video. */
-  async function uploadAndAdd(params: Record<string, unknown>) {
-    const sources: { start: Start; path: string }[] = []
-    const queue = [...groups]
+  /** Each video with its subtitles into a folder of its own (two videos at a time); returns the job sources. */
+  async function uploadAll() {
+    const sources: string[] = []
+    const queue = groupUploads(files)
     const worker = async () => {
       for (let group = queue.shift(); group; group = queue.shift()) {
         let id: string | undefined
-        for (const file of group.files) {
+        // the video first: its folder is where the subtitles go
+        for (const file of [group.source, ...group.files.filter((f) => f !== group.source)]) {
           const uploaded = await uploadFile(file, id, (done) => setProgress((p) => new Map(p).set(file, done)))
           id = uploaded.id
-          if (file === group.source) sources.push({ start: group.start, path: uploaded.path })
+          if (file === group.source) sources.push(uploaded.path)
         }
       }
     }
     await Promise.all([worker(), worker()])
-    const result = { jobs: [] as number[], skipped: [] as string[] }
-    for (const start of new Set(sources.map((s) => s.start))) {
-      const steps = STEPS.slice(FIRST_STEP[start], Math.max(last, FIRST_STEP[start]) + 1)
-      const { data } = await addJobs({
-        body: {
-          paths: sources.filter((s) => s.start === start).map((s) => s.path),
-          start,
-          overwrite: form.overwrite,
-          translate: steps.includes('translate'),
-          dub: steps.includes('dub'),
-          mux: steps.includes('mux'),
-          params,
-        },
-      })
-      result.jobs.push(...data.jobs)
-      result.skipped.push(...data.skipped)
-    }
-    return result
+    return sources
   }
+
+  const ready = form.from === 'upload' ? files.length > 0 : form.from === 'url' ? !!form.urls.trim() : !!path
+  const optional = stages.filter((s) => s.stage === 'separate' || s.stage === 'refine')
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Việc mới</CardTitle>
-        <CardDescription>Tải lên video (kèm phụ đề nếu có), chọn bước cuối cần làm rồi bấm Bắt đầu.</CardDescription>
+        <CardDescription>Chọn video, việc cần làm và ngôn ngữ đích rồi bấm Bắt đầu.</CardDescription>
       </CardHeader>
       <CardContent>
         <form className="grid gap-5" onSubmit={(e) => { e.preventDefault(); create.mutate() }}>
           <Tabs value={form.from} onValueChange={(from) => update({ from: from as Form['from'] })}>
             <TabsList className="w-full">
               <TabsTrigger value="upload"><Upload /> Tải lên</TabsTrigger>
-              <TabsTrigger value="server"><HardDrive /> Trên máy chủ</TabsTrigger>
+              <TabsTrigger value="server"><HardDrive /> Trên máy</TabsTrigger>
+              <TabsTrigger value="url"><Link /> URL</TabsTrigger>
             </TabsList>
             <TabsContent value="upload" className="pt-2">
               <UploadDrop files={files} onChange={setFiles} progress={progress} disabled={create.isPending} />
             </TabsContent>
-            <TabsContent value="server" className="grid gap-5 pt-2">
+            <TabsContent value="server" className="grid gap-4 pt-2">
               <div className="grid gap-2">
                 <Label htmlFor="path">File hoặc thư mục</Label>
                 <div className="flex gap-2">
-                  <Input id="path" value={form.path} placeholder={`${root}/Videos`} className="font-mono text-xs"
-                    onChange={(e) => setPath(e.target.value)} />
+                  <Input id="path" value={form.path} placeholder={`${config.root}/Videos`} className="font-mono text-xs"
+                    onChange={(e) => update({ path: e.target.value })} />
                   <Button type="button" variant="outline" onClick={() => setBrowsing(true)}>
                     <FolderOpen /> Duyệt
                   </Button>
                 </div>
               </div>
-
-              {isFolder && form.path && (
-                <Field label="Trong thư mục, xử lý">
-                  <Segmented value={form.start} onChange={(start) => update({ start })}
-                    options={(Object.keys(START_LABELS) as Start[]).map((s) => ({ value: s, label: START_LABELS[s] }))} />
-                </Field>
+              <SwitchField label="Dùng phụ đề có sẵn" hint="<tên>.srt / <tên>.vi.srt cạnh video thay cho bước tạo ra chúng"
+                checked={form.useSubtitles} onChange={(useSubtitles) => update({ useSubtitles })} />
+              {path && !/\.[a-z0-9]{2,4}$/i.test(path) && (
+                <SwitchField label="Quét thư mục con" checked={form.recursive} onChange={(recursive) => update({ recursive })} />
+              )}
+            </TabsContent>
+            <TabsContent value="url" className="grid gap-2 pt-2">
+              <Textarea rows={3} value={form.urls} placeholder="https://www.youtube.com/watch?v=… (mỗi dòng một video)"
+                className="font-mono text-xs" onChange={(e) => update({ urls: e.target.value })} />
+              {driversOf(drivers, 'source').find((d) => d.name === 'url')?.available && (
+                <p className="text-xs text-destructive">{driversOf(drivers, 'source').find((d) => d.name === 'url')?.available}</p>
               )}
             </TabsContent>
           </Tabs>
 
-          <Field label="Làm đến bước">
-            <Segmented value={STEPS[last]} onChange={(until) => update({ until })}
-              options={STEPS.map((s, i) => ({ value: s, label: STEP_LABELS[s], disabled: i < first, dim: i < first }))}
-              fill={(value) => STEPS.indexOf(value) >= first && STEPS.indexOf(value) <= last} />
+          <Field label="Việc cần làm" hint={template?.description}>
+            <div className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/40 p-1">
+              {templates.map((t) => (
+                <button key={t.name} type="button" onClick={() => update({ template: t.name })}
+                  className={cn('rounded-md px-2 py-1.5 text-xs font-medium transition-colors sm:text-sm',
+                    t.name === template?.name ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+                  {t.title || t.name}
+                </button>
+              ))}
+            </div>
           </Field>
 
-          {included.filter((s) => s === 'translate' || s === 'dub').map((s) => (
-            <StepParams key={s} name={s} mode="main" value={form.options[s]} context={previewContext}
-              onChange={(v) => update({ options: { ...form.options, [s]: v } })} />
-          ))}
+          {perLang && (
+            <Field label="Dịch sang">
+              <div className="flex flex-wrap gap-1.5">
+                {config.languages.map((lang) => {
+                  const on = form.langs.includes(lang.code)
+                  return (
+                    <button key={lang.code} type="button"
+                      onClick={() => update({ langs: on ? form.langs.filter((l) => l !== lang.code) : [...form.langs, lang.code] })}
+                      className={cn('rounded-full border px-3 py-1 text-xs transition-colors',
+                        on ? 'border-primary bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}>
+                      {lang.name}
+                    </button>
+                  )
+                })}
+              </div>
+            </Field>
+          )}
+
+          {translate && (
+            <div className="grid gap-4">
+              <Field label="Dịch bằng">
+                <DriverSelect drivers={translate.drivers} value={translate.driver!.name}
+                  onChange={(driver) => setStage('translate', { driver })} />
+              </Field>
+              <DriverParams driver={translate.driver!} value={translate.params} only={['model']}
+                onChange={(params) => setParams(translate, params)} />
+              {translate.driver?.langs && form.langs.some((l) => !translate.driver!.langs!.includes(l)) && (
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  {translate.driver.title} chỉ dịch sang {translate.driver.langs.join(', ')}: ngôn ngữ khác sẽ bị bỏ qua.
+                </p>
+              )}
+            </div>
+          )}
+
+          {dub && (
+            <DriverParams driver={dub.driver!} value={dub.params} only={['voice']} context={previewContext}
+              onChange={(params) => setParams(dub, params)} />
+          )}
 
           <Collapsible open={advanced} onOpenChange={setAdvanced}>
             <CollapsibleTrigger asChild>
@@ -191,76 +232,37 @@ export function NewJob({ root, defaults, onCreated }: {
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="grid gap-4 pt-3">
-              {!uploading && (
-                <SwitchField label="Quét thư mục con" checked={form.recursive} onChange={(recursive) => update({ recursive })} />
-              )}
-              <SwitchField label="Ghi đè file đã có" hint="Mặc định bỏ qua bước đã có kết quả"
-                checked={form.overwrite} onChange={(overwrite) => update({ overwrite })} />
-              {!uploading && (
-                <Field label="Thư mục output" hint="Để trống = cạnh file gốc">
-                  <Input value={form.out} className="font-mono text-xs" onChange={(e) => update({ out: e.target.value })} />
-                </Field>
-              )}
-              {included.map((s) => (
-                <AdvancedStep key={s} name={s} form={form} update={update} />
+              <SwitchField label="Ghi kết quả cạnh file gốc" hint="<tên>.vi.srt, <tên>.dub.vi.mp4… (luôn tải về được trong việc)"
+                checked={form.export} onChange={(exported) => update({ export: exported })} />
+              {optional.map((s) => (
+                <SwitchField key={s.stage} label={`Bước ${stageLabel(s.stage)}`}
+                  hint={s.driver ? s.driver.available ?? s.driver.title : 'Chưa có driver cho bước này'}
+                  checked={s.enabled} disabled={!s.driver || !!s.driver.available}
+                  onChange={(enabled) => setStage(s.stage, { enabled })} />
+              ))}
+              {stages.filter((s) => s.enabled && s.driver).map((s) => (
+                <div key={s.stage} className="grid gap-3">
+                  <Separator />
+                  <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{stageLabel(s.stage)}</p>
+                  {s.drivers.length > 1 && s.stage !== 'translate' && (
+                    <DriverSelect drivers={s.drivers} value={s.driver!.name} onChange={(driver) => setStage(s.stage, { driver })} />
+                  )}
+                  <DriverParams driver={s.driver!} value={s.params} context={previewContext}
+                    only={s.stage === 'translate' ? ['!model'] : s.stage === 'dub' ? ['!voice'] : undefined}
+                    onChange={(params) => setParams(s, params)} />
+                </div>
               ))}
             </CollapsibleContent>
           </Collapsible>
 
-          <Button type="submit" size="lg" disabled={(uploading ? !files.length : !form.path.trim()) || create.isPending}>
+          <Button type="submit" size="lg" disabled={!ready || create.isPending || (perLang && !form.langs.length)}>
             {create.isPending ? <Loader2 className="animate-spin" /> : <Rocket />}
-            {create.isPending && uploading ? 'Đang tải lên…' : 'Bắt đầu'}
+            {create.isPending && form.from === 'upload' ? 'Đang tải lên…' : 'Bắt đầu'}
           </Button>
         </form>
       </CardContent>
-      <FileBrowser open={browsing} onOpenChange={setBrowsing} initial={form.path || root}
-        onPick={({ path, kind }) => setPath(path, kind)} />
+      <FileBrowser open={browsing} onOpenChange={setBrowsing} initial={form.path || config.root}
+        onPick={({ path: picked }: { path: string; kind: Entry['kind'] }) => update({ path: picked })} />
     </Card>
-  )
-}
-
-/** The options of one step that are not in the main form. */
-function AdvancedStep({ name, form, update }: { name: StepName; form: Form; update: (p: Partial<Form>) => void }) {
-  return (
-    <div className="grid gap-3">
-      <Separator />
-      <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{STEP_LABELS[name]}</p>
-      <StepParams name={name} mode="extra" value={form.options[name]}
-        onChange={(v) => update({ options: { ...form.options, [name]: v } })} />
-    </div>
-  )
-}
-
-export function Segmented<T extends string>({ value, onChange, options, fill }: {
-  value: T
-  onChange: (value: T) => void
-  options: { value: T; label: string; disabled?: boolean; dim?: boolean }[]
-  fill?: (value: T) => boolean
-}) {
-  return (
-    <div className="flex rounded-lg border bg-muted/40 p-1">
-      {options.map((option) => {
-        const on = fill ? fill(option.value) : option.value === value
-        return (
-          <button
-            key={option.value}
-            type="button"
-            disabled={option.disabled}
-            onClick={() => onChange(option.value)}
-            className={cn(
-              'flex-1 rounded-md px-1 py-1.5 text-xs font-medium whitespace-nowrap transition-colors sm:text-sm',
-              option.value === value
-                ? 'bg-primary text-primary-foreground shadow-sm'
-                : on
-                  ? 'bg-primary/15 text-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
-              option.dim && 'opacity-40',
-            )}
-          >
-            {option.label}
-          </button>
-        )
-      })}
-    </div>
   )
 }

@@ -8,7 +8,7 @@ from dich.formats.transcript import Transcript
 
 
 class Params(BaseModel):
-    replacements: dict[str, str] = Field(default_factory=dict,
+    replacements: dict[str, str] = Field(default_factory=dict, title="Thay thế",
                                          description="Cụm sai → cụm đúng, không phân biệt hoa thường")
 
 

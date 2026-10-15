@@ -13,7 +13,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 
-from dich import drivers
+from dich import drivers, settings
 from dich.api.models import (Config, DriverInfo, Entry, Language, Listing, PathBody, Preview, TemplateInfo, Uploaded,
                              Voice)
 from dich.core.langs import LANGUAGES
@@ -48,7 +48,7 @@ def router(ctx):
     @api.get("/config")
     def get_config() -> Config:
         return Config(root=str(ctx.root), languages=[Language(code=c, name=v[2]) for c, v in LANGUAGES.items()],
-                      default_langs=["vi"])
+                      default_langs=["vi"], default_drivers={"translate": settings.ENGINE})
 
     @api.get("/drivers")
     def list_drivers() -> list[DriverInfo]:
@@ -209,12 +209,9 @@ def router(ctx):
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     def job_with_artifacts(job_id):
+        from dich.api.jobs import attach_artifacts
         job = store.job(job_id)
-        if job:
-            artifacts = store.current_artifacts(job_id)
-            for task in job["tasks"]:
-                task["artifacts"] = artifacts.get(task["id"], [])
-        return job
+        return attach_artifacts(store, [job])[0] if job else None
 
     # --- admin ---
 

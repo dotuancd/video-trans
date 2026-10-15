@@ -5,6 +5,102 @@ export type ClientOptions = {
 };
 
 /**
+ * AddLangs
+ */
+export type AddLangs = {
+    /**
+     * Langs
+     */
+    langs: Array<string>;
+};
+
+/**
+ * ArtifactInfo
+ */
+export type ArtifactInfo = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Slot
+     */
+    slot: string;
+    /**
+     * Path
+     */
+    path: string;
+    /**
+     * Size
+     */
+    size: number | null;
+    /**
+     * External
+     */
+    external: boolean;
+    /**
+     * Download Name
+     */
+    download_name?: string;
+};
+
+/**
+ * Attempt
+ */
+export type Attempt = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Task Id
+     */
+    task_id: number;
+    /**
+     * N
+     */
+    n: number;
+    /**
+     * Span Id
+     */
+    span_id: string;
+    /**
+     * Origin
+     */
+    origin: 'driver' | 'cache' | 'human';
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Params
+     */
+    params: {
+        [key: string]: unknown;
+    };
+    /**
+     * Message
+     */
+    message: string | null;
+    /**
+     * Error
+     */
+    error: string | null;
+    /**
+     * Started At
+     */
+    started_at: number;
+    /**
+     * Finished At
+     */
+    finished_at: number | null;
+};
+
+/**
  * Body_upload_voice
  */
 export type BodyUploadVoice = {
@@ -23,45 +119,73 @@ export type Config = {
      */
     root: string;
     /**
-     * Defaults
+     * Languages
      */
-    defaults: {
-        [key: string]: {
-            [key: string]: unknown;
-        };
+    languages: Array<Language>;
+    /**
+     * Default Langs
+     */
+    default_langs: Array<string>;
+    /**
+     * Default Drivers
+     *
+     * stage → driver used for 'env' in templates
+     */
+    default_drivers: {
+        [key: string]: string;
     };
 };
 
 /**
- * Cue
+ * DriverInfo
  */
-export type Cue = {
+export type DriverInfo = {
     /**
-     * Index
+     * Stage
      */
-    index: number;
+    stage: string;
     /**
-     * Start
+     * Name
      */
-    start: number;
+    name: string;
     /**
-     * End
+     * Title
      */
-    end: number;
+    title: string;
     /**
-     * Source
+     * Params Schema
      */
-    source: string;
+    params_schema: {
+        [key: string]: unknown;
+    };
     /**
-     * Text
+     * Available
+     *
+     * Why it can't run here, or null
      */
-    text: string;
+    available: string | null;
+    /**
+     * Langs
+     */
+    langs: Array<string> | null;
+    /**
+     * Per Lang
+     */
+    per_lang: boolean;
+    /**
+     * Lane
+     */
+    lane: string;
 };
 
 /**
- * CueEdit
+ * EditCue
  */
-export type CueEdit = {
+export type EditCue = {
+    /**
+     * Id
+     */
+    id?: string | null;
     /**
      * Start
      */
@@ -76,8 +200,6 @@ export type CueEdit = {
     text: string;
     /**
      * Source
-     *
-     * the original line; given on every cue to rewrite the original .srt too
      */
     source?: string | null;
 };
@@ -101,7 +223,49 @@ export type Entry = {
     /**
      * Kind
      */
-    kind: 'dir' | 'media' | 'srt' | 'vi_srt' | 'dub' | 'audio' | 'other';
+    kind: 'dir' | 'media' | 'subtitle' | 'other';
+};
+
+/**
+ * Event
+ */
+export type Event = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Job Id
+     */
+    job_id: number | null;
+    /**
+     * Task Id
+     */
+    task_id: number | null;
+    /**
+     * Attempt Id
+     */
+    attempt_id: number | null;
+    /**
+     * Ts
+     */
+    ts: number;
+    /**
+     * Level
+     */
+    level: string;
+    /**
+     * Type
+     */
+    type: string;
+    /**
+     * Message
+     */
+    message: string | null;
+    /**
+     * Data
+     */
+    data: unknown | null;
 };
 
 /**
@@ -123,13 +287,29 @@ export type Job = {
      */
     id: number;
     /**
+     * Title
+     */
+    title: string;
+    /**
      * Source
      */
     source: string;
     /**
-     * Start
+     * Template
      */
-    start: 'media' | 'srt' | 'vi_srt';
+    template: string;
+    /**
+     * Langs
+     */
+    langs: Array<string>;
+    /**
+     * Export Dir
+     */
+    export_dir: string | null;
+    /**
+     * Trace Id
+     */
+    trace_id: string;
     /**
      * Created At
      */
@@ -137,11 +317,11 @@ export type Job = {
     /**
      * Status
      */
-    status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'stale';
+    status: 'blocked' | 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'waiting_review' | 'stale';
     /**
-     * Steps
+     * Tasks
      */
-    steps: Array<Step>;
+    tasks: Array<Task>;
 };
 
 /**
@@ -149,59 +329,47 @@ export type Job = {
  */
 export type JobCreate = {
     /**
-     * Path
+     * Sources
      *
-     * a file or a folder of them; or give `paths`
+     * Files, folders (their videos), or URLs
      */
-    path?: string | null;
+    sources: Array<string>;
     /**
-     * Paths
-     *
-     * files, each its own job with outputs next to it
+     * Langs
      */
-    paths?: Array<string>;
+    langs?: Array<string>;
     /**
-     * Start
+     * Template
      */
-    start?: 'media' | 'srt' | 'vi_srt';
+    template?: string;
+    /**
+     * Overrides
+     */
+    overrides?: {
+        [key: string]: StageOverride;
+    };
     /**
      * Recursive
      */
     recursive?: boolean;
     /**
-     * Translate
-     */
-    translate?: boolean;
-    /**
-     * Dub
-     */
-    dub?: boolean;
-    /**
-     * Mux
-     */
-    mux?: boolean;
-    /**
-     * Overwrite
-     */
-    overwrite?: boolean;
-    /**
-     * Out
-     */
-    out?: string | null;
-    /**
-     * Params
+     * Use Subtitles
      *
-     * options of every step, see /api/config
+     * Use <name>.srt / <name>.<lang>.srt found next to each video
      */
-    params?: {
-        [key: string]: unknown;
-    };
+    use_subtitles?: boolean;
+    /**
+     * Export
+     *
+     * Copy results next to the source file
+     */
+    export?: boolean;
 };
 
 /**
- * JobCreated
+ * JobsCreated
  */
-export type JobCreated = {
+export type JobsCreated = {
     /**
      * Jobs
      */
@@ -210,6 +378,20 @@ export type JobCreated = {
      * Skipped
      */
     skipped: Array<string>;
+};
+
+/**
+ * Language
+ */
+export type Language = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Name
+     */
+    name: string;
 };
 
 /**
@@ -245,17 +427,9 @@ export type PathBody = {
  */
 export type Preview = {
     /**
-     * Text
-     *
-     * what to read; empty: a sentence of `subtitles`
-     */
-    text?: string | null;
-    /**
      * Voice
-     *
-     * preset name, or 'source' to clone the speaker of `media`
      */
-    voice?: string | null;
+    voice?: string;
     /**
      * Ref Audio
      */
@@ -265,23 +439,35 @@ export type Preview = {
      */
     int8?: boolean;
     /**
-     * Media
-     *
-     * the video the voice is cloned from; empty: the one next to `subtitles`
+     * Text
      */
-    media?: string | null;
+    text?: string | null;
     /**
-     * Subtitles
+     * Job Id
      *
-     * the .vi.srt (or .srt): its timings pick the clip, its text is read; empty: the ones next to `media`
+     * Clone from / read this job's video and subtitles
      */
-    subtitles?: string | null;
+    job_id?: number | null;
+    /**
+     * Lang
+     */
+    lang?: string;
+    /**
+     * Path
+     *
+     * Or a video (with <name>.srt / <name>.vi.srt next to it)
+     */
+    path?: string | null;
 };
 
 /**
- * RunStep
+ * Rerun
  */
-export type RunStep = {
+export type Rerun = {
+    /**
+     * Mode
+     */
+    mode?: 'only' | 'cascade';
     /**
      * Params
      */
@@ -289,15 +475,45 @@ export type RunStep = {
         [key: string]: unknown;
     } | null;
     /**
-     * Cascade
+     * Driver
      */
-    cascade?: boolean;
+    driver?: string | null;
+    /**
+     * Confirm
+     *
+     * Replace edits made by hand
+     */
+    confirm?: boolean;
 };
 
 /**
- * Step
+ * StageOverride
  */
-export type Step = {
+export type StageOverride = {
+    /**
+     * Driver
+     */
+    driver?: string | null;
+    /**
+     * Enabled
+     */
+    enabled?: boolean | null;
+    /**
+     * Gate
+     */
+    gate?: string | null;
+    /**
+     * Params
+     */
+    params?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * Task
+ */
+export type Task = {
     /**
      * Id
      */
@@ -307,21 +523,25 @@ export type Step = {
      */
     job_id: number;
     /**
+     * Key
+     */
+    key: string;
+    /**
      * Position
      */
     position: number;
     /**
-     * Name
+     * Stage
      */
-    name: 'transcribe' | 'translate' | 'dub' | 'mux';
+    stage: string;
     /**
-     * Inputs
+     * Driver
      */
-    inputs: Array<string>;
+    driver: string;
     /**
-     * Output
+     * Lang
      */
-    output: string;
+    lang: string | null;
     /**
      * Params
      */
@@ -329,15 +549,33 @@ export type Step = {
         [key: string]: unknown;
     };
     /**
+     * Inputs
+     */
+    inputs: {
+        [key: string]: Array<string>;
+    };
+    /**
+     * Outputs
+     */
+    outputs: {
+        [key: string]: string;
+    };
+    /**
+     * Deps
+     */
+    deps: Array<string>;
+    /**
+     * Lane
+     */
+    lane: string;
+    /**
+     * Gate
+     */
+    gate: boolean;
+    /**
      * Status
      */
-    status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'stale';
-    /**
-     * Exists
-     *
-     * the output file is on disk
-     */
-    exists: boolean;
+    status: 'blocked' | 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'skipped' | 'waiting_review' | 'stale';
     /**
      * Message
      */
@@ -355,101 +593,117 @@ export type Step = {
      */
     total: number | null;
     /**
-     * Attempt
+     * Retries
      */
-    attempt: number;
+    retries: number;
     /**
-     * Started At
+     * Cancel Requested
      */
-    started_at: number | null;
+    cancel_requested: boolean;
     /**
-     * Finished At
+     * Current Attempt
      */
-    finished_at: number | null;
+    current_attempt: number | null;
+    /**
+     * Exports
+     */
+    exports: Array<string>;
+    /**
+     * Updated At
+     */
+    updated_at: number;
+    /**
+     * Artifacts
+     */
+    artifacts?: Array<ArtifactInfo>;
 };
 
 /**
- * StepLog
+ * TemplateInfo
  */
-export type StepLog = {
+export type TemplateInfo = {
     /**
-     * Text
+     * Name
      */
-    text: string;
+    name: string;
     /**
-     * Offset
-     *
-     * byte offset of `text` in the log (later than asked when the log is long)
+     * Title
      */
-    offset: number;
+    title: string;
     /**
-     * Size
-     *
-     * log size in bytes: the offset to ask for next
+     * Description
      */
-    size: number;
+    description: string;
+    /**
+     * Stages
+     */
+    stages: Array<{
+        [key: string]: unknown;
+    }>;
 };
 
 /**
- * Subtitles
+ * TranscriptSave
  */
-export type Subtitles = {
-    /**
-     * Path
-     *
-     * the file whose cues are `text`: a .vi.srt, or an original .srt
-     */
-    path: string;
-    /**
-     * Source Path
-     *
-     * the original .srt whose cues are `source`, when `path` is a .vi.srt
-     */
-    source_path: string | null;
+export type TranscriptSave = {
     /**
      * Cues
      */
-    cues: Array<Cue>;
-    /**
-     * Words
-     *
-     * the timed words the original .srt was grouped from (<stem>.words.json), to cut cues where a word is spoken; none for older jobs
-     */
-    words?: Array<Word> | null;
+    cues: Array<EditCue>;
 };
 
 /**
- * SubtitlesSave
+ * TranscriptSaved
  */
-export type SubtitlesSave = {
-    /**
-     * Path
-     */
-    path: string;
-    /**
-     * Cues
-     *
-     * the whole new list: cues may have been merged, split or retimed
-     */
-    cues: Array<CueEdit>;
-};
-
-/**
- * SubtitlesSaved
- */
-export type SubtitlesSaved = {
+export type TranscriptSaved = {
     /**
      * Texts
-     *
-     * cues changed in `path`
      */
     texts: number;
     /**
      * Sources
-     *
-     * cues changed in the original .srt
      */
     sources: number;
+    /**
+     * Source Text Changed
+     */
+    source_text_changed: boolean;
+};
+
+/**
+ * TranscriptView
+ */
+export type TranscriptView = {
+    /**
+     * Lang
+     */
+    lang: string | null;
+    /**
+     * Task Id
+     *
+     * The task whose output is edited
+     */
+    task_id: number;
+    /**
+     * Source Task Id
+     *
+     * The task of the original transcript shown next to it
+     */
+    source_task_id: number | null;
+    /**
+     * Cues
+     */
+    cues: Array<EditCue>;
+    /**
+     * Words
+     *
+     * Timed words of the original, for cutting cues where words are spoken
+     */
+    words: Array<Word> | null;
+    /**
+     * Edited
+     */
+    edited: boolean;
 };
 
 /**
@@ -458,8 +712,6 @@ export type SubtitlesSaved = {
 export type Uploaded = {
     /**
      * Id
-     *
-     * the upload folder: pass it with the other files of the same video
      */
     id: string;
     /**
@@ -469,7 +721,7 @@ export type Uploaded = {
     /**
      * Kind
      */
-    kind: 'dir' | 'media' | 'srt' | 'vi_srt' | 'dub' | 'audio' | 'other';
+    kind: 'media' | 'subtitle' | 'other';
 };
 
 /**
@@ -532,52 +784,6 @@ export type Word = {
     end: number;
 };
 
-export type GetConfigData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/config';
-};
-
-export type GetConfigResponses = {
-    /**
-     * Successful Response
-     */
-    200: Config;
-};
-
-export type GetConfigResponse = GetConfigResponses[keyof GetConfigResponses];
-
-export type ListDirData = {
-    body?: never;
-    path?: never;
-    query?: {
-        /**
-         * Path
-         */
-        path?: string;
-    };
-    url: '/api/fs';
-};
-
-export type ListDirErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type ListDirError = ListDirErrors[keyof ListDirErrors];
-
-export type ListDirResponses = {
-    /**
-     * Successful Response
-     */
-    200: Listing;
-};
-
-export type ListDirResponse = ListDirResponses[keyof ListDirResponses];
-
 export type ListJobsData = {
     body?: never;
     path?: never;
@@ -596,30 +802,30 @@ export type ListJobsResponses = {
 
 export type ListJobsResponse = ListJobsResponses[keyof ListJobsResponses];
 
-export type AddJobsData = {
+export type CreateJobsData = {
     body: JobCreate;
     path?: never;
     query?: never;
     url: '/api/jobs';
 };
 
-export type AddJobsErrors = {
+export type CreateJobsErrors = {
     /**
      * Validation Error
      */
     422: HttpValidationError;
 };
 
-export type AddJobsError = AddJobsErrors[keyof AddJobsErrors];
+export type CreateJobsError = CreateJobsErrors[keyof CreateJobsErrors];
 
-export type AddJobsResponses = {
+export type CreateJobsResponses = {
     /**
      * Successful Response
      */
-    200: JobCreated;
+    200: JobsCreated;
 };
 
-export type AddJobsResponse = AddJobsResponses[keyof AddJobsResponses];
+export type CreateJobsResponse = CreateJobsResponses[keyof CreateJobsResponses];
 
 export type DeleteJobData = {
     body?: never;
@@ -681,78 +887,35 @@ export type GetJobResponses = {
 
 export type GetJobResponse = GetJobResponses[keyof GetJobResponses];
 
-export type RunStepData = {
-    body: RunStep;
+export type AddLangsData = {
+    body: AddLangs;
     path: {
         /**
          * Job Id
          */
         job_id: number;
-        /**
-         * Name
-         */
-        name: 'transcribe' | 'translate' | 'dub' | 'mux';
     };
     query?: never;
-    url: '/api/jobs/{job_id}/steps/{name}/run';
+    url: '/api/jobs/{job_id}/langs';
 };
 
-export type RunStepErrors = {
+export type AddLangsErrors = {
     /**
      * Validation Error
      */
     422: HttpValidationError;
 };
 
-export type RunStepError = RunStepErrors[keyof RunStepErrors];
+export type AddLangsError = AddLangsErrors[keyof AddLangsErrors];
 
-export type RunStepResponses = {
+export type AddLangsResponses = {
     /**
      * Successful Response
      */
     200: Job;
 };
 
-export type RunStepResponse = RunStepResponses[keyof RunStepResponses];
-
-export type GetStepLogData = {
-    body?: never;
-    path: {
-        /**
-         * Job Id
-         */
-        job_id: number;
-        /**
-         * Name
-         */
-        name: 'transcribe' | 'translate' | 'dub' | 'mux';
-    };
-    query?: {
-        /**
-         * Offset
-         */
-        offset?: number;
-    };
-    url: '/api/jobs/{job_id}/steps/{name}/log';
-};
-
-export type GetStepLogErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type GetStepLogError = GetStepLogErrors[keyof GetStepLogErrors];
-
-export type GetStepLogResponses = {
-    /**
-     * Successful Response
-     */
-    200: StepLog;
-};
-
-export type GetStepLogResponse = GetStepLogResponses[keyof GetStepLogResponses];
+export type AddLangsResponse = AddLangsResponses[keyof AddLangsResponses];
 
 export type CancelJobData = {
     body?: never;
@@ -784,104 +947,401 @@ export type CancelJobResponses = {
 
 export type CancelJobResponse = CancelJobResponses[keyof CancelJobResponses];
 
-export type EventsData = {
+export type ResumeJobData = {
     body?: never;
-    path?: never;
+    path: {
+        /**
+         * Job Id
+         */
+        job_id: number;
+    };
     query?: never;
-    url: '/api/events';
+    url: '/api/jobs/{job_id}/resume';
 };
 
-export type EventsResponses = {
+export type ResumeJobErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ResumeJobError = ResumeJobErrors[keyof ResumeJobErrors];
+
+export type ResumeJobResponses = {
+    /**
+     * Successful Response
+     */
+    200: Job;
+};
+
+export type ResumeJobResponse = ResumeJobResponses[keyof ResumeJobResponses];
+
+export type RefreshJobData = {
+    body?: never;
+    path: {
+        /**
+         * Job Id
+         */
+        job_id: number;
+    };
+    query?: never;
+    url: '/api/jobs/{job_id}/refresh';
+};
+
+export type RefreshJobErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RefreshJobError = RefreshJobErrors[keyof RefreshJobErrors];
+
+export type RefreshJobResponses = {
+    /**
+     * Successful Response
+     */
+    200: Job;
+};
+
+export type RefreshJobResponse = RefreshJobResponses[keyof RefreshJobResponses];
+
+export type RerunTaskData = {
+    body: Rerun;
+    path: {
+        /**
+         * Task Id
+         */
+        task_id: number;
+    };
+    query?: never;
+    url: '/api/tasks/{task_id}/rerun';
+};
+
+export type RerunTaskErrors = {
+    /**
+     * Busy, or edits by hand need confirm
+     */
+    409: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RerunTaskError = RerunTaskErrors[keyof RerunTaskErrors];
+
+export type RerunTaskResponses = {
+    /**
+     * Successful Response
+     */
+    200: Job;
+};
+
+export type RerunTaskResponse = RerunTaskResponses[keyof RerunTaskResponses];
+
+export type ListAttemptsData = {
+    body?: never;
+    path: {
+        /**
+         * Task Id
+         */
+        task_id: number;
+    };
+    query?: never;
+    url: '/api/tasks/{task_id}/attempts';
+};
+
+export type ListAttemptsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListAttemptsError = ListAttemptsErrors[keyof ListAttemptsErrors];
+
+export type ListAttemptsResponses = {
+    /**
+     * Response List Attempts
+     *
+     * Successful Response
+     */
+    200: Array<Attempt>;
+};
+
+export type ListAttemptsResponse = ListAttemptsResponses[keyof ListAttemptsResponses];
+
+export type AttemptEventsData = {
+    body?: never;
+    path: {
+        /**
+         * Attempt Id
+         */
+        attempt_id: number;
+    };
+    query?: never;
+    url: '/api/attempts/{attempt_id}/events';
+};
+
+export type AttemptEventsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AttemptEventsError = AttemptEventsErrors[keyof AttemptEventsErrors];
+
+export type AttemptEventsResponses = {
+    /**
+     * Response Attempt Events
+     *
+     * Successful Response
+     */
+    200: Array<Event>;
+};
+
+export type AttemptEventsResponse = AttemptEventsResponses[keyof AttemptEventsResponses];
+
+export type GetArtifactData = {
+    body?: never;
+    path: {
+        /**
+         * Artifact Id
+         */
+        artifact_id: number;
+    };
+    query?: never;
+    url: '/api/artifacts/{artifact_id}';
+};
+
+export type GetArtifactErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetArtifactError = GetArtifactErrors[keyof GetArtifactErrors];
+
+export type GetArtifactResponses = {
     /**
      * Successful Response
      */
     200: unknown;
 };
 
-export type GetSubtitlesData = {
+export type ArtifactVttData = {
     body?: never;
-    path?: never;
-    query: {
+    path: {
         /**
-         * Path
+         * Artifact Id
          */
-        path: string;
+        artifact_id: number;
     };
-    url: '/api/subtitles';
-};
-
-export type GetSubtitlesErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type GetSubtitlesError = GetSubtitlesErrors[keyof GetSubtitlesErrors];
-
-export type GetSubtitlesResponses = {
-    /**
-     * Successful Response
-     */
-    200: Subtitles;
-};
-
-export type GetSubtitlesResponse = GetSubtitlesResponses[keyof GetSubtitlesResponses];
-
-export type SaveSubtitlesData = {
-    body: SubtitlesSave;
-    path?: never;
     query?: never;
-    url: '/api/subtitles';
+    url: '/api/artifacts/{artifact_id}/vtt';
 };
 
-export type SaveSubtitlesErrors = {
+export type ArtifactVttErrors = {
     /**
      * Validation Error
      */
     422: HttpValidationError;
 };
 
-export type SaveSubtitlesError = SaveSubtitlesErrors[keyof SaveSubtitlesErrors];
+export type ArtifactVttError = ArtifactVttErrors[keyof ArtifactVttErrors];
 
-export type SaveSubtitlesResponses = {
-    /**
-     * Successful Response
-     */
-    200: SubtitlesSaved;
-};
-
-export type SaveSubtitlesResponse = SaveSubtitlesResponses[keyof SaveSubtitlesResponses];
-
-export type SubtitlesVttData = {
-    body?: never;
-    path?: never;
-    query: {
-        /**
-         * Path
-         */
-        path: string;
-    };
-    url: '/api/subtitles/vtt';
-};
-
-export type SubtitlesVttErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type SubtitlesVttError = SubtitlesVttErrors[keyof SubtitlesVttErrors];
-
-export type SubtitlesVttResponses = {
+export type ArtifactVttResponses = {
     /**
      * Successful Response
      */
     200: string;
 };
 
-export type SubtitlesVttResponse = SubtitlesVttResponses[keyof SubtitlesVttResponses];
+export type ArtifactVttResponse = ArtifactVttResponses[keyof ArtifactVttResponses];
+
+export type DownloadArtifactData = {
+    body?: never;
+    path: {
+        /**
+         * Artifact Id
+         */
+        artifact_id: number;
+    };
+    query?: never;
+    url: '/api/artifacts/{artifact_id}/download';
+};
+
+export type DownloadArtifactErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DownloadArtifactError = DownloadArtifactErrors[keyof DownloadArtifactErrors];
+
+export type DownloadArtifactResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type GetTranscriptData = {
+    body?: never;
+    path: {
+        /**
+         * Job Id
+         */
+        job_id: number;
+    };
+    query?: {
+        /**
+         * Lang
+         */
+        lang?: string;
+    };
+    url: '/api/jobs/{job_id}/transcript';
+};
+
+export type GetTranscriptErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetTranscriptError = GetTranscriptErrors[keyof GetTranscriptErrors];
+
+export type GetTranscriptResponses = {
+    /**
+     * Successful Response
+     */
+    200: TranscriptView;
+};
+
+export type GetTranscriptResponse = GetTranscriptResponses[keyof GetTranscriptResponses];
+
+export type SaveTranscriptData = {
+    body: TranscriptSave;
+    path: {
+        /**
+         * Job Id
+         */
+        job_id: number;
+    };
+    query?: {
+        /**
+         * Lang
+         */
+        lang?: string;
+    };
+    url: '/api/jobs/{job_id}/transcript';
+};
+
+export type SaveTranscriptErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SaveTranscriptError = SaveTranscriptErrors[keyof SaveTranscriptErrors];
+
+export type SaveTranscriptResponses = {
+    /**
+     * Successful Response
+     */
+    200: TranscriptSaved;
+};
+
+export type SaveTranscriptResponse = SaveTranscriptResponses[keyof SaveTranscriptResponses];
+
+export type GetConfigData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/config';
+};
+
+export type GetConfigResponses = {
+    /**
+     * Successful Response
+     */
+    200: Config;
+};
+
+export type GetConfigResponse = GetConfigResponses[keyof GetConfigResponses];
+
+export type ListDriversData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/drivers';
+};
+
+export type ListDriversResponses = {
+    /**
+     * Response List Drivers
+     *
+     * Successful Response
+     */
+    200: Array<DriverInfo>;
+};
+
+export type ListDriversResponse = ListDriversResponses[keyof ListDriversResponses];
+
+export type ListTemplatesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/templates';
+};
+
+export type ListTemplatesResponses = {
+    /**
+     * Response List Templates
+     *
+     * Successful Response
+     */
+    200: Array<TemplateInfo>;
+};
+
+export type ListTemplatesResponse = ListTemplatesResponses[keyof ListTemplatesResponses];
+
+export type ListDirData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Path
+         */
+        path?: string;
+    };
+    url: '/api/fs';
+};
+
+export type ListDirErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListDirError = ListDirErrors[keyof ListDirErrors];
+
+export type ListDirResponses = {
+    /**
+     * Successful Response
+     */
+    200: Listing;
+};
+
+export type ListDirResponse = ListDirResponses[keyof ListDirResponses];
 
 export type UploadData = {
     body?: unknown;
@@ -916,34 +1376,6 @@ export type UploadResponses = {
 };
 
 export type UploadResponse = UploadResponses[keyof UploadResponses];
-
-export type MediaData = {
-    body?: never;
-    path?: never;
-    query: {
-        /**
-         * Path
-         */
-        path: string;
-    };
-    url: '/api/media';
-};
-
-export type MediaErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type MediaError = MediaErrors[keyof MediaErrors];
-
-export type MediaResponses = {
-    /**
-     * Successful Response
-     */
-    200: unknown;
-};
 
 export type RevealData = {
     body: PathBody;
@@ -1037,3 +1469,82 @@ export type PreviewVoiceResponses = {
 };
 
 export type PreviewVoiceResponse = PreviewVoiceResponses[keyof PreviewVoiceResponses];
+
+export type EventsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/events';
+};
+
+export type EventsResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type TraceData = {
+    body?: never;
+    path: {
+        /**
+         * Trace Id
+         */
+        trace_id: string;
+    };
+    query?: never;
+    url: '/api/admin/traces/{trace_id}';
+};
+
+export type TraceErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type TraceError = TraceErrors[keyof TraceErrors];
+
+export type TraceResponses = {
+    /**
+     * Successful Response
+     */
+    200: string;
+};
+
+export type TraceResponse = TraceResponses[keyof TraceResponses];
+
+export type AttemptSystemLogData = {
+    body?: never;
+    path: {
+        /**
+         * Attempt Id
+         */
+        attempt_id: number;
+    };
+    query?: {
+        /**
+         * Tail
+         */
+        tail?: number;
+    };
+    url: '/api/attempts/{attempt_id}/system';
+};
+
+export type AttemptSystemLogErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AttemptSystemLogError = AttemptSystemLogErrors[keyof AttemptSystemLogErrors];
+
+export type AttemptSystemLogResponses = {
+    /**
+     * Successful Response
+     */
+    200: string;
+};
+
+export type AttemptSystemLogResponse = AttemptSystemLogResponses[keyof AttemptSystemLogResponses];

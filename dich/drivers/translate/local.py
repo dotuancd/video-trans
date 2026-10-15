@@ -66,8 +66,8 @@ class Translator:
 
 class Params(BaseModel):
     model: Literal["vinai", "opus"] = Field(settings.LOCAL_MODEL if settings.LOCAL_MODEL in MODELS else "vinai",
-                                            description="vinai: tốt hơn; opus: nhẹ hơn")
-    beam: int = Field(4, ge=1, le=8, description="1 = nhanh nhất")
+                                            title="Model", description="vinai: tốt hơn; opus: nhẹ hơn")
+    beam: int = Field(4, title="Beam", ge=1, le=8, description="1 = nhanh nhất")
 
 
 @register

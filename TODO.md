@@ -19,8 +19,10 @@
   - Có khả năng chạy lại một từng job riêng lẻ.
 
 
-- [ ] Upload files, hỗ trợ nhiều file.
-- [ ] Tạo thư mục xử lý riêng cho từng job.
+- [x] Triển khai kiến trúc `docs/Architecture.md` bước 1–5 (driver theo slot, DAG + template, đa ngôn ngữ, worker process + lease, 2 kênh log + trace, artifact + cache + export) và UI mới.
+- [x] Upload files, hỗ trợ nhiều file.
+- [x] Tạo thư mục xử lý riêng cho từng job (`<data>/jobs/<id>/<bước>/<lần>/`).
+- [ ] Bước 6: driver `separate` (demucs), `refine` bằng LLM + glossary.
 
 
 ## DONE

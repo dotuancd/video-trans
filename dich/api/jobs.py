@@ -21,6 +21,21 @@ def find_media(folder, recursive):
     return sorted(f for f in files if f.is_file() and not f.name.startswith(".") and is_media(f.name))
 
 
+def attach_artifacts(store, jobs):
+    """Each task gets the artifacts of its current attempt, named as they are downloaded."""
+    from dich.storage.export import export_name, source_stem
+    artifacts = store.current_artifacts(jobs[0]["id"] if len(jobs) == 1 else None)
+    for job in jobs:
+        source = job["source"]
+        for task in job["tasks"]:
+            task["artifacts"] = artifacts.get(task["id"], [])
+            for art in task["artifacts"]:
+                base = Path(art["path"]) if job_service.is_url(source) else Path(source)
+                art["download_name"] = (export_name(art["slot"], source_stem(base), Path(art["path"]).suffix)
+                                        or Path(art["path"]).name)
+    return jobs
+
+
 def norm(text):
     return re.sub(r"\s+", " ", text).strip()
 
@@ -33,10 +48,7 @@ def router(ctx):
         job = store.job(job_id)
         if not job:
             raise HTTPException(404, "Không có job này")
-        artifacts = store.current_artifacts(job_id)
-        for task in job["tasks"]:
-            task["artifacts"] = artifacts.get(task["id"], [])
-        return job
+        return attach_artifacts(store, [job])[0]
 
     def task_or_404(task_id):
         task = store.task(task_id)
@@ -49,11 +61,7 @@ def router(ctx):
     @api.get("/jobs")
     def list_jobs() -> list[Job]:
         jobs = store.jobs()
-        artifacts = store.current_artifacts()
-        for job in jobs:
-            for task in job["tasks"]:
-                task["artifacts"] = artifacts.get(task["id"], [])
-        return jobs
+        return attach_artifacts(store, jobs) if jobs else []
 
     @api.get("/jobs/{job_id}")
     def get_job(job_id: int) -> Job:
@@ -92,7 +100,7 @@ def router(ctx):
                 continue
             try:
                 created.append(job_service.create_job(store, source, body.langs, body.template, overrides,
-                                                      export=body.export))
+                                                      export=body.export, use_subtitles=body.use_subtitles))
             except (KeyError, ValidationError) as error:
                 raise HTTPException(400, str(error).strip("'"))
         return JobsCreated(jobs=created, skipped=skipped)
@@ -181,7 +189,8 @@ def router(ctx):
         artifact = artifact_or_404(artifact_id)
         job = store.job_row(artifact["job_id"])
         source = Path(job["source"]) if not job_service.is_url(job["source"]) else Path(artifact["path"])
-        name = export_name(artifact["slot"], source_stem(source), Path(artifact["path"]).suffix) or Path(artifact["path"]).name
+        name = (export_name(artifact["slot"], source_stem(source), Path(artifact["path"]).suffix)
+                or Path(artifact["path"]).name)
         if artifact["slot"].startswith("transcript."):
             text = to_srt(Transcript.load(artifact["path"]))
             return PlainTextResponse(text, media_type="application/x-subrip",

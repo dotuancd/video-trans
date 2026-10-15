@@ -6,7 +6,7 @@ from dich.drivers import Driver, UserError, module_missing, register
 
 class Params(BaseModel):
     url: str
-    max_height: int = Field(1080, description="Độ phân giải tối đa")
+    max_height: int = Field(1080, title="Độ phân giải tối đa", description="Độ phân giải tối đa")
 
 
 @register

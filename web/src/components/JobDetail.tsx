@@ -1,139 +1,250 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import { Copy, FolderSearch, Loader2, Play, RotateCcw, ScrollText, Square, Trash2 } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  Download, ExternalLink, FolderSearch, Languages, Loader2, Play, Plus, RotateCcw, ScrollText, Square, StepForward, Trash2,
+} from 'lucide-react'
 import { toast } from 'sonner'
-import { cancelJob, deleteJob, reveal, runStep, type Job, type Step, type SubtitlesSaved } from '@/api'
-import { StepParams, SwitchField, type PreviewContext } from '@/components/StepParams'
-import { STATUS_STYLE } from '@/components/JobList'
+import {
+  addLangs, cancelJob, deleteJob, listAttempts, refreshJob, rerunTask, resumeJob, reveal,
+  type Config, type DriverInfo, type Job, type Task, type TranscriptSaved,
+} from '@/api'
+import { STATUS_STYLE, taskLabel } from '@/components/JobList'
+import { DriverParams, DriverSelect, SwitchField } from '@/components/Params'
 import { SubtitleEditor, useSubtitleDraft, type SubtitleDraft } from '@/components/SubtitleEditor'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
-import { errorMessage, fileName, mediaUrl, STATUS_LABELS, STEP_LABELS, useStepLog, type StepOptions } from '@/lib/api'
+import {
+  artifactUrl, downloadUrl, driversOf, errorMessage, isActive, needsConfirm, putJob, slotArtifact,
+  STATUS_LABELS, useAttemptEvents, type Params,
+} from '@/lib/api'
 
 const VIDEO = /\.(mp4|mov|m4v|webm|mkv)$/i
+const SYSTEM_ERROR = /mã ([0-9a-f]{8})/
 
-export function JobDetail({ job, onClose }: { job?: Job; onClose: () => void }) {
+type RerunArgs = { task: Task; mode: 'only' | 'cascade'; params?: Params; driver?: string; confirm?: boolean }
+
+export function JobDetail({ job, drivers, config, onClose }: {
+  job?: Job
+  drivers: DriverInfo[]
+  config: Config
+  onClose: () => void
+}) {
   return (
     <Sheet open={!!job} onOpenChange={(open) => !open && onClose()}>
       <SheetContent
         className="gap-0 overflow-y-auto data-[side=right]:w-full data-[side=right]:sm:max-w-3xl"
-        // toasts (e.g. "Lồng tiếng lại" after saving subtitles) live outside the sheet: clicking them must not close it
+        // toasts (e.g. "Cập nhật phía sau" after saving subtitles) live outside the sheet: clicking them must not close it
         onInteractOutside={(e) => (e.target as Element | null)?.closest('[data-sonner-toaster]') && e.preventDefault()}
       >
-        {job && <JobBody job={job} onClose={onClose} />}
+        {job && <JobBody key={job.id} job={job} drivers={drivers} config={config} onClose={onClose} />}
       </SheetContent>
     </Sheet>
   )
 }
 
-function JobBody({ job, onClose }: { job: Job; onClose: () => void }) {
+function JobBody({ job, drivers, config, onClose }: { job: Job; drivers: DriverInfo[]; config: Config; onClose: () => void }) {
+  const queryClient = useQueryClient()
   const [media, setMedia] = useState<HTMLMediaElement | null>(null)
   const [playing, setPlaying] = useState(-1) // cue under the playhead
-  const active = job.status === 'running' || job.status === 'queued'
-  const step = (name: Step['name']) => job.steps.find((s) => s.name === name)
-  // a step's output may be on disk from an earlier run even while the step is stale or failed
-  const output = (name: Step['name']) => {
-    const s = step(name)
-    return s?.exists && s.status !== 'running' ? s.output : undefined
-  }
-  const viSrt = job.start === 'vi_srt' ? job.source : output('translate')
-  const srt = job.start === 'srt' ? job.source : output('transcribe')
-  const dubbed = output('mux')
-  const voice = output('dub')
-  // what the dub step's voice preview clones from and reads: its video (2nd input) and the translation
-  const previewContext: PreviewContext = {
-    media: step('dub')?.inputs[1] ?? (job.start === 'media' ? job.source : undefined),
-    subtitles: viSrt,
-  }
-  // what can be played, best first; the original stays reachable to check a translation against
-  const sources = [
-    dubbed && { label: 'Bản lồng tiếng', path: dubbed },
-    job.start === 'media' && { label: 'Bản gốc', path: job.source },
-    !dubbed && voice && { label: 'Giọng đọc', path: voice },
-  ].filter((x) => !!x)
+  const [confirming, setConfirming] = useState<RerunArgs>()
+  const active = isActive(job.status)
+  const statuses = new Set(job.tasks.map((t) => t.status))
+  const updated = (data: Job) => putJob(queryClient, data)
+  const onError = (error: unknown) => toast.error(errorMessage(error))
+
+  // which language the player and the editor show: a translation, or the original
+  const views = [...job.langs.filter((l) => slotArtifact(job, `transcript.${l}`)), 'src']
+  const [chosen, setLang] = useState<string>()
+  const lang = chosen && views.includes(chosen) ? chosen : views.find((v) => slotArtifact(job, v === 'src' ? 'transcript.src' : `transcript.${v}`))
+  const target = lang && lang !== 'src' ? lang : job.langs[0]
 
   const rerun = useMutation({
-    mutationFn: async (args: { name: Step['name']; params?: StepOptions; cascade?: boolean }) =>
-      (await runStep({ path: { job_id: job.id, name: args.name }, body: { params: args.params, cascade: args.cascade ?? true } })).data,
-    onError: (error) => toast.error(errorMessage(error)),
+    mutationFn: async ({ task, mode, params, driver, confirm }: RerunArgs) =>
+      (await rerunTask({ path: { task_id: task.id }, body: { mode, params, driver, confirm: !!confirm } })).data,
+    onSuccess: updated,
+    onError: (error, args) => (needsConfirm(error) ? setConfirming(args) : onError(error)),
   })
-  const cancel = useMutation({
-    mutationFn: async () => (await cancelJob({ path: { job_id: job.id } })).data,
-    onError: (error) => toast.error(errorMessage(error)),
-  })
+  const cancel = useJobAction(job.id, cancelJob)
+  const resume = useJobAction(job.id, resumeJob)
+  const refresh = useJobAction(job.id, refreshJob)
   const remove = useMutation({
     mutationFn: async () => deleteJob({ path: { job_id: job.id } }),
-    onSuccess: onClose,
-    onError: (error) => toast.error(errorMessage(error)),
+    onSuccess: () => {
+      queryClient.setQueryData<Job[]>(['jobs'], (jobs = []) => jobs.filter((j) => j.id !== job.id))
+      onClose()
+    },
+    onError,
   })
+
+  const task = (key: string) => job.tasks.find((t) => t.key === key)
+  const onSaved = ({ texts, sources, source_text_changed }: TranscriptSaved) => {
+    const saved = `Đã lưu ${texts + sources} câu`
+    const translate = lang && lang !== 'src' ? task(`translate@${lang}`) : undefined
+    if (source_text_changed && translate && translate.status !== 'skipped') {
+      return toast.success(saved, {
+        description: 'Phụ đề gốc đã đổi: dịch lại để bản dịch theo bản gốc mới.',
+        action: { label: 'Dịch lại', onClick: () => rerun.mutate({ task: translate, mode: 'cascade' }) },
+        duration: 10000,
+      })
+    }
+    if (texts + sources === 0) return toast.success(saved)
+    toast.success(saved, {
+      description: 'Các bước phía sau (lồng tiếng, ghép video) cần chạy lại theo bản sửa — câu không đổi lấy từ cache.',
+      action: { label: 'Cập nhật phía sau', onClick: () => refresh.mutate() },
+      duration: 10000,
+    })
+  }
+  const draft = useSubtitleDraft(job.id, lang, onSaved)
+
+  // what can be played for the language shown, best first; the original stays reachable
+  const out = target ? slotArtifact(job, `media.out.${target}`) : undefined
+  const voice = target ? slotArtifact(job, `audio.dub.${target}`) : undefined
+  const original = slotArtifact(job, 'media.video')
+  const sources = [
+    out && { label: 'Bản lồng tiếng', id: out.id, path: out.path },
+    original && { label: 'Bản gốc', id: original.id, path: original.path },
+    !out && voice && { label: 'Giọng đọc', id: voice.id, path: voice.path },
+  ].filter((x) => !!x)
+  const exported = job.tasks.flatMap((t) => t.exports)
+  const skipped = job.tasks.filter((t) => t.status === 'skipped' && t.message && !t.message.includes('nguồn'))
 
   const seek = (seconds: number) => {
     if (!media) return
     media.currentTime = seconds
     void media.play()
   }
-  const onSubtitlesSaved = ({ texts: changed, sources }: SubtitlesSaved) => {
-    const saved = `Đã lưu ${changed + sources} câu`
-    const translate = step('translate')
-    const dub = step('dub')
-    // the original changed: the translation (and what follows it) is now out of date
-    if (sources && translate && viSrt) {
-      return toast.success(saved, {
-        description: 'Dịch lại để bản dịch theo phụ đề gốc mới — các câu tiếng Việt đã sửa tay sẽ bị ghi đè.',
-        action: { label: 'Dịch lại', onClick: () => rerun.mutate({ name: 'translate' }) },
-        duration: 10000,
-      })
-    }
-    if (!changed || !dub || !viSrt) return toast.success(saved)
-    toast.success(saved, {
-      description: 'Lồng tiếng lại để giọng đọc khớp bản sửa (câu không đổi lấy từ cache, nên nhanh).',
-      action: { label: 'Lồng tiếng lại', onClick: () => rerun.mutate({ name: 'dub' }) },
-      duration: 10000,
-    })
-  }
-  // the translation with its original next to it, or the original alone until it is translated
-  const editing = viSrt ?? srt
-  const draft = useSubtitleDraft(editing, onSubtitlesSaved)
 
   return (
     <>
       <SheetHeader className="border-b">
-        <SheetTitle className="pr-8 break-all">{fileName(job.source)}</SheetTitle>
+        <SheetTitle className="pr-8 break-all">{job.title}</SheetTitle>
         <SheetDescription className="font-mono text-xs break-all">{job.source}</SheetDescription>
         <div className="flex flex-wrap gap-2 pt-2">
-          <Button size="sm" variant="outline" onClick={() => reveal({ body: { path: (dubbed ?? job.source) } })}>
-            <FolderSearch /> Mở thư mục
-          </Button>
+          {(exported[0] || !job.source.startsWith('http')) && (
+            <Button size="sm" variant="outline" onClick={() => reveal({ body: { path: exported.at(-1) ?? job.source } })}>
+              <FolderSearch /> Mở thư mục
+            </Button>
+          )}
           {active && (
             <Button size="sm" variant="outline" disabled={cancel.isPending} onClick={() => cancel.mutate()}>
               <Square /> Dừng
             </Button>
           )}
+          {(statuses.has('waiting_review') || statuses.has('cancelled') || statuses.has('failed')) && (
+            <Button size="sm" disabled={resume.isPending} onClick={() => resume.mutate()}>
+              <StepForward /> Tiếp tục
+            </Button>
+          )}
+          {statuses.has('stale') && (
+            <Button size="sm" variant="outline" disabled={refresh.isPending} onClick={() => refresh.mutate()}
+              title="Chạy lại các bước có đầu vào đã đổi">
+              <RotateCcw /> Cập nhật phía sau
+            </Button>
+          )}
+          {job.langs.length > 0 && <AddLanguage job={job} config={config} onAdded={updated} />}
           <Button size="sm" variant="ghost" className="text-muted-foreground" disabled={job.status === 'running'}
-            onClick={() => remove.mutate()} title="Chỉ xoá khỏi danh sách, không xoá file">
-            <Trash2 /> Xoá khỏi danh sách
+            onClick={() => remove.mutate()} title="Xoá việc và các file trung gian; file đã xuất cạnh video được giữ">
+            <Trash2 /> Xoá
           </Button>
         </div>
       </SheetHeader>
 
       <div className="grid gap-6 p-4">
+        {statuses.has('waiting_review') && (
+          <p className="rounded-md border border-violet-300 bg-violet-50 p-3 text-sm text-violet-900 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-200">
+            Việc đang chờ bạn: xem lại bản dịch bên dưới, nghe thử giọng ở bước Lồng tiếng (Chạy lại…), rồi bấm <b>Tiếp tục</b>.
+          </p>
+        )}
         <ol className="grid gap-3">
-          {job.steps.map((s, i) => (
-            <StepRow key={s.id} job={job} step={s} last={i === job.steps.length - 1} pending={rerun.isPending} context={previewContext}
-              onRun={(params, cascade) => rerun.mutate({ name: s.name, params, cascade })} />
+          {job.tasks.filter((t) => t.status !== 'skipped').map((t, i, list) => (
+            <TaskRow key={t.id} task={t} last={i === list.length - 1} drivers={driversOf(drivers, t.stage)}
+              pending={rerun.isPending} onRerun={(args) => rerun.mutate({ task: t, ...args })} />
           ))}
         </ol>
+        {skipped.length > 0 && (
+          <ul className="grid gap-0.5 text-xs text-muted-foreground">
+            {skipped.map((t) => <li key={t.id}>Bỏ qua {taskLabel(t)}: {t.message}</li>)}
+          </ul>
+        )}
 
+        {views.length > 1 && (
+          <div className="flex items-center gap-1">
+            <Languages className="mr-1 size-4 text-muted-foreground" />
+            {views.map((v) => (
+              <Button key={v} size="sm" variant={v === lang ? 'secondary' : 'ghost'} onClick={() => setLang(v)}>
+                {v === 'src' ? 'Bản gốc' : config.languages.find((l) => l.code === v)?.name ?? v}
+              </Button>
+            ))}
+          </div>
+        )}
         {sources.length ? (
-          <Preview sources={sources} draft={draft} media={media} onMedia={setMedia} onActive={setPlaying} />
+          <Preview key={lang} sources={sources} draft={draft} media={media} onMedia={setMedia} onActive={setPlaying} />
         ) : (
           <p className="text-sm text-muted-foreground">Chưa có video hoặc audio để xem.</p>
         )}
-        {editing && <SubtitleEditor draft={draft} active={playing} onSeek={seek} />}
+        {lang && <SubtitleEditor draft={draft} active={playing} onSeek={seek} />}
       </div>
+
+      <Dialog open={!!confirming} onOpenChange={(open) => !open && setConfirming(undefined)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Thay bản đã sửa tay?</DialogTitle>
+            <DialogDescription>
+              Chạy lại {confirming && taskLabel(confirming.task)} sẽ tạo kết quả mới thay cho phụ đề bạn đã sửa.
+              Bản sửa vẫn nằm trong lịch sử các lần chạy.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirming(undefined)}>Huỷ</Button>
+            <Button onClick={() => { rerun.mutate({ ...confirming!, confirm: true }); setConfirming(undefined) }}>
+              Vẫn chạy lại
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
+  )
+}
+
+/** POST /jobs/{id}/<action>: the job comes back and replaces the cached one. */
+function useJobAction(jobId: number, action: typeof cancelJob) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => (await action({ path: { job_id: jobId } })).data,
+    onSuccess: (job: Job) => putJob(queryClient, job),
+    onError: (error) => toast.error(errorMessage(error)),
+  })
+}
+
+function AddLanguage({ job, config, onAdded }: { job: Job; config: Config; onAdded: (job: Job) => void }) {
+  const [open, setOpen] = useState(false)
+  const add = useMutation({
+    mutationFn: async (lang: string) => (await addLangs({ path: { job_id: job.id }, body: { langs: [lang] } })).data,
+    onSuccess: (data) => { onAdded(data); setOpen(false) },
+    onError: (error) => toast.error(errorMessage(error)),
+  })
+  const left = config.languages.filter((l) => !job.langs.includes(l.code))
+  if (!left.length) return null
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button size="sm" variant="outline"><Plus /> Ngôn ngữ</Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="grid w-64 gap-2">
+        <p className="text-sm font-medium">Dịch thêm sang</p>
+        <p className="text-xs text-muted-foreground">Dùng lại phụ đề gốc đã có, chỉ chạy các bước của ngôn ngữ mới.</p>
+        <div className="flex flex-wrap gap-1.5">
+          {left.map((l) => (
+            <Button key={l.code} size="sm" variant="outline" disabled={add.isPending} onClick={() => add.mutate(l.code)}>
+              {l.name}
+            </Button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -141,14 +252,14 @@ const escapeVtt = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&
 
 /** Player showing the subtitle draft as it is typed (unsaved edits included), and reporting the cue under the playhead. */
 function Preview({ sources, draft, media, onMedia, onActive }: {
-  sources: { label: string; path: string }[]
+  sources: { label: string; id: number; path: string }[]
   draft: SubtitleDraft
   media: HTMLMediaElement | null
   onMedia: (el: HTMLMediaElement | null) => void
   onActive: (index: number) => void
 }) {
-  const [choice, setChoice] = useState(sources[0].path)
-  const src = sources.find((s) => s.path === choice)?.path ?? sources[0].path
+  const [choice, setChoice] = useState(sources[0].id)
+  const source = sources.find((s) => s.id === choice) ?? sources[0]
   const resume = useRef(0) // keep the position when switching between sources
   const { rows } = draft
   const latestRows = useRef(rows)
@@ -160,7 +271,7 @@ function Preview({ sources, draft, media, onMedia, onActive }: {
   // a script-made text track instead of <track src=…>: its cue texts can follow the editor live
   useEffect(() => {
     if (!(media instanceof HTMLVideoElement) || !timing) return
-    const track = media.addTextTrack('subtitles', 'Tiếng Việt', 'vi')
+    const track = media.addTextTrack('subtitles', 'Phụ đề', 'vi')
     vtt.current = latestRows.current.map((r) => new VTTCue(r.start, r.end, escapeVtt(r.text)))
     vtt.current.forEach((c) => track.addCue(c))
     track.mode = 'showing'
@@ -183,158 +294,203 @@ function Preview({ sources, draft, media, onMedia, onActive }: {
     onActive(latestRows.current.findIndex((r) => r.start <= t && t < r.end))
   }
   const props = {
-    ref: onMedia, src: mediaUrl(src), controls: true, onTimeUpdate,
+    ref: onMedia, src: artifactUrl(source.id), controls: true, onTimeUpdate,
     onLoadedMetadata: (e: SyntheticEvent<HTMLMediaElement>) => { e.currentTarget.currentTime = resume.current },
   }
 
   return (
     <div className="grid gap-2">
-      {sources.length > 1 && (
-        <div className="flex gap-1">
-          {sources.map((s) => (
-            <Button key={s.path} size="sm" variant={s.path === src ? 'secondary' : 'ghost'} onClick={() => setChoice(s.path)}>
-              {s.label}
-            </Button>
-          ))}
-        </div>
-      )}
-      {VIDEO.test(src)
-        ? <video key={src} {...props} className="aspect-video w-full rounded-lg bg-black" />
-        : <audio key={src} {...props} className="w-full" />}
-      {/\.mkv$/i.test(src) && (
+      <div className="flex items-center gap-1">
+        {sources.length > 1 && sources.map((s) => (
+          <Button key={s.id} size="sm" variant={s.id === source.id ? 'secondary' : 'ghost'} onClick={() => setChoice(s.id)}>
+            {s.label}
+          </Button>
+        ))}
+        <Button asChild size="sm" variant="ghost" className="ml-auto text-muted-foreground">
+          <a href={downloadUrl(source.id)} download><Download /> Tải về</a>
+        </Button>
+      </div>
+      {VIDEO.test(source.path)
+        ? <video key={source.id} {...props} className="aspect-video w-full rounded-lg bg-black" />
+        : <audio key={source.id} {...props} className="w-full" />}
+      {/\.mkv$/i.test(source.path) && (
         <p className="text-xs text-muted-foreground">Trình duyệt có thể không phát được .mkv — mở bằng trình phát video.</p>
       )}
     </div>
   )
 }
 
-function StepRow({ job, step, last, pending, context, onRun }: {
-  job: Job
-  step: Step
+function TaskRow({ task, last, drivers, pending, onRerun }: {
+  task: Task
   last: boolean
+  drivers: DriverInfo[]
   pending: boolean
-  context: PreviewContext
-  onRun: (params?: StepOptions, cascade?: boolean) => void
+  onRerun: (args: Omit<RerunArgs, 'task'>) => void
 }) {
-  const { icon: Icon, className } = STATUS_STYLE[step.status]
-  const percent = step.total ? Math.round((100 * (step.done ?? 0)) / step.total) : null
-  const took = step.started_at && step.finished_at ? step.finished_at - step.started_at : null
-  const canRun = step.status !== 'running' && step.status !== 'queued'
-  const hasLog = step.attempt > 0
-  // a failure opens the log: the traceback is the first thing to look at
-  const [showLog, setShowLog] = useState(step.status === 'failed')
-  const [prevStatus, setPrevStatus] = useState(step.status)
-  if (prevStatus !== step.status) {
-    setPrevStatus(step.status)
-    if (step.status === 'failed') setShowLog(true)
+  const { icon: Icon, className } = STATUS_STYLE[task.status]
+  const percent = task.total ? Math.round((100 * (task.done ?? 0)) / task.total) : null
+  const busy = task.status === 'running' || task.status === 'queued'
+  const driver = drivers.find((d) => d.name === task.driver)
+  const code = task.message?.match(SYSTEM_ERROR)?.[1]
+  // a failure opens the log: what went wrong is the first thing to look at
+  const [showLog, setShowLog] = useState(task.status === 'failed')
+  const [prevStatus, setPrevStatus] = useState(task.status)
+  if (prevStatus !== task.status) {
+    setPrevStatus(task.status)
+    if (task.status === 'failed') setShowLog(true)
   }
 
   return (
     <li className="grid grid-cols-[2rem_1fr] gap-3">
       <div className="flex flex-col items-center">
         <span className={cn('flex size-8 items-center justify-center rounded-full border', className)}>
-          <Icon className={cn('size-4', step.status === 'running' && 'animate-spin')} />
+          <Icon className={cn('size-4', task.status === 'running' && 'animate-spin')} />
         </span>
         {!last && <span className="mt-1 w-px flex-1 bg-border" />}
       </div>
       <div className="grid min-w-0 gap-1 pb-2">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="font-medium">{STEP_LABELS[step.name]}</span>
+          <span className="font-medium">{taskLabel(task)}</span>
           <span className="text-xs text-muted-foreground">
-            {STATUS_LABELS[step.status]}
-            {step.status === 'running' && percent !== null && ` · ${step.done}/${step.total}`}
-            {took !== null && step.status === 'done' && ` · ${took.toFixed(1)}s`}
-            {step.attempt > 1 && ` · lần ${step.attempt}`}
+            {driver?.title ?? task.driver} · {STATUS_LABELS[task.status]}
+            {task.status === 'running' && percent !== null && ` · ${task.done}/${task.total}`}
+            {task.retries > 0 && ` · thử lại ${task.retries}`}
           </span>
           <div className="ml-auto flex gap-1">
-            {hasLog && (
+            {(task.current_attempt || task.status !== 'blocked') && task.stage !== 'source' && (
               <Button size="sm" variant={showLog ? 'secondary' : 'ghost'} onClick={() => setShowLog(!showLog)}
-                title="Xem log của bước này">
+                title="Nhật ký của bước này">
                 <ScrollText /> Log
               </Button>
             )}
-            {canRun && (<>
-              {(step.status === 'failed' || step.status === 'stale' || step.status === 'cancelled') && (
-                <Button size="sm" variant="outline" disabled={pending} onClick={() => onRun()}>
-                  <RotateCcw /> {step.status === 'failed' ? 'Thử lại' : 'Chạy'}
-                </Button>
-              )}
-              <RerunPopover step={step} pending={pending} context={context} onRun={onRun} />
-            </>)}
+            {!busy && (task.status === 'failed' || task.status === 'stale' || task.status === 'cancelled') && (
+              <Button size="sm" variant="outline" disabled={pending} onClick={() => onRerun({ mode: 'cascade' })}>
+                <RotateCcw /> {task.status === 'failed' ? 'Thử lại' : 'Chạy'}
+              </Button>
+            )}
+            {!busy && task.stage !== 'source' && (
+              <RerunPopover task={task} drivers={drivers} pending={pending} onRun={onRerun} />
+            )}
           </div>
         </div>
-        {step.status === 'running' && percent !== null && (
+        {task.status === 'running' && percent !== null && (
           <div className="h-1.5 overflow-hidden rounded-full bg-muted">
             <div className="h-full bg-sky-500 transition-[width]" style={{ width: `${percent}%` }} />
           </div>
         )}
-        {step.error && <pre className="overflow-x-auto rounded-md bg-red-50 p-2 text-xs whitespace-pre-wrap text-red-800 dark:bg-red-950/40 dark:text-red-200">{step.error}</pre>}
-        {step.message && <p className="text-xs text-muted-foreground">{step.message}</p>}
-        {hasLog && showLog && <LogPanel job={job} step={step} />}
-        <p className="truncate font-mono text-xs text-muted-foreground/80" title={step.output}>→ {fileName(step.output)}</p>
+        {task.message && (
+          <p className={cn('text-xs', task.status === 'failed' ? 'text-red-700 dark:text-red-300' : 'text-muted-foreground')}>
+            {task.message}
+            {code && (
+              <a className="ml-2 inline-flex items-center gap-0.5 underline" href={`/api/admin/traces/${code}`} target="_blank" rel="noreferrer">
+                log hệ thống <ExternalLink className="size-3" />
+              </a>
+            )}
+          </p>
+        )}
+        {showLog && <LogPanel task={task} />}
+        {task.stage !== 'source' && !!task.artifacts?.length && (
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+            {(task.artifacts ?? []).map((a) => (
+              <a key={a.id} href={downloadUrl(a.id)} download title={task.exports.length ? `Đã xuất: ${task.exports.join(', ')}` : 'Tải về'}
+                className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground/80 hover:text-foreground">
+                <Download className="size-3" /> {a.download_name}
+              </a>
+            ))}
+          </div>
+        )}
       </div>
     </li>
   )
 }
 
-/** The step's log, following new lines while scrolled to the bottom. */
-function LogPanel({ job, step }: { job: Job; step: Step }) {
-  const { data, isPending, error } = useStepLog(job, step, true)
-  const ref = useRef<HTMLPreElement>(null)
+const time = (ts: number) => new Date(ts * 1000).toLocaleTimeString()
+const LEVEL_STYLE: Record<string, string> = { warn: 'text-amber-300', error: 'text-red-300' }
+
+/** The pipeline log of the task, one attempt at a time (newest first), following new lines. */
+function LogPanel({ task }: { task: Task }) {
+  const attempts = useQuery({
+    queryKey: ['attempts', task.id, task.current_attempt, task.status],
+    queryFn: async () => (await listAttempts({ path: { task_id: task.id } })).data,
+  })
+  const [chosen, setChosen] = useState<number>()
+  const attempt = attempts.data?.find((a) => a.id === chosen) ?? attempts.data?.[0]
+  const events = useAttemptEvents(attempt?.id)
+  const ref = useRef<HTMLDivElement>(null)
   const atBottom = useRef(true)
   useEffect(() => {
     const el = ref.current
     if (el && atBottom.current) el.scrollTop = el.scrollHeight
-  }, [data?.text])
-  const copy = () => {
-    if (!data) return
-    navigator.clipboard.writeText(data.text).then(() => toast.success('Đã copy log'), () => toast.error('Không copy được'))
-  }
+  }, [events.data])
 
+  if (attempts.isLoading) return <Loader2 className="size-4 animate-spin text-muted-foreground" />
+  if (!attempt) return <p className="text-xs text-muted-foreground">Chưa chạy lần nào.</p>
+  const ORIGIN: Record<string, string> = { driver: '', cache: ' · dùng lại', human: ' · sửa tay' }
   return (
-    <div className="relative">
-      <pre ref={ref}
+    <div className="grid gap-1">
+      <div className="flex flex-wrap items-center gap-1">
+        {attempts.data!.slice(0, 6).map((a) => (
+          <Button key={a.id} size="sm" variant={a.id === attempt.id ? 'secondary' : 'ghost'} className="h-6 px-2 text-xs"
+            onClick={() => setChosen(a.id)}>
+            Lần {a.n}{ORIGIN[a.origin]}
+          </Button>
+        ))}
+        <a className="ml-auto inline-flex items-center gap-0.5 text-xs text-muted-foreground underline hover:text-foreground"
+          href={`/api/attempts/${attempt.id}/system`} target="_blank" rel="noreferrer">
+          Log hệ thống <ExternalLink className="size-3" />
+        </a>
+      </div>
+      <div ref={ref}
         onScroll={(e) => {
           const el = e.currentTarget
           atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24
         }}
-        className="max-h-64 overflow-auto rounded-md bg-zinc-950 p-2 pr-10 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all text-zinc-200">
-        {error ? errorMessage(error) : isPending ? 'Đang tải log…' : data.offset > 0 ? `[...]\n${data.text}` : data.text || 'Chưa có log.'}
-      </pre>
-      {data?.text && (
-        <Button size="icon" variant="ghost" className="absolute top-1 right-1 size-7 text-zinc-400 hover:text-zinc-100"
-          onClick={copy} title="Copy log">
-          <Copy />
-        </Button>
-      )}
+        className="max-h-64 overflow-auto rounded-md bg-zinc-950 p-2 font-mono text-[11px] leading-relaxed text-zinc-200">
+        {events.isLoading ? 'Đang tải…' : events.data?.length ? events.data.map((e) => (
+          <div key={e.id} className={cn('break-words', LEVEL_STYLE[e.level])}>
+            <span className="text-zinc-500">{time(e.ts)} </span>{e.message}
+          </div>
+        )) : <span className="text-zinc-500">{attempt.origin === 'human' ? 'Bản sửa tay.' : 'Chưa có dòng nào.'}</span>}
+      </div>
     </div>
   )
 }
 
-function RerunPopover({ step, pending, context, onRun }: {
-  step: Step
+function RerunPopover({ task, drivers, pending, onRun }: {
+  task: Task
+  drivers: DriverInfo[]
   pending: boolean
-  context: PreviewContext
-  onRun: (params?: StepOptions, cascade?: boolean) => void
+  onRun: (args: Omit<RerunArgs, 'task'>) => void
 }) {
   const [open, setOpen] = useState(false)
-  const [params, setParams] = useState<StepOptions>(step.params as StepOptions)
+  const [driverName, setDriverName] = useState(task.driver)
+  const [params, setParams] = useState<Params>(task.params)
   const [cascade, setCascade] = useState(true)
+  const driver = drivers.find((d) => d.name === driverName)
+  const reset = () => { setDriverName(task.driver); setParams(task.params) }
   return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) setParams(step.params as StepOptions) }}>
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) reset() }}>
       <PopoverTrigger asChild>
-        <Button size="sm" variant="ghost">
-          <Play /> Chạy lại…
-        </Button>
+        <Button size="sm" variant="ghost"><Play /> Chạy lại…</Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="grid w-80 gap-4">
-        <p className="text-sm font-medium">Chạy lại bước {STEP_LABELS[step.name]}</p>
-        <StepParams name={step.name} value={params} onChange={setParams} context={context} />
-        {step.name !== 'mux' && (
-          <SwitchField label="Chạy lại các bước sau" hint="Tắt nếu chỉ muốn xem kết quả bước này trước"
+      <PopoverContent align="end" className="grid max-h-[80vh] w-80 gap-4 overflow-y-auto">
+        <p className="text-sm font-medium">Chạy lại {taskLabel(task)}</p>
+        {drivers.length > 1 && (
+          <DriverSelect drivers={drivers} value={driverName}
+            onChange={(name) => { setDriverName(name); setParams(name === task.driver ? task.params : {}) }} />
+        )}
+        {driver && (
+          <DriverParams driver={driver} value={params} onChange={setParams}
+            context={{ job_id: task.job_id, lang: task.lang ?? 'vi' }} />
+        )}
+        {task.stage !== 'mux' && (
+          <SwitchField label="Chạy lại các bước sau" hint="Tắt để xem kết quả bước này trước; các bước sau thành 'Cần chạy lại'"
             checked={cascade} onChange={setCascade} />
         )}
-        <Button disabled={pending} onClick={() => { onRun(params, cascade); setOpen(false) }}>
+        <Button disabled={pending || !!driver?.available} onClick={() => {
+          onRun({ mode: cascade ? 'cascade' : 'only', params, driver: driverName !== task.driver ? driverName : undefined })
+          setOpen(false)
+        }}>
           {pending ? <Loader2 className="animate-spin" /> : <Play />} Chạy
         </Button>
       </PopoverContent>

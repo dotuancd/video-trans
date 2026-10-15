@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type ServerSentEventsResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddJobsData, AddJobsErrors, AddJobsResponses, CancelJobData, CancelJobErrors, CancelJobResponses, DeleteJobData, DeleteJobErrors, DeleteJobResponses, EventsData, EventsResponses, GetConfigData, GetConfigResponses, GetJobData, GetJobErrors, GetJobResponses, GetStepLogData, GetStepLogErrors, GetStepLogResponses, GetSubtitlesData, GetSubtitlesErrors, GetSubtitlesResponses, ListDirData, ListDirErrors, ListDirResponses, ListJobsData, ListJobsResponses, ListVoicesData, ListVoicesResponses, MediaData, MediaErrors, MediaResponses, PreviewVoiceData, PreviewVoiceErrors, PreviewVoiceResponses, RevealData, RevealErrors, RevealResponses, RunStepData, RunStepErrors, RunStepResponses, SaveSubtitlesData, SaveSubtitlesErrors, SaveSubtitlesResponses, SubtitlesVttData, SubtitlesVttErrors, SubtitlesVttResponses, UploadData, UploadErrors, UploadResponses, UploadVoiceData, UploadVoiceErrors, UploadVoiceResponses } from './types.gen';
+import type { AddLangsData, AddLangsErrors, AddLangsResponses, ArtifactVttData, ArtifactVttErrors, ArtifactVttResponses, AttemptEventsData, AttemptEventsErrors, AttemptEventsResponses, AttemptSystemLogData, AttemptSystemLogErrors, AttemptSystemLogResponses, CancelJobData, CancelJobErrors, CancelJobResponses, CreateJobsData, CreateJobsErrors, CreateJobsResponses, DeleteJobData, DeleteJobErrors, DeleteJobResponses, DownloadArtifactData, DownloadArtifactErrors, DownloadArtifactResponses, EventsData, EventsResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetConfigData, GetConfigResponses, GetJobData, GetJobErrors, GetJobResponses, GetTranscriptData, GetTranscriptErrors, GetTranscriptResponses, ListAttemptsData, ListAttemptsErrors, ListAttemptsResponses, ListDirData, ListDirErrors, ListDirResponses, ListDriversData, ListDriversResponses, ListJobsData, ListJobsResponses, ListTemplatesData, ListTemplatesResponses, ListVoicesData, ListVoicesResponses, PreviewVoiceData, PreviewVoiceErrors, PreviewVoiceResponses, RefreshJobData, RefreshJobErrors, RefreshJobResponses, RerunTaskData, RerunTaskErrors, RerunTaskResponses, ResumeJobData, ResumeJobErrors, ResumeJobResponses, RevealData, RevealErrors, RevealResponses, SaveTranscriptData, SaveTranscriptErrors, SaveTranscriptResponses, TraceData, TraceErrors, TraceResponses, UploadData, UploadErrors, UploadResponses, UploadVoiceData, UploadVoiceErrors, UploadVoiceResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -19,24 +19,14 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
 };
 
 /**
- * Get Config
- */
-export const getConfig = <ThrowOnError extends boolean = true>(options?: Options<GetConfigData, ThrowOnError>): RequestResult<GetConfigResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetConfigResponses, unknown, ThrowOnError>({ url: '/api/config', ...options });
-
-/**
- * List Dir
- */
-export const listDir = <ThrowOnError extends boolean = true>(options?: Options<ListDirData, ThrowOnError>): RequestResult<ListDirResponses, ListDirErrors, ThrowOnError> => (options?.client ?? client).get<ListDirResponses, ListDirErrors, ThrowOnError>({ url: '/api/fs', ...options });
-
-/**
  * List Jobs
  */
 export const listJobs = <ThrowOnError extends boolean = true>(options?: Options<ListJobsData, ThrowOnError>): RequestResult<ListJobsResponses, unknown, ThrowOnError> => (options?.client ?? client).get<ListJobsResponses, unknown, ThrowOnError>({ url: '/api/jobs', ...options });
 
 /**
- * Add Jobs
+ * Create Jobs
  */
-export const addJobs = <ThrowOnError extends boolean = true>(options: Options<AddJobsData, ThrowOnError>): RequestResult<AddJobsResponses, AddJobsErrors, ThrowOnError> => (options.client ?? client).post<AddJobsResponses, AddJobsErrors, ThrowOnError>({
+export const createJobs = <ThrowOnError extends boolean = true>(options: Options<CreateJobsData, ThrowOnError>): RequestResult<CreateJobsResponses, CreateJobsErrors, ThrowOnError> => (options.client ?? client).post<CreateJobsResponses, CreateJobsErrors, ThrowOnError>({
     url: '/api/jobs',
     ...options,
     headers: {
@@ -47,6 +37,8 @@ export const addJobs = <ThrowOnError extends boolean = true>(options: Options<Ad
 
 /**
  * Delete Job
+ *
+ * Removes the job and its workspace; exported files stay.
  */
 export const deleteJob = <ThrowOnError extends boolean = true>(options: Options<DeleteJobData, ThrowOnError>): RequestResult<DeleteJobResponses, DeleteJobErrors, ThrowOnError> => (options.client ?? client).delete<DeleteJobResponses, DeleteJobErrors, ThrowOnError>({ url: '/api/jobs/{job_id}', ...options });
 
@@ -56,21 +48,16 @@ export const deleteJob = <ThrowOnError extends boolean = true>(options: Options<
 export const getJob = <ThrowOnError extends boolean = true>(options: Options<GetJobData, ThrowOnError>): RequestResult<GetJobResponses, GetJobErrors, ThrowOnError> => (options.client ?? client).get<GetJobResponses, GetJobErrors, ThrowOnError>({ url: '/api/jobs/{job_id}', ...options });
 
 /**
- * Run Step
+ * Add Langs
  */
-export const runStep = <ThrowOnError extends boolean = true>(options: Options<RunStepData, ThrowOnError>): RequestResult<RunStepResponses, RunStepErrors, ThrowOnError> => (options.client ?? client).post<RunStepResponses, RunStepErrors, ThrowOnError>({
-    url: '/api/jobs/{job_id}/steps/{name}/run',
+export const addLangs = <ThrowOnError extends boolean = true>(options: Options<AddLangsData, ThrowOnError>): RequestResult<AddLangsResponses, AddLangsErrors, ThrowOnError> => (options.client ?? client).post<AddLangsResponses, AddLangsErrors, ThrowOnError>({
+    url: '/api/jobs/{job_id}/langs',
     ...options,
     headers: {
         'Content-Type': 'application/json',
         ...options.headers
     }
 });
-
-/**
- * Get Step Log
- */
-export const getStepLog = <ThrowOnError extends boolean = true>(options: Options<GetStepLogData, ThrowOnError>): RequestResult<GetStepLogResponses, GetStepLogErrors, ThrowOnError> => (options.client ?? client).get<GetStepLogResponses, GetStepLogErrors, ThrowOnError>({ url: '/api/jobs/{job_id}/steps/{name}/log', ...options });
 
 /**
  * Cancel Job
@@ -78,25 +65,24 @@ export const getStepLog = <ThrowOnError extends boolean = true>(options: Options
 export const cancelJob = <ThrowOnError extends boolean = true>(options: Options<CancelJobData, ThrowOnError>): RequestResult<CancelJobResponses, CancelJobErrors, ThrowOnError> => (options.client ?? client).post<CancelJobResponses, CancelJobErrors, ThrowOnError>({ url: '/api/jobs/{job_id}/cancel', ...options });
 
 /**
- * Events
+ * Resume Job
+ *
+ * Past a review gate, and again from stopped or failed steps.
  */
-export const events = <ThrowOnError extends boolean = true>(options?: Options<EventsData, ThrowOnError, unknown>): Promise<ServerSentEventsResult<EventsResponses>> => (options?.client ?? client).sse.get<EventsResponses, unknown, ThrowOnError>({ url: '/api/events', ...options });
+export const resumeJob = <ThrowOnError extends boolean = true>(options: Options<ResumeJobData, ThrowOnError>): RequestResult<ResumeJobResponses, ResumeJobErrors, ThrowOnError> => (options.client ?? client).post<ResumeJobResponses, ResumeJobErrors, ThrowOnError>({ url: '/api/jobs/{job_id}/resume', ...options });
 
 /**
- * Get Subtitles
+ * Refresh Job
  *
- * A .vi.srt with the original line of each cue next to it, or an original .srt alone.
+ * Run the steps whose input changed (stale) again.
  */
-export const getSubtitles = <ThrowOnError extends boolean = true>(options: Options<GetSubtitlesData, ThrowOnError>): RequestResult<GetSubtitlesResponses, GetSubtitlesErrors, ThrowOnError> => (options.client ?? client).get<GetSubtitlesResponses, GetSubtitlesErrors, ThrowOnError>({ url: '/api/subtitles', ...options });
+export const refreshJob = <ThrowOnError extends boolean = true>(options: Options<RefreshJobData, ThrowOnError>): RequestResult<RefreshJobResponses, RefreshJobErrors, ThrowOnError> => (options.client ?? client).post<RefreshJobResponses, RefreshJobErrors, ThrowOnError>({ url: '/api/jobs/{job_id}/refresh', ...options });
 
 /**
- * Save Subtitles
- *
- * Rewrite the cues (texts, and timings when cues were merged or split), and the original .srt with
- * the same timings when every cue carries its `source`.
+ * Rerun Task
  */
-export const saveSubtitles = <ThrowOnError extends boolean = true>(options: Options<SaveSubtitlesData, ThrowOnError>): RequestResult<SaveSubtitlesResponses, SaveSubtitlesErrors, ThrowOnError> => (options.client ?? client).put<SaveSubtitlesResponses, SaveSubtitlesErrors, ThrowOnError>({
-    url: '/api/subtitles',
+export const rerunTask = <ThrowOnError extends boolean = true>(options: Options<RerunTaskData, ThrowOnError>): RequestResult<RerunTaskResponses, RerunTaskErrors, ThrowOnError> => (options.client ?? client).post<RerunTaskResponses, RerunTaskErrors, ThrowOnError>({
+    url: '/api/tasks/{task_id}/rerun',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -105,15 +91,77 @@ export const saveSubtitles = <ThrowOnError extends boolean = true>(options: Opti
 });
 
 /**
- * Subtitles Vtt
+ * List Attempts
  */
-export const subtitlesVtt = <ThrowOnError extends boolean = true>(options: Options<SubtitlesVttData, ThrowOnError>): RequestResult<SubtitlesVttResponses, SubtitlesVttErrors, ThrowOnError> => (options.client ?? client).get<SubtitlesVttResponses, SubtitlesVttErrors, ThrowOnError>({ url: '/api/subtitles/vtt', ...options });
+export const listAttempts = <ThrowOnError extends boolean = true>(options: Options<ListAttemptsData, ThrowOnError>): RequestResult<ListAttemptsResponses, ListAttemptsErrors, ThrowOnError> => (options.client ?? client).get<ListAttemptsResponses, ListAttemptsErrors, ThrowOnError>({ url: '/api/tasks/{task_id}/attempts', ...options });
+
+/**
+ * Attempt Events
+ */
+export const attemptEvents = <ThrowOnError extends boolean = true>(options: Options<AttemptEventsData, ThrowOnError>): RequestResult<AttemptEventsResponses, AttemptEventsErrors, ThrowOnError> => (options.client ?? client).get<AttemptEventsResponses, AttemptEventsErrors, ThrowOnError>({ url: '/api/attempts/{attempt_id}/events', ...options });
+
+/**
+ * Get Artifact
+ */
+export const getArtifact = <ThrowOnError extends boolean = true>(options: Options<GetArtifactData, ThrowOnError>): RequestResult<GetArtifactResponses, GetArtifactErrors, ThrowOnError> => (options.client ?? client).get<GetArtifactResponses, GetArtifactErrors, ThrowOnError>({ url: '/api/artifacts/{artifact_id}', ...options });
+
+/**
+ * Artifact Vtt
+ */
+export const artifactVtt = <ThrowOnError extends boolean = true>(options: Options<ArtifactVttData, ThrowOnError>): RequestResult<ArtifactVttResponses, ArtifactVttErrors, ThrowOnError> => (options.client ?? client).get<ArtifactVttResponses, ArtifactVttErrors, ThrowOnError>({ url: '/api/artifacts/{artifact_id}/vtt', ...options });
+
+/**
+ * Download Artifact
+ *
+ * The file as an attachment named like the export; transcripts as .srt.
+ */
+export const downloadArtifact = <ThrowOnError extends boolean = true>(options: Options<DownloadArtifactData, ThrowOnError>): RequestResult<DownloadArtifactResponses, DownloadArtifactErrors, ThrowOnError> => (options.client ?? client).get<DownloadArtifactResponses, DownloadArtifactErrors, ThrowOnError>({ url: '/api/artifacts/{artifact_id}/download', ...options });
+
+/**
+ * Get Transcript
+ */
+export const getTranscript = <ThrowOnError extends boolean = true>(options: Options<GetTranscriptData, ThrowOnError>): RequestResult<GetTranscriptResponses, GetTranscriptErrors, ThrowOnError> => (options.client ?? client).get<GetTranscriptResponses, GetTranscriptErrors, ThrowOnError>({ url: '/api/jobs/{job_id}/transcript', ...options });
+
+/**
+ * Save Transcript
+ *
+ * Saves the editor's cues as an edit by hand: steps after it become stale. With the original next to
+ * it (every cue has `source`), both are saved with the same cues (merges, splits, timings).
+ */
+export const saveTranscript = <ThrowOnError extends boolean = true>(options: Options<SaveTranscriptData, ThrowOnError>): RequestResult<SaveTranscriptResponses, SaveTranscriptErrors, ThrowOnError> => (options.client ?? client).put<SaveTranscriptResponses, SaveTranscriptErrors, ThrowOnError>({
+    url: '/api/jobs/{job_id}/transcript',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get Config
+ */
+export const getConfig = <ThrowOnError extends boolean = true>(options?: Options<GetConfigData, ThrowOnError>): RequestResult<GetConfigResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetConfigResponses, unknown, ThrowOnError>({ url: '/api/config', ...options });
+
+/**
+ * List Drivers
+ */
+export const listDrivers = <ThrowOnError extends boolean = true>(options?: Options<ListDriversData, ThrowOnError>): RequestResult<ListDriversResponses, unknown, ThrowOnError> => (options?.client ?? client).get<ListDriversResponses, unknown, ThrowOnError>({ url: '/api/drivers', ...options });
+
+/**
+ * List Templates
+ */
+export const listTemplates = <ThrowOnError extends boolean = true>(options?: Options<ListTemplatesData, ThrowOnError>): RequestResult<ListTemplatesResponses, unknown, ThrowOnError> => (options?.client ?? client).get<ListTemplatesResponses, unknown, ThrowOnError>({ url: '/api/templates', ...options });
+
+/**
+ * List Dir
+ */
+export const listDir = <ThrowOnError extends boolean = true>(options?: Options<ListDirData, ThrowOnError>): RequestResult<ListDirResponses, ListDirErrors, ThrowOnError> => (options?.client ?? client).get<ListDirResponses, ListDirErrors, ThrowOnError>({ url: '/api/fs', ...options });
 
 /**
  * Upload
  *
- * The request body is the file. Each video gets a folder; upload its .srt / .vi.srt with the
- * same `id` so the steps find them next to it. Outputs are written in that folder too.
+ * The request body is the file. Each upload gets a folder (pass the same `id` to put more files
+ * in it); the job's results are exported into it too.
  */
 export const upload = <ThrowOnError extends boolean = true>(options: Options<UploadData, ThrowOnError>): RequestResult<UploadResponses, UploadErrors, ThrowOnError> => (options.client ?? client).put<UploadResponses, UploadErrors, ThrowOnError>({
     bodySerializer: null,
@@ -124,11 +172,6 @@ export const upload = <ThrowOnError extends boolean = true>(options: Options<Upl
         ...options.headers
     }
 });
-
-/**
- * Media
- */
-export const media = <ThrowOnError extends boolean = true>(options: Options<MediaData, ThrowOnError>): RequestResult<MediaResponses, MediaErrors, ThrowOnError> => (options.client ?? client).get<MediaResponses, MediaErrors, ThrowOnError>({ url: '/api/media', ...options });
 
 /**
  * Reveal
@@ -178,3 +221,23 @@ export const previewVoice = <ThrowOnError extends boolean = true>(options: Optio
         ...options.headers
     }
 });
+
+/**
+ * Events
+ *
+ * {"type": "job", "job"} when a job or one of its tasks changed, {"type": "progress", "job_id", "task_id",
+ * "done", "total"}, {"type": "log", "job_id", "task_id", "event"}, {"type": "deleted", "id"}.
+ */
+export const events = <ThrowOnError extends boolean = true>(options?: Options<EventsData, ThrowOnError, unknown>): Promise<ServerSentEventsResult<EventsResponses>> => (options?.client ?? client).sse.get<EventsResponses, unknown, ThrowOnError>({ url: '/api/events', ...options });
+
+/**
+ * Trace
+ *
+ * The system logs of every attempt of the job with this trace id (or an error code / span id).
+ */
+export const trace = <ThrowOnError extends boolean = true>(options: Options<TraceData, ThrowOnError>): RequestResult<TraceResponses, TraceErrors, ThrowOnError> => (options.client ?? client).get<TraceResponses, TraceErrors, ThrowOnError>({ url: '/api/admin/traces/{trace_id}', ...options });
+
+/**
+ * Attempt System Log
+ */
+export const attemptSystemLog = <ThrowOnError extends boolean = true>(options: Options<AttemptSystemLogData, ThrowOnError>): RequestResult<AttemptSystemLogResponses, AttemptSystemLogErrors, ThrowOnError> => (options.client ?? client).get<AttemptSystemLogResponses, AttemptSystemLogErrors, ThrowOnError>({ url: '/api/attempts/{attempt_id}/system', ...options });

@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEve
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDownToLine, Loader2, Save, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { getSubtitles, saveSubtitles, type Cue, type SubtitlesSaved } from '@/api'
+import { getTranscript, saveTranscript, type EditCue, type TranscriptSaved } from '@/api'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
@@ -15,25 +15,27 @@ const clock = (seconds: number) => {
   return `${m}:${s}`
 }
 
-const sameAs = (row: Row, cue: Cue, hasSource: boolean) =>
+const sameAs = (row: Row, cue: EditCue, hasSource: boolean) =>
   row.start === cue.start && row.end === cue.end && row.text.trim() === cue.text
   && (!hasSource || row.source.trim() === cue.source)
 
 /** Loaded cues plus the unsaved edits — texts, and cues merged, split or with words moved between them
- * (of both files when `path` is a .vi.srt with its original next to it), shared by the editor and the player. */
-export function useSubtitleDraft(path: string | undefined, onSaved?: (changed: SubtitlesSaved) => void) {
+ * (of the translation and its original together), shared by the editor and the player.
+ * lang: "src" edits the original alone, a language code its translation with the original next to it. */
+export function useSubtitleDraft(jobId: number, lang: string | undefined, onSaved?: (changed: TranscriptSaved) => void) {
   const queryClient = useQueryClient()
   const subtitles = useQuery({
-    queryKey: ['subtitles', path],
-    queryFn: async () => (await getSubtitles({ query: { path: path! } })).data,
-    enabled: !!path,
+    queryKey: ['transcript', jobId, lang],
+    queryFn: async () => (await getTranscript({ path: { job_id: jobId }, query: { lang } })).data,
+    enabled: !!lang,
+    retry: false,
   })
   const cues = subtitles.data?.cues
-  const hasSource = !!subtitles.data?.source_path
+  const hasSource = !!cues?.some((c) => c.source !== null && c.source !== undefined)
   const [rows, setRows] = useState<Row[]>([])
   const [history, setHistory] = useState<Row[][]>([])
   useEffect(() => {
-    setRows(cues?.map((c) => ({ key: newKey(), start: c.start, end: c.end, source: c.source, text: c.text })) ?? [])
+    setRows(cues?.map((c) => ({ key: newKey(), id: c.id, start: c.start, end: c.end, source: c.source ?? '', text: c.text })) ?? [])
     setHistory([])
   }, [cues])
   /** a merge, split or move: undoable as one step */
@@ -50,17 +52,18 @@ export function useSubtitleDraft(path: string | undefined, onSaved?: (changed: S
   }
   const isEdited = (row: Row) => !cues?.some((c) => sameAs(row, c, hasSource))
   // a merge or split always leaves a cue unlike any loaded one, so this also counts structural edits
-  const dirty = useMemo(() => rows.filter((r) => !cues?.some((c) => sameAs(r, c, hasSource))).length,
-    [cues, rows, hasSource])
+  const dirty = useMemo(() => rows.filter((r) => !cues?.some((c) => sameAs(r, c, hasSource))).length
+    + Math.max(0, (cues?.length ?? 0) - rows.length), [cues, rows, hasSource])
   const save = useMutation({
-    mutationFn: async () => (await saveSubtitles({
+    mutationFn: async () => (await saveTranscript({
+      path: { job_id: jobId },
+      query: { lang },
       body: {
-        path: path!,
-        cues: rows.map((r) => ({ start: r.start, end: r.end, text: r.text, source: hasSource ? r.source : undefined })),
+        cues: rows.map((r) => ({ id: r.id, start: r.start, end: r.end, text: r.text, source: hasSource ? r.source : null })),
       },
     })).data,
     onSuccess: (changed) => {
-      queryClient.invalidateQueries({ queryKey: ['subtitles', path] })
+      void queryClient.invalidateQueries({ queryKey: ['transcript', jobId] })
       onSaved?.(changed)
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -107,7 +110,7 @@ export function SubtitleEditor({ draft, active, onSeek }: {
   }, [rows])
 
   if (subtitles.isLoading) return <Loader2 className="animate-spin text-muted-foreground" />
-  if (subtitles.isError) return <p className="text-sm text-destructive">{errorMessage(subtitles.error)}</p>
+  if (subtitles.isError) return <p className="text-sm text-muted-foreground">{errorMessage(subtitles.error)}</p>
   if (!cues) return null
 
   // the original holds the spoken words, so moving them moves the timing; the translation just follows

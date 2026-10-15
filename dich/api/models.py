@@ -41,6 +41,7 @@ class ArtifactInfo(BaseModel):
     path: str
     size: int | None
     external: bool
+    download_name: str = ""
 
 
 class Job(BaseModel):
@@ -69,6 +70,7 @@ class JobCreate(BaseModel):
     template: str = "default"
     overrides: dict[str, StageOverride] = Field(default_factory=dict)
     recursive: bool = False
+    use_subtitles: bool = Field(False, description="Use <name>.srt / <name>.<lang>.srt found next to each video")
     export: bool = Field(True, description="Copy results next to the source file")
 
 
@@ -141,6 +143,7 @@ class Config(BaseModel):
     root: str
     languages: list[Language]
     default_langs: list[str]
+    default_drivers: dict[str, str] = Field(description="stage → driver used for 'env' in templates")
 
 
 class EditCue(BaseModel):

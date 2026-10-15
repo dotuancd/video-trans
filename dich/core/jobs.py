@@ -13,10 +13,20 @@ def plan_job(source, langs, template="default", overrides=None):
     return plan(resolve(get_template(template), source, overrides), langs)
 
 
-def create_job(store, source, langs, template="default", overrides=None, export=True):
+def create_job(store, source, langs, template="default", overrides=None, export=True, use_subtitles=False):
     """A job for a file path or a URL, translated into langs. Results are exported next to the file
-    (or into the job's export folder for a URL) unless export is False."""
+    (or into the job's export folder for a URL) unless export is False. use_subtitles: the .srt files
+    named like the video next to it are used instead of transcribing / translating."""
     langs = list(dict.fromkeys(langs))
+    if use_subtitles and not is_url(source):
+        from dich.drivers.source.file import siblings
+        from dich.media import is_media
+        found = siblings(source) if is_media(Path(source).name) else {}
+        if found:
+            overrides = dict(overrides or {})
+            source_override = dict(overrides.get("source") or {})
+            source_override["params"] = {**(source_override.get("params") or {}), "subtitles": found}
+            overrides["source"] = source_override
     specs = plan_job(source, langs, template, overrides)
     title = str(source) if is_url(source) else Path(source).name
     export_dir = None if not export or is_url(source) else Path(source).parent

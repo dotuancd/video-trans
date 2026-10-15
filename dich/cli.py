@@ -40,6 +40,7 @@ def build_parser():
     run.add_argument("--ref-audio", type=Path, help="clone giọng từ clip 3–8 giây")
     run.add_argument("--set", action="append", default=[], metavar="STAGE.PARAM=VALUE",
                      help="tham số bất kỳ, VD --set dub.max_speed=1.5 --set mux.add_track=true")
+    run.add_argument("--use-srt", action="store_true", help="dùng <tên>.srt / <tên>.vi.srt có sẵn cạnh video")
     run.add_argument("--no-export", action="store_true", help="không ghi kết quả cạnh file gốc")
 
     for name in ("serve", "ui"):
@@ -129,7 +130,8 @@ def run(args):
     failed = 0
     for index, source in enumerate(expand(args.sources, args.recursive), 1):
         try:
-            job_id = create_job(store, source, langs, template, overrides_of(args), export=not args.no_export)
+            job_id = create_job(store, source, langs, template, overrides_of(args), export=not args.no_export,
+                                use_subtitles=args.use_srt)
         except Exception as error:   # unknown driver, bad params
             sys.exit(str(error).strip("'"))
         print(f"[{index}] {Path(str(source)).name} (việc #{job_id})")

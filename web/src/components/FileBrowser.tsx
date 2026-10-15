@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUp, Captions, FileAudio, FileText, FileVideo, Folder, Loader2 } from 'lucide-react'
+import { ArrowUp, Captions, FileText, FileVideo, Folder, Loader2 } from 'lucide-react'
 import { listDir, type Entry } from '@/api'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -8,10 +8,10 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { errorMessage } from '@/lib/api'
 
-const ICONS = { dir: Folder, media: FileVideo, srt: Captions, vi_srt: Captions, dub: FileVideo, audio: FileAudio, other: FileText }
-const SELECTABLE = new Set(['dir', 'media', 'srt', 'vi_srt'])
+const ICONS = { dir: Folder, media: FileVideo, subtitle: Captions, other: FileText }
+const SELECTABLE = new Set(['dir', 'media', 'subtitle'])
 
-/** Pick a folder or a video / .srt / .vi.srt file under the server's root. */
+/** Pick a folder or a video / .srt file under the server's root. */
 export function FileBrowser({ open, onOpenChange, initial, onPick }: {
   open: boolean
   onOpenChange: (open: boolean) => void

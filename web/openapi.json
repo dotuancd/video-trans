@@ -5,64 +5,6 @@
   "version": "0.1.0"
  },
  "paths": {
-  "/api/config": {
-   "get": {
-    "summary": "Get Config",
-    "operationId": "get_config",
-    "responses": {
-     "200": {
-      "description": "Successful Response",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/Config"
-        }
-       }
-      }
-     }
-    }
-   }
-  },
-  "/api/fs": {
-   "get": {
-    "summary": "List Dir",
-    "operationId": "list_dir",
-    "parameters": [
-     {
-      "name": "path",
-      "in": "query",
-      "required": false,
-      "schema": {
-       "type": "string",
-       "default": "",
-       "title": "Path"
-      }
-     }
-    ],
-    "responses": {
-     "200": {
-      "description": "Successful Response",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/Listing"
-        }
-       }
-      }
-     },
-     "422": {
-      "description": "Validation Error",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      }
-     }
-    }
-   }
-  },
   "/api/jobs": {
    "get": {
     "summary": "List Jobs",
@@ -85,8 +27,8 @@
     }
    },
    "post": {
-    "summary": "Add Jobs",
-    "operationId": "add_jobs",
+    "summary": "Create Jobs",
+    "operationId": "create_jobs",
     "requestBody": {
      "content": {
       "application/json": {
@@ -103,7 +45,7 @@
       "content": {
        "application/json": {
         "schema": {
-         "$ref": "#/components/schemas/JobCreated"
+         "$ref": "#/components/schemas/JobsCreated"
         }
        }
       }
@@ -161,6 +103,7 @@
    },
    "delete": {
     "summary": "Delete Job",
+    "description": "Removes the job and its workspace; exported files stay.",
     "operationId": "delete_job",
     "parameters": [
      {
@@ -190,10 +133,10 @@
     }
    }
   },
-  "/api/jobs/{job_id}/steps/{name}/run": {
+  "/api/jobs/{job_id}/langs": {
    "post": {
-    "summary": "Run Step",
-    "operationId": "run_step",
+    "summary": "Add Langs",
+    "operationId": "add_langs",
     "parameters": [
      {
       "name": "job_id",
@@ -203,21 +146,6 @@
        "type": "integer",
        "title": "Job Id"
       }
-     },
-     {
-      "name": "name",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "enum": [
-        "transcribe",
-        "translate",
-        "dub",
-        "mux"
-       ],
-       "type": "string",
-       "title": "Name"
-      }
      }
     ],
     "requestBody": {
@@ -225,7 +153,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/RunStep"
+        "$ref": "#/components/schemas/AddLangs"
        }
       }
      }
@@ -237,70 +165,6 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Job"
-        }
-       }
-      }
-     },
-     "422": {
-      "description": "Validation Error",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      }
-     }
-    }
-   }
-  },
-  "/api/jobs/{job_id}/steps/{name}/log": {
-   "get": {
-    "summary": "Get Step Log",
-    "operationId": "get_step_log",
-    "parameters": [
-     {
-      "name": "job_id",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "type": "integer",
-       "title": "Job Id"
-      }
-     },
-     {
-      "name": "name",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "enum": [
-        "transcribe",
-        "translate",
-        "dub",
-        "mux"
-       ],
-       "type": "string",
-       "title": "Name"
-      }
-     },
-     {
-      "name": "offset",
-      "in": "query",
-      "required": false,
-      "schema": {
-       "type": "integer",
-       "default": 0,
-       "title": "Offset"
-      }
-     }
-    ],
-    "responses": {
-     "200": {
-      "description": "Successful Response",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/StepLog"
         }
        }
       }
@@ -357,33 +221,19 @@
     }
    }
   },
-  "/api/events": {
-   "get": {
-    "summary": "Events",
-    "operationId": "events",
-    "responses": {
-     "200": {
-      "description": "Successful Response",
-      "content": {
-       "text/event-stream": {}
-      }
-     }
-    }
-   }
-  },
-  "/api/subtitles": {
-   "get": {
-    "summary": "Get Subtitles",
-    "description": "A .vi.srt with the original line of each cue next to it, or an original .srt alone.",
-    "operationId": "get_subtitles",
+  "/api/jobs/{job_id}/resume": {
+   "post": {
+    "summary": "Resume Job",
+    "description": "Past a review gate, and again from stopped or failed steps.",
+    "operationId": "resume_job",
     "parameters": [
      {
-      "name": "path",
-      "in": "query",
+      "name": "job_id",
+      "in": "path",
       "required": true,
       "schema": {
-       "type": "string",
-       "title": "Path"
+       "type": "integer",
+       "title": "Job Id"
       }
      }
     ],
@@ -393,7 +243,7 @@
       "content": {
        "application/json": {
         "schema": {
-         "$ref": "#/components/schemas/Subtitles"
+         "$ref": "#/components/schemas/Job"
         }
        }
       }
@@ -409,17 +259,69 @@
       }
      }
     }
-   },
-   "put": {
-    "summary": "Save Subtitles",
-    "description": "Rewrite the cues (texts, and timings when cues were merged or split), and the original .srt with\nthe same timings when every cue carries its `source`.",
-    "operationId": "save_subtitles",
+   }
+  },
+  "/api/jobs/{job_id}/refresh": {
+   "post": {
+    "summary": "Refresh Job",
+    "description": "Run the steps whose input changed (stale) again.",
+    "operationId": "refresh_job",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Job"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/tasks/{task_id}/rerun": {
+   "post": {
+    "summary": "Rerun Task",
+    "operationId": "rerun_task",
+    "parameters": [
+     {
+      "name": "task_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Task Id"
+      }
+     }
+    ],
     "requestBody": {
      "required": true,
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/SubtitlesSave"
+        "$ref": "#/components/schemas/Rerun"
        }
       }
      }
@@ -430,7 +332,53 @@
       "content": {
        "application/json": {
         "schema": {
-         "$ref": "#/components/schemas/SubtitlesSaved"
+         "$ref": "#/components/schemas/Job"
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "Busy, or edits by hand need confirm"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/tasks/{task_id}/attempts": {
+   "get": {
+    "summary": "List Attempts",
+    "operationId": "list_attempts",
+    "parameters": [
+     {
+      "name": "task_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Task Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/Attempt"
+         },
+         "title": "Response List Attempts"
         }
        }
       }
@@ -448,18 +396,93 @@
     }
    }
   },
-  "/api/subtitles/vtt": {
+  "/api/attempts/{attempt_id}/events": {
    "get": {
-    "summary": "Subtitles Vtt",
-    "operationId": "subtitles_vtt",
+    "summary": "Attempt Events",
+    "operationId": "attempt_events",
     "parameters": [
      {
-      "name": "path",
-      "in": "query",
+      "name": "attempt_id",
+      "in": "path",
       "required": true,
       "schema": {
-       "type": "string",
-       "title": "Path"
+       "type": "integer",
+       "title": "Attempt Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/Event"
+         },
+         "title": "Response Attempt Events"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/artifacts/{artifact_id}": {
+   "get": {
+    "summary": "Get Artifact",
+    "operationId": "get_artifact",
+    "parameters": [
+     {
+      "name": "artifact_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Artifact Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/artifacts/{artifact_id}/vtt": {
+   "get": {
+    "summary": "Artifact Vtt",
+    "operationId": "artifact_vtt",
+    "parameters": [
+     {
+      "name": "artifact_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Artifact Id"
       }
      }
     ],
@@ -487,10 +510,252 @@
     }
    }
   },
+  "/api/artifacts/{artifact_id}/download": {
+   "get": {
+    "summary": "Download Artifact",
+    "description": "The file as an attachment named like the export; transcripts as .srt.",
+    "operationId": "download_artifact",
+    "parameters": [
+     {
+      "name": "artifact_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Artifact Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/jobs/{job_id}/transcript": {
+   "get": {
+    "summary": "Get Transcript",
+    "operationId": "get_transcript",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Job Id"
+      }
+     },
+     {
+      "name": "lang",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "default": "src",
+       "title": "Lang"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TranscriptView"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "summary": "Save Transcript",
+    "description": "Saves the editor's cues as an edit by hand: steps after it become stale. With the original next to\nit (every cue has `source`), both are saved with the same cues (merges, splits, timings).",
+    "operationId": "save_transcript",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Job Id"
+      }
+     },
+     {
+      "name": "lang",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "default": "src",
+       "title": "Lang"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TranscriptSave"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TranscriptSaved"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/config": {
+   "get": {
+    "summary": "Get Config",
+    "operationId": "get_config",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Config"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/drivers": {
+   "get": {
+    "summary": "List Drivers",
+    "operationId": "list_drivers",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/DriverInfo"
+         },
+         "type": "array",
+         "title": "Response List Drivers"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/templates": {
+   "get": {
+    "summary": "List Templates",
+    "operationId": "list_templates",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/TemplateInfo"
+         },
+         "type": "array",
+         "title": "Response List Templates"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/fs": {
+   "get": {
+    "summary": "List Dir",
+    "operationId": "list_dir",
+    "parameters": [
+     {
+      "name": "path",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "default": "",
+       "title": "Path"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Listing"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/uploads": {
    "put": {
     "summary": "Upload",
-    "description": "The request body is the file. Each video gets a folder; upload its .srt / .vi.srt with the\nsame `id` so the steps find them next to it. Outputs are written in that folder too.",
+    "description": "The request body is the file. Each upload gets a folder (pass the same `id` to put more files\nin it); the job's results are exported into it too.",
     "operationId": "upload",
     "parameters": [
      {
@@ -544,38 +809,6 @@
     "requestBody": {
      "content": {
       "application/octet-stream": {}
-     }
-    }
-   }
-  },
-  "/api/media": {
-   "get": {
-    "summary": "Media",
-    "operationId": "media",
-    "parameters": [
-     {
-      "name": "path",
-      "in": "query",
-      "required": true,
-      "schema": {
-       "type": "string",
-       "title": "Path"
-      }
-     }
-    ],
-    "responses": {
-     "200": {
-      "description": "Successful Response"
-     },
-     "422": {
-      "description": "Validation Error",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      }
      }
     }
    }
@@ -707,10 +940,270 @@
      }
     }
    }
+  },
+  "/api/events": {
+   "get": {
+    "summary": "Events",
+    "description": "{\"type\": \"job\", \"job\"} when a job or one of its tasks changed, {\"type\": \"progress\", \"job_id\", \"task_id\",\n\"done\", \"total\"}, {\"type\": \"log\", \"job_id\", \"task_id\", \"event\"}, {\"type\": \"deleted\", \"id\"}.",
+    "operationId": "events",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "text/event-stream": {}
+      }
+     }
+    }
+   }
+  },
+  "/api/admin/traces/{trace_id}": {
+   "get": {
+    "summary": "Trace",
+    "description": "The system logs of every attempt of the job with this trace id (or an error code / span id).",
+    "operationId": "trace",
+    "parameters": [
+     {
+      "name": "trace_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Trace Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "text/plain": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/attempts/{attempt_id}/system": {
+   "get": {
+    "summary": "Attempt System Log",
+    "operationId": "attempt_system_log",
+    "parameters": [
+     {
+      "name": "attempt_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Attempt Id"
+      }
+     },
+     {
+      "name": "tail",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 200000,
+       "title": "Tail"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "text/plain": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
   "schemas": {
+   "AddLangs": {
+    "properties": {
+     "langs": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Langs"
+     }
+    },
+    "type": "object",
+    "required": [
+     "langs"
+    ],
+    "title": "AddLangs"
+   },
+   "ArtifactInfo": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "slot": {
+      "type": "string",
+      "title": "Slot"
+     },
+     "path": {
+      "type": "string",
+      "title": "Path"
+     },
+     "size": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Size"
+     },
+     "external": {
+      "type": "boolean",
+      "title": "External"
+     },
+     "download_name": {
+      "type": "string",
+      "title": "Download Name",
+      "default": ""
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "slot",
+     "path",
+     "size",
+     "external"
+    ],
+    "title": "ArtifactInfo"
+   },
+   "Attempt": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "task_id": {
+      "type": "integer",
+      "title": "Task Id"
+     },
+     "n": {
+      "type": "integer",
+      "title": "N"
+     },
+     "span_id": {
+      "type": "string",
+      "title": "Span Id"
+     },
+     "origin": {
+      "type": "string",
+      "enum": [
+       "driver",
+       "cache",
+       "human"
+      ],
+      "title": "Origin"
+     },
+     "status": {
+      "type": "string",
+      "title": "Status"
+     },
+     "params": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Params"
+     },
+     "message": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Message"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "started_at": {
+      "type": "number",
+      "title": "Started At"
+     },
+     "finished_at": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Finished At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "task_id",
+     "n",
+     "span_id",
+     "origin",
+     "status",
+     "params",
+     "message",
+     "error",
+     "started_at",
+     "finished_at"
+    ],
+    "title": "Attempt"
+   },
    "Body_upload_voice": {
     "properties": {
      "file": {
@@ -731,57 +1224,118 @@
       "type": "string",
       "title": "Root"
      },
-     "defaults": {
+     "languages": {
+      "items": {
+       "$ref": "#/components/schemas/Language"
+      },
+      "type": "array",
+      "title": "Languages"
+     },
+     "default_langs": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Default Langs"
+     },
+     "default_drivers": {
       "additionalProperties": {
-       "additionalProperties": true,
-       "type": "object"
+       "type": "string"
       },
       "type": "object",
-      "title": "Defaults"
+      "title": "Default Drivers",
+      "description": "stage → driver used for 'env' in templates"
      }
     },
     "type": "object",
     "required": [
      "root",
-     "defaults"
+     "languages",
+     "default_langs",
+     "default_drivers"
     ],
     "title": "Config"
    },
-   "Cue": {
+   "DriverInfo": {
     "properties": {
-     "index": {
-      "type": "integer",
-      "title": "Index"
-     },
-     "start": {
-      "type": "number",
-      "title": "Start"
-     },
-     "end": {
-      "type": "number",
-      "title": "End"
-     },
-     "source": {
+     "stage": {
       "type": "string",
-      "title": "Source"
+      "title": "Stage"
      },
-     "text": {
+     "name": {
       "type": "string",
-      "title": "Text"
+      "title": "Name"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "params_schema": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Params Schema"
+     },
+     "available": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Available",
+      "description": "Why it can't run here, or null"
+     },
+     "langs": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Langs"
+     },
+     "per_lang": {
+      "type": "boolean",
+      "title": "Per Lang"
+     },
+     "lane": {
+      "type": "string",
+      "title": "Lane"
      }
     },
     "type": "object",
     "required": [
-     "index",
-     "start",
-     "end",
-     "source",
-     "text"
+     "stage",
+     "name",
+     "title",
+     "params_schema",
+     "available",
+     "langs",
+     "per_lang",
+     "lane"
     ],
-    "title": "Cue"
+    "title": "DriverInfo"
    },
-   "CueEdit": {
+   "EditCue": {
     "properties": {
+     "id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Id"
+     },
      "start": {
       "type": "number",
       "title": "Start"
@@ -803,8 +1357,7 @@
         "type": "null"
        }
       ],
-      "title": "Source",
-      "description": "the original line; given on every cue to rewrite the original .srt too"
+      "title": "Source"
      }
     },
     "type": "object",
@@ -813,7 +1366,7 @@
      "end",
      "text"
     ],
-    "title": "CueEdit"
+    "title": "EditCue"
    },
    "Entry": {
     "properties": {
@@ -834,10 +1387,7 @@
       "enum": [
        "dir",
        "media",
-       "srt",
-       "vi_srt",
-       "dub",
-       "audio",
+       "subtitle",
        "other"
       ],
       "title": "Kind"
@@ -851,6 +1401,92 @@
      "kind"
     ],
     "title": "Entry"
+   },
+   "Event": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "job_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Job Id"
+     },
+     "task_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Task Id"
+     },
+     "attempt_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Attempt Id"
+     },
+     "ts": {
+      "type": "number",
+      "title": "Ts"
+     },
+     "level": {
+      "type": "string",
+      "title": "Level"
+     },
+     "type": {
+      "type": "string",
+      "title": "Type"
+     },
+     "message": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Message"
+     },
+     "data": {
+      "anyOf": [
+       {},
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Data"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "job_id",
+     "task_id",
+     "attempt_id",
+     "ts",
+     "level",
+     "type",
+     "message",
+     "data"
+    ],
+    "title": "Event"
    },
    "HTTPValidationError": {
     "properties": {
@@ -871,18 +1507,39 @@
       "type": "integer",
       "title": "Id"
      },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
      "source": {
       "type": "string",
       "title": "Source"
      },
-     "start": {
+     "template": {
       "type": "string",
-      "enum": [
-       "media",
-       "srt",
-       "vi_srt"
+      "title": "Template"
+     },
+     "langs": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Langs"
+     },
+     "export_dir": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
       ],
-      "title": "Start"
+      "title": "Export Dir"
+     },
+     "trace_id": {
+      "type": "string",
+      "title": "Trace Id"
      },
      "created_at": {
       "type": "number",
@@ -891,113 +1548,94 @@
      "status": {
       "type": "string",
       "enum": [
+       "blocked",
        "queued",
        "running",
        "done",
        "failed",
        "cancelled",
+       "waiting_review",
        "stale"
       ],
       "title": "Status"
      },
-     "steps": {
+     "tasks": {
       "items": {
-       "$ref": "#/components/schemas/Step"
+       "$ref": "#/components/schemas/Task"
       },
       "type": "array",
-      "title": "Steps"
+      "title": "Tasks"
      }
     },
     "type": "object",
     "required": [
      "id",
+     "title",
      "source",
-     "start",
+     "template",
+     "langs",
+     "export_dir",
+     "trace_id",
      "created_at",
      "status",
-     "steps"
+     "tasks"
     ],
     "title": "Job"
    },
    "JobCreate": {
     "properties": {
-     "path": {
-      "anyOf": [
-       {
-        "type": "string"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Path",
-      "description": "a file or a folder of them; or give `paths`"
-     },
-     "paths": {
+     "sources": {
       "items": {
        "type": "string"
       },
       "type": "array",
-      "title": "Paths",
-      "description": "files, each its own job with outputs next to it"
+      "title": "Sources",
+      "description": "Files, folders (their videos), or URLs"
      },
-     "start": {
+     "langs": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Langs"
+     },
+     "template": {
       "type": "string",
-      "enum": [
-       "media",
-       "srt",
-       "vi_srt"
-      ],
-      "title": "Start",
-      "default": "media"
+      "title": "Template",
+      "default": "default"
+     },
+     "overrides": {
+      "additionalProperties": {
+       "$ref": "#/components/schemas/StageOverride"
+      },
+      "type": "object",
+      "title": "Overrides"
      },
      "recursive": {
       "type": "boolean",
       "title": "Recursive",
       "default": false
      },
-     "translate": {
+     "use_subtitles": {
       "type": "boolean",
-      "title": "Translate",
+      "title": "Use Subtitles",
+      "description": "Use <name>.srt / <name>.<lang>.srt found next to each video",
+      "default": false
+     },
+     "export": {
+      "type": "boolean",
+      "title": "Export",
+      "description": "Copy results next to the source file",
       "default": true
-     },
-     "dub": {
-      "type": "boolean",
-      "title": "Dub",
-      "default": false
-     },
-     "mux": {
-      "type": "boolean",
-      "title": "Mux",
-      "default": false
-     },
-     "overwrite": {
-      "type": "boolean",
-      "title": "Overwrite",
-      "default": false
-     },
-     "out": {
-      "anyOf": [
-       {
-        "type": "string"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Out"
-     },
-     "params": {
-      "additionalProperties": true,
-      "type": "object",
-      "title": "Params",
-      "description": "options of every step, see /api/config"
      }
     },
     "type": "object",
+    "required": [
+     "sources"
+    ],
     "title": "JobCreate"
    },
-   "JobCreated": {
+   "JobsCreated": {
     "properties": {
      "jobs": {
       "items": {
@@ -1019,7 +1657,25 @@
      "jobs",
      "skipped"
     ],
-    "title": "JobCreated"
+    "title": "JobsCreated"
+   },
+   "Language": {
+    "properties": {
+     "code": {
+      "type": "string",
+      "title": "Code"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     }
+    },
+    "type": "object",
+    "required": [
+     "code",
+     "name"
+    ],
+    "title": "Language"
    },
    "Listing": {
     "properties": {
@@ -1069,29 +1725,10 @@
    },
    "Preview": {
     "properties": {
-     "text": {
-      "anyOf": [
-       {
-        "type": "string"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Text",
-      "description": "what to read; empty: a sentence of `subtitles`"
-     },
      "voice": {
-      "anyOf": [
-       {
-        "type": "string"
-       },
-       {
-        "type": "null"
-       }
-      ],
+      "type": "string",
       "title": "Voice",
-      "description": "preset name, or 'source' to clone the speaker of `media`"
+      "default": "source"
      },
      "ref_audio": {
       "anyOf": [
@@ -1109,7 +1746,7 @@
       "title": "Int8",
       "default": false
      },
-     "media": {
+     "text": {
       "anyOf": [
        {
         "type": "string"
@@ -1118,10 +1755,26 @@
         "type": "null"
        }
       ],
-      "title": "Media",
-      "description": "the video the voice is cloned from; empty: the one next to `subtitles`"
+      "title": "Text"
      },
-     "subtitles": {
+     "job_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Job Id",
+      "description": "Clone from / read this job's video and subtitles"
+     },
+     "lang": {
+      "type": "string",
+      "title": "Lang",
+      "default": "vi"
+     },
+     "path": {
       "anyOf": [
        {
         "type": "string"
@@ -1130,15 +1783,24 @@
         "type": "null"
        }
       ],
-      "title": "Subtitles",
-      "description": "the .vi.srt (or .srt): its timings pick the clip, its text is read; empty: the ones next to `media`"
+      "title": "Path",
+      "description": "Or a video (with <name>.srt / <name>.vi.srt next to it)"
      }
     },
     "type": "object",
     "title": "Preview"
    },
-   "RunStep": {
+   "Rerun": {
     "properties": {
+     "mode": {
+      "type": "string",
+      "enum": [
+       "only",
+       "cascade"
+      ],
+      "title": "Mode",
+      "default": "cascade"
+     },
      "params": {
       "anyOf": [
        {
@@ -1151,16 +1813,79 @@
       ],
       "title": "Params"
      },
-     "cascade": {
+     "driver": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Driver"
+     },
+     "confirm": {
       "type": "boolean",
-      "title": "Cascade",
-      "default": true
+      "title": "Confirm",
+      "description": "Replace edits made by hand",
+      "default": false
      }
     },
     "type": "object",
-    "title": "RunStep"
+    "title": "Rerun"
    },
-   "Step": {
+   "StageOverride": {
+    "properties": {
+     "driver": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Driver"
+     },
+     "enabled": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Enabled"
+     },
+     "gate": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Gate"
+     },
+     "params": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Params"
+     }
+    },
+    "type": "object",
+    "title": "StageOverride"
+   },
+   "Task": {
     "properties": {
      "id": {
       "type": "integer",
@@ -1170,52 +1895,84 @@
       "type": "integer",
       "title": "Job Id"
      },
+     "key": {
+      "type": "string",
+      "title": "Key"
+     },
      "position": {
       "type": "integer",
       "title": "Position"
      },
-     "name": {
+     "stage": {
       "type": "string",
-      "enum": [
-       "transcribe",
-       "translate",
-       "dub",
-       "mux"
+      "title": "Stage"
+     },
+     "driver": {
+      "type": "string",
+      "title": "Driver"
+     },
+     "lang": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
       ],
-      "title": "Name"
-     },
-     "inputs": {
-      "items": {
-       "type": "string"
-      },
-      "type": "array",
-      "title": "Inputs"
-     },
-     "output": {
-      "type": "string",
-      "title": "Output"
+      "title": "Lang"
      },
      "params": {
       "additionalProperties": true,
       "type": "object",
       "title": "Params"
      },
+     "inputs": {
+      "additionalProperties": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      "type": "object",
+      "title": "Inputs"
+     },
+     "outputs": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "type": "object",
+      "title": "Outputs"
+     },
+     "deps": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Deps"
+     },
+     "lane": {
+      "type": "string",
+      "title": "Lane"
+     },
+     "gate": {
+      "type": "boolean",
+      "title": "Gate"
+     },
      "status": {
       "type": "string",
       "enum": [
+       "blocked",
        "queued",
        "running",
        "done",
        "failed",
        "cancelled",
+       "skipped",
+       "waiting_review",
        "stale"
       ],
       "title": "Status"
-     },
-     "exists": {
-      "type": "boolean",
-      "title": "Exists",
-      "description": "the output file is on disk"
      },
      "message": {
       "anyOf": [
@@ -1261,87 +2018,146 @@
       ],
       "title": "Total"
      },
-     "attempt": {
+     "retries": {
       "type": "integer",
-      "title": "Attempt"
+      "title": "Retries"
      },
-     "started_at": {
+     "cancel_requested": {
+      "type": "boolean",
+      "title": "Cancel Requested"
+     },
+     "current_attempt": {
       "anyOf": [
        {
-        "type": "number"
+        "type": "integer"
        },
        {
         "type": "null"
        }
       ],
-      "title": "Started At"
+      "title": "Current Attempt"
      },
-     "finished_at": {
-      "anyOf": [
-       {
-        "type": "number"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Finished At"
+     "exports": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Exports"
+     },
+     "updated_at": {
+      "type": "number",
+      "title": "Updated At"
+     },
+     "artifacts": {
+      "items": {
+       "$ref": "#/components/schemas/ArtifactInfo"
+      },
+      "type": "array",
+      "title": "Artifacts"
      }
     },
     "type": "object",
     "required": [
      "id",
      "job_id",
+     "key",
      "position",
-     "name",
-     "inputs",
-     "output",
+     "stage",
+     "driver",
+     "lang",
      "params",
+     "inputs",
+     "outputs",
+     "deps",
+     "lane",
+     "gate",
      "status",
-     "exists",
      "message",
      "error",
      "done",
      "total",
-     "attempt",
-     "started_at",
-     "finished_at"
+     "retries",
+     "cancel_requested",
+     "current_attempt",
+     "exports",
+     "updated_at"
     ],
-    "title": "Step"
+    "title": "Task"
    },
-   "StepLog": {
+   "TemplateInfo": {
     "properties": {
-     "text": {
+     "name": {
       "type": "string",
-      "title": "Text"
+      "title": "Name"
      },
-     "offset": {
-      "type": "integer",
-      "title": "Offset",
-      "description": "byte offset of `text` in the log (later than asked when the log is long)"
+     "title": {
+      "type": "string",
+      "title": "Title"
      },
-     "size": {
-      "type": "integer",
-      "title": "Size",
-      "description": "log size in bytes: the offset to ask for next"
+     "description": {
+      "type": "string",
+      "title": "Description"
+     },
+     "stages": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array",
+      "title": "Stages"
      }
     },
     "type": "object",
     "required": [
-     "text",
-     "offset",
-     "size"
+     "name",
+     "title",
+     "description",
+     "stages"
     ],
-    "title": "StepLog"
+    "title": "TemplateInfo"
    },
-   "Subtitles": {
+   "TranscriptSave": {
     "properties": {
-     "path": {
-      "type": "string",
-      "title": "Path",
-      "description": "the file whose cues are `text`: a .vi.srt, or an original .srt"
+     "cues": {
+      "items": {
+       "$ref": "#/components/schemas/EditCue"
+      },
+      "type": "array",
+      "title": "Cues"
+     }
+    },
+    "type": "object",
+    "required": [
+     "cues"
+    ],
+    "title": "TranscriptSave"
+   },
+   "TranscriptSaved": {
+    "properties": {
+     "texts": {
+      "type": "integer",
+      "title": "Texts"
      },
-     "source_path": {
+     "sources": {
+      "type": "integer",
+      "title": "Sources"
+     },
+     "source_text_changed": {
+      "type": "boolean",
+      "title": "Source Text Changed"
+     }
+    },
+    "type": "object",
+    "required": [
+     "texts",
+     "sources",
+     "source_text_changed"
+    ],
+    "title": "TranscriptSaved"
+   },
+   "TranscriptView": {
+    "properties": {
+     "lang": {
       "anyOf": [
        {
         "type": "string"
@@ -1350,12 +2166,28 @@
         "type": "null"
        }
       ],
-      "title": "Source Path",
-      "description": "the original .srt whose cues are `source`, when `path` is a .vi.srt"
+      "title": "Lang"
+     },
+     "task_id": {
+      "type": "integer",
+      "title": "Task Id",
+      "description": "The task whose output is edited"
+     },
+     "source_task_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Task Id",
+      "description": "The task of the original transcript shown next to it"
      },
      "cues": {
       "items": {
-       "$ref": "#/components/schemas/Cue"
+       "$ref": "#/components/schemas/EditCue"
       },
       "type": "array",
       "title": "Cues"
@@ -1373,65 +2205,29 @@
        }
       ],
       "title": "Words",
-      "description": "the timed words the original .srt was grouped from (<stem>.words.json), to cut cues where a word is spoken; none for older jobs"
-     }
-    },
-    "type": "object",
-    "required": [
-     "path",
-     "source_path",
-     "cues"
-    ],
-    "title": "Subtitles"
-   },
-   "SubtitlesSave": {
-    "properties": {
-     "path": {
-      "type": "string",
-      "title": "Path"
+      "description": "Timed words of the original, for cutting cues where words are spoken"
      },
-     "cues": {
-      "items": {
-       "$ref": "#/components/schemas/CueEdit"
-      },
-      "type": "array",
-      "title": "Cues",
-      "description": "the whole new list: cues may have been merged, split or retimed"
+     "edited": {
+      "type": "boolean",
+      "title": "Edited"
      }
     },
     "type": "object",
     "required": [
-     "path",
-     "cues"
+     "lang",
+     "task_id",
+     "source_task_id",
+     "cues",
+     "words",
+     "edited"
     ],
-    "title": "SubtitlesSave"
-   },
-   "SubtitlesSaved": {
-    "properties": {
-     "texts": {
-      "type": "integer",
-      "title": "Texts",
-      "description": "cues changed in `path`"
-     },
-     "sources": {
-      "type": "integer",
-      "title": "Sources",
-      "description": "cues changed in the original .srt"
-     }
-    },
-    "type": "object",
-    "required": [
-     "texts",
-     "sources"
-    ],
-    "title": "SubtitlesSaved"
+    "title": "TranscriptView"
    },
    "Uploaded": {
     "properties": {
      "id": {
       "type": "string",
-      "title": "Id",
-      "description": "the upload folder: pass it with the other files of the same video"
+      "title": "Id"
      },
      "path": {
       "type": "string",
@@ -1440,12 +2236,8 @@
      "kind": {
       "type": "string",
       "enum": [
-       "dir",
        "media",
-       "srt",
-       "vi_srt",
-       "dub",
-       "audio",
+       "subtitle",
        "other"
       ],
       "title": "Kind"

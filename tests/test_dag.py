@@ -71,3 +71,17 @@ def test_gate_and_params_validated():
 def test_url_source():
     specs = by_key(plan(stages(source="https://youtu.be/x"), ["vi"]))
     assert specs["source"].driver == "url" and specs["source"].lane == "net"
+
+
+def test_video_with_existing_subtitles_skips_their_stages(tmp_path):
+    from dich.drivers.source.file import siblings
+    video = tmp_path / "a.b.mp4"
+    for name in ("a.b.mp4", "a.b.srt", "a.b.vi.srt", "a.b.x.srt", "a.srt"):
+        (tmp_path / name).write_text("")
+    found = siblings(video)
+    assert found == {"src": str(tmp_path / "a.b.srt"), "vi": str(tmp_path / "a.b.vi.srt")}
+    specs = by_key(plan(resolve(get_template("default"), str(video),
+                                {"source": {"params": {"subtitles": {"vi": found["vi"]}}}}), ["vi"]))
+    assert specs["asr"].skip is None and specs["translate@vi"].skip == "Đã có sẵn từ nguồn"
+    assert specs["dub@vi"].inputs["transcript"] == ["source", "transcript.vi"]
+    assert specs["mux@vi"].skip is None

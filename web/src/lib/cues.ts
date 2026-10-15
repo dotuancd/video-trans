@@ -2,7 +2,8 @@
 // Pure functions over the row list; times come from the timed words of the transcript when the spoken line
 // still matches them, else are estimated from the share of characters moved.
 
-export type Row = { key: number; start: number; end: number; source: string; text: string }
+/** id: the cue id of the transcript (kept through edits; a cue split off gets a new one from the server) */
+export type Row = { key: number; id?: string | null; start: number; end: number; source: string; text: string }
 export type Field = 'text' | 'source'
 export type Word = { word: string; start: number; end: number }
 
@@ -45,7 +46,7 @@ function boundary(text: string, ratio: number) {
 export function mergeNext(rows: Row[], i: number): Row[] {
   const [a, b] = [rows[i], rows[i + 1]]
   if (!b) return rows
-  const merged = { key: a.key, start: a.start, end: b.end, source: join(a.source, b.source), text: join(a.text, b.text) }
+  const merged = { key: a.key, id: a.id, start: a.start, end: b.end, source: join(a.source, b.source), text: join(a.text, b.text) }
   return [...rows.slice(0, i), merged, ...rows.slice(i + 2)]
 }
 
@@ -66,7 +67,7 @@ export function split(rows: Row[], i: number, field: Field, at: number, spoken: 
     [field]: value.slice(0, at).trimEnd(), [other]: row[other].slice(0, cut).trimEnd(),
   }
   const tail = {
-    key: newKey(), start: gap?.start ?? time, end: row.end,
+    key: newKey(), id: null, start: gap?.start ?? time, end: row.end,
     [field]: value.slice(at).trimStart(), [other]: row[other].slice(cut).trimStart(),
   } as Row
   return [...rows.slice(0, i), head, tail, ...rows.slice(i + 1)]
