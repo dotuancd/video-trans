@@ -1,0 +1,1379 @@
+{
+ "openapi": "3.1.0",
+ "info": {
+  "title": "dich",
+  "version": "0.1.0"
+ },
+ "paths": {
+  "/api/config": {
+   "get": {
+    "summary": "Get Config",
+    "operationId": "get_config",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Config"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/fs": {
+   "get": {
+    "summary": "List Dir",
+    "operationId": "list_dir",
+    "parameters": [
+     {
+      "name": "path",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "default": "",
+       "title": "Path"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Listing"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/jobs": {
+   "get": {
+    "summary": "List Jobs",
+    "operationId": "list_jobs",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Job"
+         },
+         "type": "array",
+         "title": "Response List Jobs"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "Add Jobs",
+    "operationId": "add_jobs",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/JobCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/JobCreated"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/jobs/{job_id}": {
+   "get": {
+    "summary": "Get Job",
+    "operationId": "get_job",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Job"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "summary": "Delete Job",
+    "operationId": "delete_job",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/jobs/{job_id}/steps/{name}/run": {
+   "post": {
+    "summary": "Run Step",
+    "operationId": "run_step",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Job Id"
+      }
+     },
+     {
+      "name": "name",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "enum": [
+        "transcribe",
+        "translate",
+        "dub",
+        "mux"
+       ],
+       "type": "string",
+       "title": "Name"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RunStep"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Job"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/jobs/{job_id}/steps/{name}/log": {
+   "get": {
+    "summary": "Get Step Log",
+    "operationId": "get_step_log",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Job Id"
+      }
+     },
+     {
+      "name": "name",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "enum": [
+        "transcribe",
+        "translate",
+        "dub",
+        "mux"
+       ],
+       "type": "string",
+       "title": "Name"
+      }
+     },
+     {
+      "name": "offset",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 0,
+       "title": "Offset"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/StepLog"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/jobs/{job_id}/cancel": {
+   "post": {
+    "summary": "Cancel Job",
+    "operationId": "cancel_job",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Job"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/events": {
+   "get": {
+    "summary": "Events",
+    "operationId": "events",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "text/event-stream": {}
+      }
+     }
+    }
+   }
+  },
+  "/api/subtitles": {
+   "get": {
+    "summary": "Get Subtitles",
+    "description": "A .vi.srt with the original line of each cue next to it, or an original .srt alone.",
+    "operationId": "get_subtitles",
+    "parameters": [
+     {
+      "name": "path",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Path"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Subtitles"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "summary": "Save Subtitles",
+    "description": "Replace the cue texts (timing kept), and those of the original .srt when `sources` is given.",
+    "operationId": "save_subtitles",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SubtitlesSave"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SubtitlesSaved"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/subtitles/vtt": {
+   "get": {
+    "summary": "Subtitles Vtt",
+    "operationId": "subtitles_vtt",
+    "parameters": [
+     {
+      "name": "path",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Path"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "text/plain": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/media": {
+   "get": {
+    "summary": "Media",
+    "operationId": "media",
+    "parameters": [
+     {
+      "name": "path",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Path"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/reveal": {
+   "post": {
+    "summary": "Reveal",
+    "description": "Show the file in Finder / the file manager.",
+    "operationId": "reveal",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PathBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/voices": {
+   "get": {
+    "summary": "List Voices",
+    "operationId": "list_voices",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Voice"
+         },
+         "type": "array",
+         "title": "Response List Voices"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/voices/upload": {
+   "post": {
+    "summary": "Upload Voice",
+    "description": "Keep a 3–8s clip to clone a voice from; returns its path for the dub step's ref_audio.",
+    "operationId": "upload_voice",
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_upload_voice"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PathBody"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/voices/preview": {
+   "post": {
+    "summary": "Preview Voice",
+    "description": "Reads text (or a sentence of the subtitles) in the voice the dub step would use.\nThe text read is in the X-Preview-Text header, URL-encoded.",
+    "operationId": "preview_voice",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Preview"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "audio/wav": {}
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "schemas": {
+   "Body_upload_voice": {
+    "properties": {
+     "file": {
+      "type": "string",
+      "contentMediaType": "application/octet-stream",
+      "title": "File"
+     }
+    },
+    "type": "object",
+    "required": [
+     "file"
+    ],
+    "title": "Body_upload_voice"
+   },
+   "Config": {
+    "properties": {
+     "root": {
+      "type": "string",
+      "title": "Root"
+     },
+     "defaults": {
+      "additionalProperties": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "object",
+      "title": "Defaults"
+     }
+    },
+    "type": "object",
+    "required": [
+     "root",
+     "defaults"
+    ],
+    "title": "Config"
+   },
+   "Cue": {
+    "properties": {
+     "index": {
+      "type": "integer",
+      "title": "Index"
+     },
+     "start": {
+      "type": "number",
+      "title": "Start"
+     },
+     "end": {
+      "type": "number",
+      "title": "End"
+     },
+     "source": {
+      "type": "string",
+      "title": "Source"
+     },
+     "text": {
+      "type": "string",
+      "title": "Text"
+     }
+    },
+    "type": "object",
+    "required": [
+     "index",
+     "start",
+     "end",
+     "source",
+     "text"
+    ],
+    "title": "Cue"
+   },
+   "Entry": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "path": {
+      "type": "string",
+      "title": "Path"
+     },
+     "dir": {
+      "type": "boolean",
+      "title": "Dir"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "dir",
+       "media",
+       "srt",
+       "vi_srt",
+       "dub",
+       "audio",
+       "other"
+      ],
+      "title": "Kind"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "path",
+     "dir",
+     "kind"
+    ],
+    "title": "Entry"
+   },
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "type": "array",
+      "title": "Detail"
+     }
+    },
+    "type": "object",
+    "title": "HTTPValidationError"
+   },
+   "Job": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "source": {
+      "type": "string",
+      "title": "Source"
+     },
+     "start": {
+      "type": "string",
+      "enum": [
+       "media",
+       "srt",
+       "vi_srt"
+      ],
+      "title": "Start"
+     },
+     "created_at": {
+      "type": "number",
+      "title": "Created At"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "queued",
+       "running",
+       "done",
+       "failed",
+       "cancelled",
+       "stale"
+      ],
+      "title": "Status"
+     },
+     "steps": {
+      "items": {
+       "$ref": "#/components/schemas/Step"
+      },
+      "type": "array",
+      "title": "Steps"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "source",
+     "start",
+     "created_at",
+     "status",
+     "steps"
+    ],
+    "title": "Job"
+   },
+   "JobCreate": {
+    "properties": {
+     "path": {
+      "type": "string",
+      "title": "Path"
+     },
+     "start": {
+      "type": "string",
+      "enum": [
+       "media",
+       "srt",
+       "vi_srt"
+      ],
+      "title": "Start",
+      "default": "media"
+     },
+     "recursive": {
+      "type": "boolean",
+      "title": "Recursive",
+      "default": false
+     },
+     "translate": {
+      "type": "boolean",
+      "title": "Translate",
+      "default": true
+     },
+     "dub": {
+      "type": "boolean",
+      "title": "Dub",
+      "default": false
+     },
+     "mux": {
+      "type": "boolean",
+      "title": "Mux",
+      "default": false
+     },
+     "overwrite": {
+      "type": "boolean",
+      "title": "Overwrite",
+      "default": false
+     },
+     "out": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Out"
+     },
+     "params": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Params",
+      "description": "options of every step, see /api/config"
+     }
+    },
+    "type": "object",
+    "required": [
+     "path"
+    ],
+    "title": "JobCreate"
+   },
+   "JobCreated": {
+    "properties": {
+     "jobs": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Jobs"
+     },
+     "skipped": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Skipped"
+     }
+    },
+    "type": "object",
+    "required": [
+     "jobs",
+     "skipped"
+    ],
+    "title": "JobCreated"
+   },
+   "Listing": {
+    "properties": {
+     "path": {
+      "type": "string",
+      "title": "Path"
+     },
+     "parent": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Parent"
+     },
+     "entries": {
+      "items": {
+       "$ref": "#/components/schemas/Entry"
+      },
+      "type": "array",
+      "title": "Entries"
+     }
+    },
+    "type": "object",
+    "required": [
+     "path",
+     "parent",
+     "entries"
+    ],
+    "title": "Listing"
+   },
+   "PathBody": {
+    "properties": {
+     "path": {
+      "type": "string",
+      "title": "Path"
+     }
+    },
+    "type": "object",
+    "required": [
+     "path"
+    ],
+    "title": "PathBody"
+   },
+   "Preview": {
+    "properties": {
+     "text": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Text",
+      "description": "what to read; empty: a sentence of `subtitles`"
+     },
+     "voice": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Voice",
+      "description": "preset name, or 'source' to clone the speaker of `media`"
+     },
+     "ref_audio": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ref Audio"
+     },
+     "int8": {
+      "type": "boolean",
+      "title": "Int8",
+      "default": false
+     },
+     "media": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Media",
+      "description": "the video the voice is cloned from; empty: the one next to `subtitles`"
+     },
+     "subtitles": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Subtitles",
+      "description": "the .vi.srt (or .srt): its timings pick the clip, its text is read; empty: the ones next to `media`"
+     }
+    },
+    "type": "object",
+    "title": "Preview"
+   },
+   "RunStep": {
+    "properties": {
+     "params": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Params"
+     },
+     "cascade": {
+      "type": "boolean",
+      "title": "Cascade",
+      "default": true
+     }
+    },
+    "type": "object",
+    "title": "RunStep"
+   },
+   "Step": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "job_id": {
+      "type": "integer",
+      "title": "Job Id"
+     },
+     "position": {
+      "type": "integer",
+      "title": "Position"
+     },
+     "name": {
+      "type": "string",
+      "enum": [
+       "transcribe",
+       "translate",
+       "dub",
+       "mux"
+      ],
+      "title": "Name"
+     },
+     "inputs": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Inputs"
+     },
+     "output": {
+      "type": "string",
+      "title": "Output"
+     },
+     "params": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Params"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "queued",
+       "running",
+       "done",
+       "failed",
+       "cancelled",
+       "stale"
+      ],
+      "title": "Status"
+     },
+     "exists": {
+      "type": "boolean",
+      "title": "Exists",
+      "description": "the output file is on disk"
+     },
+     "message": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Message"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "done": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Done"
+     },
+     "total": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Total"
+     },
+     "attempt": {
+      "type": "integer",
+      "title": "Attempt"
+     },
+     "started_at": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Started At"
+     },
+     "finished_at": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Finished At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "job_id",
+     "position",
+     "name",
+     "inputs",
+     "output",
+     "params",
+     "status",
+     "exists",
+     "message",
+     "error",
+     "done",
+     "total",
+     "attempt",
+     "started_at",
+     "finished_at"
+    ],
+    "title": "Step"
+   },
+   "StepLog": {
+    "properties": {
+     "text": {
+      "type": "string",
+      "title": "Text"
+     },
+     "offset": {
+      "type": "integer",
+      "title": "Offset",
+      "description": "byte offset of `text` in the log (later than asked when the log is long)"
+     },
+     "size": {
+      "type": "integer",
+      "title": "Size",
+      "description": "log size in bytes: the offset to ask for next"
+     }
+    },
+    "type": "object",
+    "required": [
+     "text",
+     "offset",
+     "size"
+    ],
+    "title": "StepLog"
+   },
+   "Subtitles": {
+    "properties": {
+     "path": {
+      "type": "string",
+      "title": "Path",
+      "description": "the file whose cues are `text`: a .vi.srt, or an original .srt"
+     },
+     "source_path": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Path",
+      "description": "the original .srt whose cues are `source`, when `path` is a .vi.srt"
+     },
+     "cues": {
+      "items": {
+       "$ref": "#/components/schemas/Cue"
+      },
+      "type": "array",
+      "title": "Cues"
+     }
+    },
+    "type": "object",
+    "required": [
+     "path",
+     "source_path",
+     "cues"
+    ],
+    "title": "Subtitles"
+   },
+   "SubtitlesSave": {
+    "properties": {
+     "path": {
+      "type": "string",
+      "title": "Path"
+     },
+     "texts": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Texts"
+     },
+     "sources": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sources",
+      "description": "new texts of `source_path`, cue by cue"
+     }
+    },
+    "type": "object",
+    "required": [
+     "path",
+     "texts"
+    ],
+    "title": "SubtitlesSave"
+   },
+   "SubtitlesSaved": {
+    "properties": {
+     "texts": {
+      "type": "integer",
+      "title": "Texts",
+      "description": "cues changed in `path`"
+     },
+     "sources": {
+      "type": "integer",
+      "title": "Sources",
+      "description": "cues changed in the original .srt"
+     }
+    },
+    "type": "object",
+    "required": [
+     "texts",
+     "sources"
+    ],
+    "title": "SubtitlesSaved"
+   },
+   "ValidationError": {
+    "properties": {
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "type": "array",
+      "title": "Location"
+     },
+     "msg": {
+      "type": "string",
+      "title": "Message"
+     },
+     "type": {
+      "type": "string",
+      "title": "Error Type"
+     },
+     "input": {
+      "title": "Input"
+     },
+     "ctx": {
+      "type": "object",
+      "title": "Context"
+     }
+    },
+    "type": "object",
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError"
+   },
+   "Voice": {
+    "properties": {
+     "label": {
+      "type": "string",
+      "title": "Label"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     }
+    },
+    "type": "object",
+    "required": [
+     "label",
+     "name"
+    ],
+    "title": "Voice"
+   }
+  }
+ }
+}

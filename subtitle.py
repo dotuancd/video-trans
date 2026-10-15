@@ -43,6 +43,6 @@ def words_to_subtitles(words, **options):
 
 def write_srt(words, path, **options):
     subtitles = words_to_subtitles(words, **options)
-    with open(path, 'w') as f:
+    with open(path, 'w', encoding='utf-8') as f:
         f.write(compose(subtitles))
     return subtitles

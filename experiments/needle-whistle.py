@@ -1,5 +1,9 @@
 import needle
-from subtitle import write_srt
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from subtitle import write_srt  # noqa: E402
 
 audio_path = "017 Hallucination _ AI Coding Crash Course.wav"
 output_path = "needle-whilte-rs.txt"

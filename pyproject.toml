@@ -1,0 +1,31 @@
+[project]
+name = "dich-video"
+version = "0.1.0"
+description = "Subtitle, translate (EN→VI) and dub videos locally"
+requires-python = ">=3.10"
+dependencies = ["cactus-needle", "av", "numpy", "srt", "soundfile"]
+
+[project.optional-dependencies]
+local = ["ctranslate2", "transformers", "sentencepiece", "protobuf"]
+openai = ["openai"]
+# onnxruntime ≥ 1.31 refuses to load the model from the Hugging Face cache ("External data path escapes model directory")
+tts = ["vieneu", "onnxruntime==1.23.2"]
+ui = ["fastapi[standard]>=0.135"]
+experiments = ["moondream"]
+
+[project.scripts]
+dich = "dich:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["dich", "settings", "subtitle", "translation", "llm_translation", "tts"]
+packages = ["dich_server"]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

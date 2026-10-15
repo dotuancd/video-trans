@@ -1,0 +1,12 @@
+{
+    "disableBundledSkills": true,
+    "disableClaudeAiConnectors": true,
+    "disableWorkflows": true,
+    "disableRemoteControl": true,
+    "disabledMcpjsonServers": [],
+    "prependPlugins": [
+        "figma",
+        "expo",
+        "skill-creator"
+    ]
+}
