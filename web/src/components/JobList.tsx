@@ -35,8 +35,8 @@ export function TaskChip({ task }: { task: Task }) {
 
 export function JobList({ jobs, selected, onSelect }: {
   jobs: Job[]
-  selected?: number
-  onSelect: (id: number) => void
+  selected?: string
+  onSelect: (id: string) => void
 }) {
   if (!jobs.length) {
     return (

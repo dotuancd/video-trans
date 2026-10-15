@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type ServerSentEventsResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddLangsData, AddLangsErrors, AddLangsResponses, ArtifactVttData, ArtifactVttErrors, ArtifactVttResponses, AttemptEventsData, AttemptEventsErrors, AttemptEventsResponses, AttemptSystemLogData, AttemptSystemLogErrors, AttemptSystemLogResponses, CancelJobData, CancelJobErrors, CancelJobResponses, CreateJobsData, CreateJobsErrors, CreateJobsResponses, DeleteJobData, DeleteJobErrors, DeleteJobResponses, DownloadArtifactData, DownloadArtifactErrors, DownloadArtifactResponses, EventsData, EventsResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetConfigData, GetConfigResponses, GetJobData, GetJobErrors, GetJobResponses, GetTranscriptData, GetTranscriptErrors, GetTranscriptResponses, ListAttemptsData, ListAttemptsErrors, ListAttemptsResponses, ListDirData, ListDirErrors, ListDirResponses, ListDriversData, ListDriversResponses, ListJobsData, ListJobsResponses, ListTemplatesData, ListTemplatesResponses, ListVoicesData, ListVoicesResponses, PreviewVoiceData, PreviewVoiceErrors, PreviewVoiceResponses, RefreshJobData, RefreshJobErrors, RefreshJobResponses, RerunTaskData, RerunTaskErrors, RerunTaskResponses, ResumeJobData, ResumeJobErrors, ResumeJobResponses, RevealData, RevealErrors, RevealResponses, SaveTranscriptData, SaveTranscriptErrors, SaveTranscriptResponses, TraceData, TraceErrors, TraceResponses, UploadData, UploadErrors, UploadResponses, UploadVoiceData, UploadVoiceErrors, UploadVoiceResponses } from './types.gen';
+import type { AddLangsData, AddLangsErrors, AddLangsResponses, ArtifactVttData, ArtifactVttErrors, ArtifactVttResponses, AttemptEventsData, AttemptEventsErrors, AttemptEventsResponses, AttemptSystemLogData, AttemptSystemLogErrors, AttemptSystemLogResponses, CancelJobData, CancelJobErrors, CancelJobResponses, CreateJobsData, CreateJobsErrors, CreateJobsResponses, DeleteJobData, DeleteJobErrors, DeleteJobResponses, DeletePresetData, DeletePresetErrors, DeletePresetResponses, DownloadArtifactData, DownloadArtifactErrors, DownloadArtifactResponses, EventsData, EventsResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetConfigData, GetConfigResponses, GetJobData, GetJobErrors, GetJobResponses, GetTranscriptData, GetTranscriptErrors, GetTranscriptResponses, ListAttemptsData, ListAttemptsErrors, ListAttemptsResponses, ListDirData, ListDirErrors, ListDirResponses, ListDriversData, ListDriversResponses, ListJobsData, ListJobsResponses, ListPresetsData, ListPresetsResponses, ListTemplatesData, ListTemplatesResponses, ListVoicesData, ListVoicesResponses, PickAttemptData, PickAttemptErrors, PickAttemptResponses, PreviewVoiceData, PreviewVoiceErrors, PreviewVoiceResponses, RefreshJobData, RefreshJobErrors, RefreshJobResponses, RerunTaskData, RerunTaskErrors, RerunTaskResponses, ResumeJobData, ResumeJobErrors, ResumeJobResponses, RevealData, RevealErrors, RevealResponses, SavePresetData, SavePresetErrors, SavePresetResponses, SaveTranscriptData, SaveTranscriptErrors, SaveTranscriptResponses, TraceData, TraceErrors, TraceResponses, UploadData, UploadErrors, UploadResponses, UploadVoiceData, UploadVoiceErrors, UploadVoiceResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -92,8 +92,17 @@ export const rerunTask = <ThrowOnError extends boolean = true>(options: Options<
 
 /**
  * List Attempts
+ *
+ * Newest first, each with the files it produced that are still kept.
  */
 export const listAttempts = <ThrowOnError extends boolean = true>(options: Options<ListAttemptsData, ThrowOnError>): RequestResult<ListAttemptsResponses, ListAttemptsErrors, ThrowOnError> => (options.client ?? client).get<ListAttemptsResponses, ListAttemptsErrors, ThrowOnError>({ url: '/api/tasks/{task_id}/attempts', ...options });
+
+/**
+ * Pick Attempt
+ *
+ * An earlier run becomes the step's result again; the steps after it become stale.
+ */
+export const pickAttempt = <ThrowOnError extends boolean = true>(options: Options<PickAttemptData, ThrowOnError>): RequestResult<PickAttemptResponses, PickAttemptErrors, ThrowOnError> => (options.client ?? client).post<PickAttemptResponses, PickAttemptErrors, ThrowOnError>({ url: '/api/tasks/{task_id}/attempts/{attempt_id}/use', ...options });
 
 /**
  * Attempt Events
@@ -113,7 +122,8 @@ export const artifactVtt = <ThrowOnError extends boolean = true>(options: Option
 /**
  * Download Artifact
  *
- * The file as an attachment named like the export; transcripts as .srt.
+ * The file as an attachment named like the export; transcripts as .srt. inline: shown in the
+ * browser instead (transcripts as plain text).
  */
 export const downloadArtifact = <ThrowOnError extends boolean = true>(options: Options<DownloadArtifactData, ThrowOnError>): RequestResult<DownloadArtifactResponses, DownloadArtifactErrors, ThrowOnError> => (options.client ?? client).get<DownloadArtifactResponses, DownloadArtifactErrors, ThrowOnError>({ url: '/api/artifacts/{artifact_id}/download', ...options });
 
@@ -241,3 +251,27 @@ export const trace = <ThrowOnError extends boolean = true>(options: Options<Trac
  * Attempt System Log
  */
 export const attemptSystemLog = <ThrowOnError extends boolean = true>(options: Options<AttemptSystemLogData, ThrowOnError>): RequestResult<AttemptSystemLogResponses, AttemptSystemLogErrors, ThrowOnError> => (options.client ?? client).get<AttemptSystemLogResponses, AttemptSystemLogErrors, ThrowOnError>({ url: '/api/attempts/{attempt_id}/system', ...options });
+
+/**
+ * List Presets
+ */
+export const listPresets = <ThrowOnError extends boolean = true>(options?: Options<ListPresetsData, ThrowOnError>): RequestResult<ListPresetsResponses, unknown, ThrowOnError> => (options?.client ?? client).get<ListPresetsResponses, unknown, ThrowOnError>({ url: '/api/presets', ...options });
+
+/**
+ * Delete Preset
+ */
+export const deletePreset = <ThrowOnError extends boolean = true>(options: Options<DeletePresetData, ThrowOnError>): RequestResult<DeletePresetResponses, DeletePresetErrors, ThrowOnError> => (options.client ?? client).delete<DeletePresetResponses, DeletePresetErrors, ThrowOnError>({ url: '/api/presets/{name}', ...options });
+
+/**
+ * Save Preset
+ *
+ * Creates the preset, or replaces the one with this name.
+ */
+export const savePreset = <ThrowOnError extends boolean = true>(options: Options<SavePresetData, ThrowOnError>): RequestResult<SavePresetResponses, SavePresetErrors, ThrowOnError> => (options.client ?? client).put<SavePresetResponses, SavePresetErrors, ThrowOnError>({
+    url: '/api/presets/{name}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});

@@ -21,18 +21,21 @@ def find_media(folder, recursive):
     return sorted(f for f in files if f.is_file() and not f.name.startswith(".") and is_media(f.name))
 
 
+def download_name(source, art):
+    """The name an artifact is downloaded as: like its export, after the job's source."""
+    from dich.storage.export import export_name, source_stem
+    base = Path(art["path"]) if job_service.is_url(source) else Path(source)
+    return export_name(art["slot"], source_stem(base), Path(art["path"]).suffix) or Path(art["path"]).name
+
+
 def attach_artifacts(store, jobs):
     """Each task gets the artifacts of its current attempt, named as they are downloaded."""
-    from dich.storage.export import export_name, source_stem
     artifacts = store.current_artifacts(jobs[0]["id"] if len(jobs) == 1 else None)
     for job in jobs:
-        source = job["source"]
         for task in job["tasks"]:
             task["artifacts"] = artifacts.get(task["id"], [])
             for art in task["artifacts"]:
-                base = Path(art["path"]) if job_service.is_url(source) else Path(source)
-                art["download_name"] = (export_name(art["slot"], source_stem(base), Path(art["path"]).suffix)
-                                        or Path(art["path"]).name)
+                art["download_name"] = download_name(job["source"], art)
     return jobs
 
 
@@ -64,7 +67,7 @@ def router(ctx):
         return attach_artifacts(store, jobs) if jobs else []
 
     @api.get("/jobs/{job_id}")
-    def get_job(job_id: int) -> Job:
+    def get_job(job_id: str) -> Job:
         return job_or_404(job_id)
 
     @api.post("/jobs")
@@ -96,7 +99,7 @@ def router(ctx):
         for source in sources:
             existing = store.jobs_of_source(source)
             if existing:
-                skipped.append(f"{Path(str(source)).name}: đã có việc #{existing[-1]}")
+                skipped.append(f"{Path(str(source)).name}: đã có việc {existing[-1]}")
                 continue
             try:
                 created.append(job_service.create_job(store, source, body.langs, body.template, overrides,
@@ -106,33 +109,33 @@ def router(ctx):
         return JobsCreated(jobs=created, skipped=skipped)
 
     @api.post("/jobs/{job_id}/langs")
-    def add_langs(job_id: int, body: AddLangs) -> Job:
+    def add_langs(job_id: str, body: AddLangs) -> Job:
         job_or_404(job_id)
         job_service.add_langs(store, job_id, body.langs)
         return job_or_404(job_id)
 
     @api.post("/jobs/{job_id}/cancel")
-    def cancel_job(job_id: int) -> Job:
+    def cancel_job(job_id: str) -> Job:
         job_or_404(job_id)
         store.cancel_job(job_id)
         return job_or_404(job_id)
 
     @api.post("/jobs/{job_id}/resume")
-    def resume_job(job_id: int) -> Job:
+    def resume_job(job_id: str) -> Job:
         """Past a review gate, and again from stopped or failed steps."""
         job_or_404(job_id)
         store.resume(job_id)
         return job_or_404(job_id)
 
     @api.post("/jobs/{job_id}/refresh")
-    def refresh_job(job_id: int) -> Job:
+    def refresh_job(job_id: str) -> Job:
         """Run the steps whose input changed (stale) again."""
         job_or_404(job_id)
         store.refresh(job_id)
         return job_or_404(job_id)
 
     @api.delete("/jobs/{job_id}", status_code=204)
-    def delete_job(job_id: int):
+    def delete_job(job_id: str):
         """Removes the job and its workspace; exported files stay."""
         job_or_404(job_id)
         try:
@@ -143,7 +146,7 @@ def router(ctx):
     # --- tasks ---
 
     @api.post("/tasks/{task_id}/rerun", responses={409: {"description": "Busy, or edits by hand need confirm"}})
-    def rerun_task(task_id: int, body: Rerun) -> Job:
+    def rerun_task(task_id: str, body: Rerun) -> Job:
         task = task_or_404(task_id)
         try:
             store.rerun(task_id, body.mode, body.params, body.driver, body.confirm)
@@ -156,12 +159,31 @@ def router(ctx):
         return job_or_404(task["job_id"])
 
     @api.get("/tasks/{task_id}/attempts")
-    def list_attempts(task_id: int) -> list[Attempt]:
-        task_or_404(task_id)
-        return store.attempts_of(task_id)
+    def list_attempts(task_id: str) -> list[Attempt]:
+        """Newest first, each with the files it produced that are still kept."""
+        task = task_or_404(task_id)
+        source = store.job_row(task["job_id"])["source"]
+        attempts = store.attempts_of(task_id)
+        for attempt in attempts:
+            attempt["artifacts"] = [{**art, "download_name": download_name(source, art)}
+                                    for art in store.artifacts_of(attempt["id"]) if Path(art["path"]).is_file()]
+        return attempts
+
+    @api.post("/tasks/{task_id}/attempts/{attempt_id}/use", responses={409: {"description": "Busy or files gone"}})
+    def pick_attempt(task_id: str, attempt_id: str) -> Job:
+        """An earlier run becomes the step's result again; the steps after it become stale."""
+        task = task_or_404(task_id)
+        try:
+            store.use_attempt(task_id, attempt_id)
+        except KeyError:
+            raise HTTPException(404, "Không có lần chạy này")
+        except Busy as error:
+            raise HTTPException(409, str(error))
+        export_task(store, store.task(task_id))
+        return job_or_404(task["job_id"])
 
     @api.get("/attempts/{attempt_id}/events")
-    def attempt_events(attempt_id: int) -> list[Event]:
+    def attempt_events(attempt_id: str) -> list[Event]:
         if not store.attempt(attempt_id):
             raise HTTPException(404, "Không có lần chạy này")
         return store.attempt_events(attempt_id)
@@ -175,26 +197,27 @@ def router(ctx):
         return artifact
 
     @api.get("/artifacts/{artifact_id}", response_class=FileResponse)
-    def get_artifact(artifact_id: int):
+    def get_artifact(artifact_id: str):
         return FileResponse(artifact_or_404(artifact_id)["path"])
 
     @api.get("/artifacts/{artifact_id}/vtt", response_class=PlainTextResponse)
-    def artifact_vtt(artifact_id: int):
+    def artifact_vtt(artifact_id: str):
         return PlainTextResponse(to_vtt(Transcript.load(artifact_or_404(artifact_id)["path"])), media_type="text/vtt")
 
     @api.get("/artifacts/{artifact_id}/download", response_class=FileResponse)
-    def download_artifact(artifact_id: int):
-        """The file as an attachment named like the export; transcripts as .srt."""
-        from dich.storage.export import export_name, source_stem
+    def download_artifact(artifact_id: str, inline: bool = False):
+        """The file as an attachment named like the export; transcripts as .srt. inline: shown in the
+        browser instead (transcripts as plain text)."""
         artifact = artifact_or_404(artifact_id)
-        job = store.job_row(artifact["job_id"])
-        source = Path(job["source"]) if not job_service.is_url(job["source"]) else Path(artifact["path"])
-        name = (export_name(artifact["slot"], source_stem(source), Path(artifact["path"]).suffix)
-                or Path(artifact["path"]).name)
+        name = download_name(store.job_row(artifact["job_id"])["source"], artifact)
         if artifact["slot"].startswith("transcript."):
             text = to_srt(Transcript.load(artifact["path"]))
+            if inline:
+                return PlainTextResponse(text)
             return PlainTextResponse(text, media_type="application/x-subrip",
                                      headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"})
+        if inline:
+            return FileResponse(artifact["path"])
         return FileResponse(artifact["path"], filename=name)
 
     # --- transcript editor ---
@@ -223,7 +246,7 @@ def router(ctx):
         return bool(attempt and attempt["origin"] == "human")
 
     @api.get("/jobs/{job_id}/transcript")
-    def get_transcript(job_id: int, lang: str = "src") -> TranscriptView:
+    def get_transcript(job_id: str, lang: str = "src") -> TranscriptView:
         task, transcript, source_task, source = transcripts(job_id, lang)
         by_id = source.by_id() if source else {}
         cues = [EditCue(id=c.id, start=c.start, end=c.end, text=c.text,
@@ -251,7 +274,7 @@ def router(ctx):
         return cues
 
     @api.put("/jobs/{job_id}/transcript")
-    def save_transcript(job_id: int, body: TranscriptSave, lang: str = "src") -> TranscriptSaved:
+    def save_transcript(job_id: str, body: TranscriptSave, lang: str = "src") -> TranscriptSaved:
         """Saves the editor's cues as an edit by hand: steps after it become stale. With the original next to
         it (every cue has `source`), both are saved with the same cues (merges, splits, timings)."""
         task, transcript, source_task, source = transcripts(job_id, lang)

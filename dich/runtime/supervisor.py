@@ -11,6 +11,7 @@ from dich.runtime.worker import worker_main
 
 CHECK_EVERY = 0.5
 REAP_EVERY = 2.0
+PRUNE_EVERY = 3600.0
 
 
 def pid_alive(pid):
@@ -44,6 +45,7 @@ class Supervisor:
     def start(self):
         store = Store(self.db_path, self.data_dir)
         store.reap(alive=pid_alive)     # tasks left running by a previous server
+        store.prune_old()
         store.close()
         for lane, count in self.workers.items():
             for index in range(count):
@@ -54,7 +56,7 @@ class Supervisor:
 
     def _watch(self):
         store = Store(self.db_path, self.data_dir)
-        last_reap = 0.0
+        last_reap = last_prune = time.monotonic()
         while not self._stop.wait(CHECK_EVERY):
             for (lane, index), process in list(self.processes.items()):
                 if not process.is_alive() and not self._stop.is_set():
@@ -65,6 +67,12 @@ class Supervisor:
                 try:
                     store.reap(alive=pid_alive)
                 except Exception as error:   # database locked for too long: try again next round
+                    print(f"supervisor: {error}")
+            if time.monotonic() - last_prune > PRUNE_EVERY:
+                last_prune = time.monotonic()
+                try:
+                    store.prune_old()
+                except Exception as error:
                     print(f"supervisor: {error}")
         store.close()
 

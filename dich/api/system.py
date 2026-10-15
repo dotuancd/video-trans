@@ -2,11 +2,8 @@
 import asyncio
 import hashlib
 import json
-import os
-import re
 import subprocess
 import sys
-import time
 from pathlib import Path
 from urllib.parse import quote
 
@@ -16,20 +13,13 @@ from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from dich import drivers, settings
 from dich.api.models import (Config, DriverInfo, Entry, Language, Listing, PathBody, Preview, TemplateInfo, Uploaded,
                              Voice)
+from dich.core.ids import is_id, new_id
 from dich.core.langs import LANGUAGES
 from dich.core.template import load_templates
 from dich.formats.transcript import Transcript, read_srt
 from dich.media import is_media, is_subtitle
 
-CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
-ULID = re.compile(f"[{CROCKFORD}]{{26}}")
 POLL = 0.3   # seconds between reads of the events table
-
-
-def ulid():
-    """26 chars, sortable by creation time: 48 bits of milliseconds then 80 random bits."""
-    value = (int(time.time() * 1000) << 80) | int.from_bytes(os.urandom(10), "big")
-    return "".join(CROCKFORD[(value >> shift) & 31] for shift in range(125, -1, -5))
 
 
 def kind_of(path):
@@ -82,9 +72,9 @@ def router(ctx):
         name = Path(name).name
         if not (is_media(name) or is_subtitle(name)):
             raise HTTPException(400, f"{name}: chỉ nhận video/audio hoặc .srt")
-        if id is not None and not (ULID.fullmatch(id) and (ctx.uploads / id).is_dir()):
+        if id is not None and not (is_id(id, "upl") and (ctx.uploads / id).is_dir()):
             raise HTTPException(400, "Thư mục upload không hợp lệ")
-        id = id or ulid()
+        id = id or new_id("upl")
         target = ctx.uploads / id / name
         target.parent.mkdir(parents=True, exist_ok=True)
         part = target.with_name(target.name + ".part")
@@ -219,7 +209,7 @@ def router(ctx):
     def trace(trace_id: str):
         """The system logs of every attempt of the job with this trace id (or an error code / span id)."""
         rows = store.q("select a.*, t.key from attempts a join tasks t on a.task_id = t.id join jobs j on t.job_id = j.id"
-                       " where j.trace_id = ? or a.span_id like ? order by a.id", trace_id, f"{trace_id}%")
+                       " where j.trace_id = ? or a.span_id like ? order by a.rowid", trace_id, f"{trace_id}%")
         if not rows:
             raise HTTPException(404, "Không có trace này")
         parts = []
@@ -230,7 +220,7 @@ def router(ctx):
         return PlainTextResponse("\n".join(parts))
 
     @api.get("/attempts/{attempt_id}/system", response_class=PlainTextResponse)
-    def attempt_system_log(attempt_id: int, tail: int = 200_000):
+    def attempt_system_log(attempt_id: str, tail: int = 200_000):
         attempt = store.attempt(attempt_id)
         if not attempt:
             raise HTTPException(404, "Không có lần chạy này")

@@ -17,7 +17,7 @@ const SOURCE_VOICE = 'source'
 
 /** What the voice preview clones from and reads: a job (its video and subtitles of `lang`), or a video
  * on the server (with <name>.srt / <name>.vi.srt next to it). */
-export type PreviewContext = { job_id?: number; lang?: string; path?: string }
+export type PreviewContext = { job_id?: string; lang?: string; path?: string }
 
 type Prop = {
   type?: string

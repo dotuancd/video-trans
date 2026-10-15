@@ -168,7 +168,55 @@ def test_add_language_reuses_done_tasks(store, video):
     assert len(store.attempts_of(store.task_by_key(job_id, "asr")["id"])) == asr_attempts
 
 
-def test_keep_last_deletes_older_dub(store, video):
+def rerun_dub(store, job_id):
+    dub = store.task_by_key(job_id, "dub@vi")
+    first = store.output_of(dub, "audio.dub.vi")
+    store.x("update tasks set params = ? where id = ?", json.dumps({}), dub["id"])
+    store.rerun(store.task_by_key(job_id, "translate@vi")["id"], "cascade")
+    store.x("delete from attempts where fingerprint is not null and task_id in (select id from tasks where key like 'translate%')")
+    run_job(store, job_id)
+    return first
+
+
+def test_keep_last_kept_for_days_then_pruned(store, video, monkeypatch):
+    monkeypatch.setattr("dich.settings.KEEP_DAYS", 7)
+    job_id = make_job(store, video, export=False)
+    run_job(store, job_id)
+    first = rerun_dub(store, job_id)
+    assert Path(first["path"]).exists()
+    assert store.prune_old() == 0
+    store.x("update attempts set finished_at = ? where id = ?", time.time() - 8 * 86400, first["attempt_id"])
+    assert store.prune_old() == 1
+    assert not Path(first["path"]).exists()
+    current = store.output_of(store.task_by_key(job_id, "dub@vi"), "audio.dub.vi")
+    assert Path(current["path"]).exists()
+
+
+def test_use_earlier_attempt(store, video, monkeypatch):
+    monkeypatch.setattr("dich.settings.KEEP_DAYS", 7)
+    job_id = make_job(store, video, export=False)
+    run_job(store, job_id)
+    translate = store.task_by_key(job_id, "translate@vi")
+    old = translate["current_attempt"]
+    store.rerun(translate["id"], "only", confirm=True)
+    store.x("delete from attempts where fingerprint is not null and status != 'done'")
+    run_job(store, job_id)
+    assert store.task_by_key(job_id, "translate@vi")["current_attempt"] != old
+    store.refresh(job_id)
+    run_job(store, job_id)
+    store.use_attempt(translate["id"], old)
+    assert store.task_by_key(job_id, "translate@vi")["current_attempt"] == old
+    assert statuses(store, job_id)["translate@vi"] == "done"
+    assert statuses(store, job_id)["dub@vi"] == "stale"
+    store.x("update attempts set status = 'failed' where id = ?", old)
+    with pytest.raises(Busy):
+        store.use_attempt(translate["id"], old)
+    with pytest.raises(KeyError):
+        store.use_attempt(translate["id"], "att_nope")
+
+
+def test_keep_last_deletes_older_dub(store, video, monkeypatch):
+    monkeypatch.setattr("dich.settings.KEEP_DAYS", 0)
     job_id = make_job(store, video, export=False)
     run_job(store, job_id)
     dub = store.task_by_key(job_id, "dub@vi")
@@ -180,3 +228,66 @@ def test_keep_last_deletes_older_dub(store, video):
     dub = store.task_by_key(job_id, "dub@vi")
     assert store.output_of(dub, "audio.dub.vi")["id"] != first["id"]
     assert not Path(first["path"]).exists()
+
+
+def test_ids_are_prefixed(store, video):
+    from dich.core.ids import is_id
+    job_id = make_job(store, video)
+    run_job(store, job_id)
+    assert is_id(job_id, "job") and not is_id(job_id, "task")
+    task = store.tasks_of(job_id)[0]
+    attempt = store.attempts_of(task["id"])[0]
+    assert is_id(task["id"], "task") and is_id(attempt["id"], "att")
+    assert is_id(store.artifacts_of(attempt["id"])[0]["id"], "art")
+    assert is_id(store.call("voices", {}), "call")
+
+
+def test_numeric_id_database_is_set_aside(tmp_path):
+    import sqlite3
+    from dich.queue.sqlite import Store
+    path = tmp_path / "dich.sqlite"
+    old = sqlite3.connect(str(path))
+    old.execute("create table jobs (id integer primary key, title text)")
+    old.close()
+    (tmp_path / "jobs" / "1").mkdir(parents=True)
+    store = Store(path)
+    store.close()
+    assert (tmp_path / "dich.sqlite.old").exists() and (tmp_path / "jobs.old" / "1").is_dir()
+    assert not (tmp_path / "jobs").exists()
+
+
+def test_human_edit_of_stale_task_runs_only_later_steps(store, video, tmp_path):
+    job_id = make_job(store, video, export=False)
+    run_job(store, job_id)
+    store.rerun(store.task_by_key(job_id, "asr")["id"], "only")
+    run_job(store, job_id)
+    assert statuses(store, job_id)["translate@vi"] == "stale"
+    runs = dict(fake_drivers.RUNS)
+    edited = tmp_path / "edit.json"
+    Transcript("vi", []).save(edited)
+    store.save_human(store.task_by_key(job_id, "translate@vi")["id"], "transcript", edited)
+    assert statuses(store, job_id)["translate@vi"] == "done"
+    assert statuses(store, job_id)["dub@vi"] == "stale"
+    store.refresh(job_id)
+    run_job(store, job_id)
+    assert set(statuses(store, job_id).values()) == {"done"}
+    translate = store.task_by_key(job_id, "translate@vi")
+    assert store.attempt(translate["current_attempt"])["origin"] == "human"
+    assert fake_drivers.RUNS.get("translate") == runs.get("translate")
+
+
+def test_human_edit_of_failed_task_unblocks_later_steps(store, video, tmp_path):
+    job_id = make_job(store, video, export=False)
+    run_job(store, job_id)
+    translate = store.task_by_key(job_id, "translate@vi")
+    store.rerun(translate["id"], "cascade")
+    task = store.claim(["cpu", "gpu", "net"], job_id=job_id)
+    attempt = store.start_attempt(task)
+    store.fail(task["id"], attempt["id"], "boom")
+    assert statuses(store, job_id)["dub@vi"] == "blocked"
+    edited = tmp_path / "edit.json"
+    Transcript("vi", []).save(edited)
+    store.save_human(translate["id"], "transcript", edited)
+    assert statuses(store, job_id)["translate@vi"] == "done"
+    store.refresh(job_id)
+    assert run_job(store, job_id)["status"] == "done"

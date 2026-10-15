@@ -63,6 +63,16 @@ def test_create_run_rerun_and_duplicates(app):
     assert client.get(f"/api/artifacts/{art}/vtt").text.startswith("WEBVTT")
     download = client.get(f"/api/artifacts/{art}/download")
     assert "a.vi.srt" in download.headers["content-disposition"]
+    inline = client.get(f"/api/artifacts/{art}/download", params={"inline": True})
+    assert "content-disposition" not in inline.headers and "-->" in inline.text
+
+    run_job(ctx.store, job_id)
+    translate = tasks["translate@vi"]["id"]
+    attempts = client.get(f"/api/tasks/{translate}/attempts").json()
+    assert len(attempts) == 2 and attempts[1]["artifacts"][0]["download_name"] == "a.vi.srt"
+    used = client.post(f"/api/tasks/{translate}/attempts/{attempts[1]['id']}/use").json()
+    assert {t["key"]: t for t in used["tasks"]}["translate@vi"]["current_attempt"] == attempts[1]["id"]
+    assert client.post(f"/api/tasks/{translate}/attempts/att_nope/use").status_code == 404
 
 
 def test_bad_params_and_unknown_driver(app):
@@ -167,3 +177,18 @@ def test_preview_goes_through_a_worker_call(app, monkeypatch):
     threading.Thread(target=answer).start()
     response = client.post("/api/voices/preview", json={"job_id": job_id})
     assert response.status_code == 200 and response.headers["x-preview-text"] == "vi%3Ahello."
+
+
+def test_presets(app):
+    client, ctx = app
+    assert client.get("/api/presets").json() == []
+    body = {"export": False, "stages": {"asr": {"params": {"needle": {"lang": "ja"}}}, "refine": {"enabled": False}}}
+    saved = client.put("/api/presets/Anime JP", json=body).json()
+    assert saved["name"] == "Anime JP" and saved["stages"]["asr"]["params"]["needle"]["lang"] == "ja"
+    client.put("/api/presets/Anime JP", json={"export": True})
+    [preset] = client.get("/api/presets").json()
+    assert preset["export"] is True and preset["stages"] == {}
+    assert (ctx.data_dir / "presets.json").is_file()
+    assert client.put("/api/presets/%20", json={}).status_code == 400
+    assert client.delete("/api/presets/Anime JP").status_code == 204
+    assert client.delete("/api/presets/Anime JP").status_code == 404

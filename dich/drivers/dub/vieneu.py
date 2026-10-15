@@ -4,7 +4,8 @@
 # Cues are joined into sentences (reads more naturally than cue fragments), each sentence is synthesized
 # once and placed at its first cue's start. Vietnamese speech is often longer than the English slot, so a
 # sentence may run into the silence before the next one, then is sped up (atempo, up to max_speed), and
-# only as a last resort pushes the next sentence later.
+# only as a last resort pushes the next sentence later. A sentence much shorter than the original speech
+# it replaces is slowed down (down to min_speed) to fill it, never into the silence after it.
 #
 # The default voice ("source") is cloned from the video itself: a 3–8s run of speech picked from the
 # cue timings is cut out and used as the reference clip.
@@ -31,6 +32,7 @@ REF_SAMPLE_RATE = 24000
 REF_USE_CODES = True
 MAX_SENTENCE_CHARS = 200   # shorter than translation's 400 so long runs keep closer to the video
 MAX_GAP = 1.0              # a pause this long (seconds) also ends a sentence
+FILL_RATIO = 0.9           # a sentence filling less than this of its original speech is slowed down
 CACHE_DIR = settings.CACHE_DIR / "tts"
 REF_DIR = settings.CACHE_DIR / "ref"
 INFER_LOCK = threading.Lock()
@@ -103,11 +105,11 @@ def overlapping_text(cues, window):
 
 
 def change_speed(audio, speed):
-    """Speed audio up by `speed` without changing pitch (ffmpeg atempo via PyAV)."""
+    """Change the tempo of audio by `speed` (>1 faster, <1 slower) without changing pitch (ffmpeg atempo via PyAV)."""
     import av
     import numpy as np
 
-    if speed <= 1.001:
+    if abs(speed - 1) <= 0.001:
         return audio
     graph = av.filter.Graph()
     source = graph.add_abuffer(format="flt", sample_rate=SAMPLE_RATE, layout="mono")
@@ -159,14 +161,14 @@ class Dubber:
         sf.write(cached, audio, SAMPLE_RATE)
         return audio
 
-    def dub(self, cues, max_speed=1.3, progress=None):
+    def dub(self, cues, max_speed=1.3, min_speed=0.85, progress=None):
         """Returns (track as float32 48 kHz mono, stats dict)."""
         import numpy as np
 
         groups = group_cues(cues)
         clips, cursor = [], 0.0
-        sped_up, late, max_late = 0, 0, 0.0
-        for index, (start, _end, text) in enumerate(groups):
+        sped_up, slowed, late, max_late = 0, 0, 0, 0.0
+        for index, (start, end, text) in enumerate(groups):
             audio = self.synthesize(text)
             begin = max(start, cursor)
             next_start = groups[index + 1][0] if index + 1 < len(groups) else float("inf")
@@ -176,6 +178,9 @@ class Dubber:
                 speed = min(max_speed, duration / available)
                 audio = change_speed(audio, speed)
                 sped_up += 1
+            elif min_speed < 1 and begin <= start + 0.05 and duration < (end - begin) * FILL_RATIO:
+                audio = change_speed(audio, max(min_speed, duration / (end - begin)))
+                slowed += 1
             clips.append((begin, audio))
             cursor = begin + len(audio) / SAMPLE_RATE
             if begin > start + 0.05:
@@ -184,13 +189,13 @@ class Dubber:
             if progress:
                 progress(index + 1, len(groups))
 
-        end = max((begin + len(audio) / SAMPLE_RATE for begin, audio in clips), default=0.0)
-        track = np.zeros(int(end * SAMPLE_RATE) + SAMPLE_RATE // 2, dtype=np.float32)
+        length = max((begin + len(audio) / SAMPLE_RATE for begin, audio in clips), default=0.0)
+        track = np.zeros(int(length * SAMPLE_RATE) + SAMPLE_RATE // 2, dtype=np.float32)
         for begin, audio in clips:
             offset = int(begin * SAMPLE_RATE)
             track[offset:offset + len(audio)] += audio
         np.clip(track, -1.0, 1.0, out=track)
-        return track, {"sentences": len(groups), "sped_up": sped_up, "late": late, "max_late": max_late}
+        return track, {"sentences": len(groups), "sped_up": sped_up, "slowed": slowed, "late": late, "max_late": max_late}
 
 
 def save_wav(track, path):
@@ -210,6 +215,8 @@ class Params(BaseModel):
     ref_audio: str | None = Field(None, title="Clip giọng mẫu", description="Clone giọng từ clip 3–8 giây này")
     int8: bool = Field(False, title="Model int8", description="Model int8: nhanh hơn, có thể kém hơn")
     max_speed: float = Field(1.3, title="Tăng tốc tối đa", ge=1.0, le=2.0, description="Tăng tốc tối đa để vừa khung câu")
+    min_speed: float = Field(0.85, title="Giảm tốc tối đa", ge=0.5, le=1.0,
+                             description="Đọc chậm lại khi câu ngắn hơn đoạn nói gốc; 1 = tắt")
 
 
 @register
@@ -264,8 +271,8 @@ class VieneuDub(Driver):
         ref_audio, _window = self.voice_for(params, media, transcript.cues, ctx.log.info)
         ctx.log.info(f"Lồng tiếng {len(transcript.cues)} câu")
         dubber = self.dubber(params.voice, ref_audio, params.int8, ctx.log.info)
-        track, stats = dubber.dub(transcript.cues, max_speed=params.max_speed, progress=ctx.progress)
-        ctx.log.info(f"{stats['sentences']} câu, {len(track) / SAMPLE_RATE / 60:.1f} phút, {stats['sped_up']} câu tăng tốc, "
+        track, stats = dubber.dub(transcript.cues, max_speed=params.max_speed, min_speed=params.min_speed, progress=ctx.progress)
+        ctx.log.info(f"{stats['sentences']} câu, {len(track) / SAMPLE_RATE / 60:.1f} phút, {stats['sped_up']} câu tăng tốc, {stats['slowed']} câu giảm tốc, "
                      f"{stats['late']} câu trễ (tối đa {stats['max_late']:.1f}s)", **stats)
         if stats["late"]:
             ctx.log.warn(f"{stats['late']} câu đọc dài hơn khung thời gian: nên rút gọn bản dịch")

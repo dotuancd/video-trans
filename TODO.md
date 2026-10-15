@@ -24,6 +24,7 @@
 - [x] Tạo thư mục xử lý riêng cho từng job (`<data>/jobs/<id>/<bước>/<lần>/`).
 - [ ] Bước 6: driver `separate` (demucs), `refine` bằng LLM + glossary.
 
+- [ ] Có thêm mục quản lý templates. Người dùng có thể kết nối các tùy chọn với nhau.
 
 ## DONE
 

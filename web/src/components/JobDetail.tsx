@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Download, ExternalLink, FolderSearch, Languages, Loader2, Play, Plus, RotateCcw, ScrollText, Square, StepForward, Trash2,
+  Download, ExternalLink, Eye, FolderSearch, Languages, Loader2, Play, Plus, RotateCcw, ScrollText, Square, StepForward, Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
-  addLangs, cancelJob, deleteJob, listAttempts, refreshJob, rerunTask, resumeJob, reveal,
+  addLangs, cancelJob, deleteJob, listAttempts, pickAttempt, refreshJob, rerunTask, resumeJob, reveal,
   type Config, type DriverInfo, type Job, type Task, type TranscriptSaved,
 } from '@/api'
 import { STATUS_STYLE, taskLabel } from '@/components/JobList'
@@ -17,7 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import {
-  artifactUrl, downloadUrl, driversOf, errorMessage, isActive, needsConfirm, putJob, slotArtifact,
+  artifactUrl, downloadUrl, driversOf, errorMessage, inlineUrl, isActive, needsConfirm, putJob, slotArtifact,
   STATUS_LABELS, useAttemptEvents, type Params,
 } from '@/lib/api'
 
@@ -83,7 +83,8 @@ function JobBody({ job, drivers, config, onClose }: { job: Job; drivers: DriverI
   const onSaved = ({ texts, sources, source_text_changed }: TranscriptSaved) => {
     const saved = `Đã lưu ${texts + sources} câu`
     const translate = lang && lang !== 'src' ? task(`translate@${lang}`) : undefined
-    if (source_text_changed && translate && translate.status !== 'skipped') {
+    // the translation edited too: it is the result now, only the steps after it run again
+    if (source_text_changed && texts === 0 && translate && translate.status !== 'skipped') {
       return toast.success(saved, {
         description: 'Phụ đề gốc đã đổi: dịch lại để bản dịch theo bản gốc mới.',
         action: { label: 'Dịch lại', onClick: () => rerun.mutate({ task: translate, mode: 'cascade' }) },
@@ -210,7 +211,7 @@ function JobBody({ job, drivers, config, onClose }: { job: Job; drivers: DriverI
 }
 
 /** POST /jobs/{id}/<action>: the job comes back and replaces the cached one. */
-function useJobAction(jobId: number, action: typeof cancelJob) {
+function useJobAction(jobId: string, action: typeof cancelJob) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async () => (await action({ path: { job_id: jobId } })).data,
@@ -252,7 +253,7 @@ const escapeVtt = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&
 
 /** Player showing the subtitle draft as it is typed (unsaved edits included), and reporting the cue under the playhead. */
 function Preview({ sources, draft, media, onMedia, onActive }: {
-  sources: { label: string; id: number; path: string }[]
+  sources: { label: string; id: string; path: string }[]
   draft: SubtitleDraft
   media: HTMLMediaElement | null
   onMedia: (el: HTMLMediaElement | null) => void
@@ -407,13 +408,24 @@ function TaskRow({ task, last, drivers, pending, onRerun }: {
 const time = (ts: number) => new Date(ts * 1000).toLocaleTimeString()
 const LEVEL_STYLE: Record<string, string> = { warn: 'text-amber-300', error: 'text-red-300' }
 
-/** The pipeline log of the task, one attempt at a time (newest first), following new lines. */
+/** The pipeline log of the task, one attempt at a time (newest first), following new lines; an earlier
+ * attempt also shows its files, and can become the result again. */
 function LogPanel({ task }: { task: Task }) {
+  const queryClient = useQueryClient()
+  const pick = useMutation({
+    mutationFn: async (attemptId: string) =>
+      (await pickAttempt({ path: { task_id: task.id, attempt_id: attemptId } })).data,
+    onSuccess: (job: Job) => {
+      putJob(queryClient, job)
+      toast.success('Đã dùng lại lần chạy này — các bước sau cần cập nhật')
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  })
   const attempts = useQuery({
     queryKey: ['attempts', task.id, task.current_attempt, task.status],
     queryFn: async () => (await listAttempts({ path: { task_id: task.id } })).data,
   })
-  const [chosen, setChosen] = useState<number>()
+  const [chosen, setChosen] = useState<string>()
   const attempt = attempts.data?.find((a) => a.id === chosen) ?? attempts.data?.[0]
   const events = useAttemptEvents(attempt?.id)
   const ref = useRef<HTMLDivElement>(null)
@@ -432,7 +444,7 @@ function LogPanel({ task }: { task: Task }) {
         {attempts.data!.slice(0, 6).map((a) => (
           <Button key={a.id} size="sm" variant={a.id === attempt.id ? 'secondary' : 'ghost'} className="h-6 px-2 text-xs"
             onClick={() => setChosen(a.id)}>
-            Lần {a.n}{ORIGIN[a.origin]}
+            Lần {a.n}{ORIGIN[a.origin]}{a.id === task.current_attempt && ' · đang dùng'}
           </Button>
         ))}
         <a className="ml-auto inline-flex items-center gap-0.5 text-xs text-muted-foreground underline hover:text-foreground"
@@ -440,6 +452,27 @@ function LogPanel({ task }: { task: Task }) {
           Log hệ thống <ExternalLink className="size-3" />
         </a>
       </div>
+      {attempt.id !== task.current_attempt && attempt.status === 'done' && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-dashed px-2 py-1">
+          {attempt.artifacts?.length ? attempt.artifacts.map((a) => (
+            <span key={a.id} className="inline-flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
+              {a.download_name}
+              <a href={inlineUrl(a.id)} target="_blank" rel="noreferrer" title="Xem" className="hover:text-foreground">
+                <Eye className="size-3" />
+              </a>
+              <a href={downloadUrl(a.id)} download title="Tải về" className="hover:text-foreground">
+                <Download className="size-3" />
+              </a>
+            </span>
+          )) : <span className="text-xs text-muted-foreground">File của lần này đã được dọn.</span>}
+          {!!attempt.artifacts?.length && task.status !== 'running' && (
+            <Button size="sm" variant="outline" className="ml-auto h-6 px-2 text-xs" disabled={pick.isPending}
+              onClick={() => pick.mutate(attempt.id)}>
+              <RotateCcw /> Dùng lần này
+            </Button>
+          )}
+        </div>
+      )}
       <div ref={ref}
         onScroll={(e) => {
           const el = e.currentTarget

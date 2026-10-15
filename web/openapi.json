@@ -73,7 +73,7 @@
       "in": "path",
       "required": true,
       "schema": {
-       "type": "integer",
+       "type": "string",
        "title": "Job Id"
       }
      }
@@ -111,7 +111,7 @@
       "in": "path",
       "required": true,
       "schema": {
-       "type": "integer",
+       "type": "string",
        "title": "Job Id"
       }
      }
@@ -143,7 +143,7 @@
       "in": "path",
       "required": true,
       "schema": {
-       "type": "integer",
+       "type": "string",
        "title": "Job Id"
       }
      }
@@ -192,7 +192,7 @@
       "in": "path",
       "required": true,
       "schema": {
-       "type": "integer",
+       "type": "string",
        "title": "Job Id"
       }
      }
@@ -232,7 +232,7 @@
       "in": "path",
       "required": true,
       "schema": {
-       "type": "integer",
+       "type": "string",
        "title": "Job Id"
       }
      }
@@ -272,7 +272,7 @@
       "in": "path",
       "required": true,
       "schema": {
-       "type": "integer",
+       "type": "string",
        "title": "Job Id"
       }
      }
@@ -311,7 +311,7 @@
       "in": "path",
       "required": true,
       "schema": {
-       "type": "integer",
+       "type": "string",
        "title": "Task Id"
       }
      }
@@ -356,6 +356,7 @@
   "/api/tasks/{task_id}/attempts": {
    "get": {
     "summary": "List Attempts",
+    "description": "Newest first, each with the files it produced that are still kept.",
     "operationId": "list_attempts",
     "parameters": [
      {
@@ -363,7 +364,7 @@
       "in": "path",
       "required": true,
       "schema": {
-       "type": "integer",
+       "type": "string",
        "title": "Task Id"
       }
      }
@@ -396,6 +397,58 @@
     }
    }
   },
+  "/api/tasks/{task_id}/attempts/{attempt_id}/use": {
+   "post": {
+    "summary": "Pick Attempt",
+    "description": "An earlier run becomes the step's result again; the steps after it become stale.",
+    "operationId": "pick_attempt",
+    "parameters": [
+     {
+      "name": "task_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Task Id"
+      }
+     },
+     {
+      "name": "attempt_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Attempt Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Job"
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "Busy or files gone"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/attempts/{attempt_id}/events": {
    "get": {
     "summary": "Attempt Events",
@@ -406,7 +459,7 @@
       "in": "path",
       "required": true,
       "schema": {
-       "type": "integer",
+       "type": "string",
        "title": "Attempt Id"
       }
      }
@@ -449,7 +502,7 @@
       "in": "path",
       "required": true,
       "schema": {
-       "type": "integer",
+       "type": "string",
        "title": "Artifact Id"
       }
      }
@@ -481,7 +534,7 @@
       "in": "path",
       "required": true,
       "schema": {
-       "type": "integer",
+       "type": "string",
        "title": "Artifact Id"
       }
      }
@@ -513,7 +566,7 @@
   "/api/artifacts/{artifact_id}/download": {
    "get": {
     "summary": "Download Artifact",
-    "description": "The file as an attachment named like the export; transcripts as .srt.",
+    "description": "The file as an attachment named like the export; transcripts as .srt. inline: shown in the\nbrowser instead (transcripts as plain text).",
     "operationId": "download_artifact",
     "parameters": [
      {
@@ -521,8 +574,18 @@
       "in": "path",
       "required": true,
       "schema": {
-       "type": "integer",
+       "type": "string",
        "title": "Artifact Id"
+      }
+     },
+     {
+      "name": "inline",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "default": false,
+       "title": "Inline"
       }
      }
     ],
@@ -553,7 +616,7 @@
       "in": "path",
       "required": true,
       "schema": {
-       "type": "integer",
+       "type": "string",
        "title": "Job Id"
       }
      },
@@ -601,7 +664,7 @@
       "in": "path",
       "required": true,
       "schema": {
-       "type": "integer",
+       "type": "string",
        "title": "Job Id"
       }
      },
@@ -1006,7 +1069,7 @@
       "in": "path",
       "required": true,
       "schema": {
-       "type": "integer",
+       "type": "string",
        "title": "Attempt Id"
       }
      },
@@ -1044,6 +1107,108 @@
      }
     }
    }
+  },
+  "/api/presets": {
+   "get": {
+    "summary": "List Presets",
+    "operationId": "list_presets",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Preset"
+         },
+         "type": "array",
+         "title": "Response List Presets"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/presets/{name}": {
+   "put": {
+    "summary": "Save Preset",
+    "description": "Creates the preset, or replaces the one with this name.",
+    "operationId": "save_preset",
+    "parameters": [
+     {
+      "name": "name",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Name"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PresetBody"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Preset"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "summary": "Delete Preset",
+    "operationId": "delete_preset",
+    "parameters": [
+     {
+      "name": "name",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Name"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -1067,7 +1232,7 @@
    "ArtifactInfo": {
     "properties": {
      "id": {
-      "type": "integer",
+      "type": "string",
       "title": "Id"
      },
      "name": {
@@ -1117,11 +1282,11 @@
    "Attempt": {
     "properties": {
      "id": {
-      "type": "integer",
+      "type": "string",
       "title": "Id"
      },
      "task_id": {
-      "type": "integer",
+      "type": "string",
       "title": "Task Id"
      },
      "n": {
@@ -1186,6 +1351,14 @@
        }
       ],
       "title": "Finished At"
+     },
+     "artifacts": {
+      "items": {
+       "$ref": "#/components/schemas/ArtifactInfo"
+      },
+      "type": "array",
+      "title": "Artifacts",
+      "default": []
      }
     },
     "type": "object",
@@ -1411,7 +1584,7 @@
      "job_id": {
       "anyOf": [
        {
-        "type": "integer"
+        "type": "string"
        },
        {
         "type": "null"
@@ -1422,7 +1595,7 @@
      "task_id": {
       "anyOf": [
        {
-        "type": "integer"
+        "type": "string"
        },
        {
         "type": "null"
@@ -1433,7 +1606,7 @@
      "attempt_id": {
       "anyOf": [
        {
-        "type": "integer"
+        "type": "string"
        },
        {
         "type": "null"
@@ -1504,7 +1677,7 @@
    "Job": {
     "properties": {
      "id": {
-      "type": "integer",
+      "type": "string",
       "title": "Id"
      },
      "title": {
@@ -1639,7 +1812,7 @@
     "properties": {
      "jobs": {
       "items": {
-       "type": "integer"
+       "type": "string"
       },
       "type": "array",
       "title": "Jobs"
@@ -1723,6 +1896,87 @@
     ],
     "title": "PathBody"
    },
+   "Preset": {
+    "properties": {
+     "export": {
+      "type": "boolean",
+      "title": "Export",
+      "default": true
+     },
+     "stages": {
+      "additionalProperties": {
+       "$ref": "#/components/schemas/PresetStage"
+      },
+      "type": "object",
+      "title": "Stages"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name"
+    ],
+    "title": "Preset",
+    "description": "Named advanced options for new jobs: per stage its driver, on/off and params (applied to any template)."
+   },
+   "PresetBody": {
+    "properties": {
+     "export": {
+      "type": "boolean",
+      "title": "Export",
+      "default": true
+     },
+     "stages": {
+      "additionalProperties": {
+       "$ref": "#/components/schemas/PresetStage"
+      },
+      "type": "object",
+      "title": "Stages"
+     }
+    },
+    "type": "object",
+    "title": "PresetBody"
+   },
+   "PresetStage": {
+    "properties": {
+     "driver": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Driver"
+     },
+     "enabled": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Enabled"
+     },
+     "params": {
+      "additionalProperties": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "object",
+      "title": "Params",
+      "description": "Params per driver name"
+     }
+    },
+    "type": "object",
+    "title": "PresetStage"
+   },
    "Preview": {
     "properties": {
      "voice": {
@@ -1760,7 +2014,7 @@
      "job_id": {
       "anyOf": [
        {
-        "type": "integer"
+        "type": "string"
        },
        {
         "type": "null"
@@ -1888,11 +2142,11 @@
    "Task": {
     "properties": {
      "id": {
-      "type": "integer",
+      "type": "string",
       "title": "Id"
      },
      "job_id": {
-      "type": "integer",
+      "type": "string",
       "title": "Job Id"
      },
      "key": {
@@ -2029,7 +2283,7 @@
      "current_attempt": {
       "anyOf": [
        {
-        "type": "integer"
+        "type": "string"
        },
        {
         "type": "null"
@@ -2169,14 +2423,14 @@
       "title": "Lang"
      },
      "task_id": {
-      "type": "integer",
+      "type": "string",
       "title": "Task Id",
       "description": "The task whose output is edited"
      },
      "source_task_id": {
       "anyOf": [
        {
-        "type": "integer"
+        "type": "string"
        },
        {
         "type": "null"

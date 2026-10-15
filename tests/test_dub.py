@@ -57,8 +57,8 @@ class FakeDubber:
     def __init__(self):
         self.read = []
 
-    def dub(self, cues, max_speed, progress):
-        return np.zeros(vieneu.SAMPLE_RATE, dtype=np.float32), {"sentences": 1, "sped_up": 0, "late": 0, "max_late": 0}
+    def dub(self, cues, max_speed, min_speed, progress):
+        return np.zeros(vieneu.SAMPLE_RATE, dtype=np.float32), {"sentences": 1, "sped_up": 0, "slowed": 0, "late": 0, "max_late": 0}
 
     def synthesize(self, text):
         self.read.append(text)
@@ -86,3 +86,36 @@ def test_preview_reads_the_cloned_moment(wav, tmp_path, monkeypatch):
     assert result["text"] == "Câu hai."
     result = driver.preview({"voice": "source", "media": str(wav), "timing": spans, "cues": []}, tmp_path)
     assert result["text"] == vieneu.SAMPLE_TEXT
+
+
+class FakeTTS:
+    def infer(self, text, voice=None):
+        return np.sin(np.arange(vieneu.SAMPLE_RATE, dtype=np.float32) / 10)   # 1s of tone
+
+
+def dub_lengths(tmp_path, monkeypatch, spans, **kwargs):
+    monkeypatch.setattr(vieneu, "CACHE_DIR", tmp_path / "tts")
+    dubber = vieneu.Dubber(tts=FakeTTS())
+    seconds = []
+    monkeypatch.setattr(vieneu, "change_speed",
+                        lambda audio, speed: seconds.append(len(audio) / speed / vieneu.SAMPLE_RATE) or audio[:int(len(audio) / speed)])
+    _track, stats = dubber.dub(cues(*spans), **kwargs)
+    return stats, seconds
+
+
+def test_dub_slows_short_sentences_to_fill_the_original(tmp_path, monkeypatch):
+    stats, seconds = dub_lengths(tmp_path, monkeypatch, [(0, 1.1), (5, 7), (10, 11.05)])
+    assert stats["slowed"] == 1 and stats["sped_up"] == 0
+    assert seconds == [pytest.approx(1 / 0.85)]          # capped at min_speed, not stretched to 2s
+    stats, _ = dub_lengths(tmp_path, monkeypatch, [(0, 1.1)], min_speed=0.5)
+    assert stats["slowed"] == 0                          # 1s of 1.1s is full enough
+
+
+def test_dub_slowing_can_be_disabled(tmp_path, monkeypatch):
+    stats, seconds = dub_lengths(tmp_path, monkeypatch, [(0, 3)], min_speed=1.0)
+    assert stats["slowed"] == 0 and seconds == []
+
+
+def test_change_speed_slows_down():
+    audio = np.sin(np.arange(vieneu.SAMPLE_RATE, dtype=np.float32) / 10)
+    assert len(vieneu.change_speed(audio, 0.8)) == pytest.approx(vieneu.SAMPLE_RATE / 0.8, rel=0.02)

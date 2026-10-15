@@ -8,5 +8,3 @@ macos-arm64/
 *.mp4
 *.mkv
 .env
-
-storage

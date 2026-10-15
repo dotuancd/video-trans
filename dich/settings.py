@@ -55,3 +55,4 @@ MODELS_DIR = env_path("DICH_MODELS_DIR", ROOT / "models")                 # loca
 DATA_DIR = env_path("DICH_DATA_DIR", "~/.local/share/dich-video")         # database, job workspaces, uploads
 CACHE_DIR = env_path("DICH_CACHE_DIR", "~/.cache/dich-video")             # TTS sentence cache, voice clips
 DB_PATH = DATA_DIR / "dich.sqlite"
+KEEP_DAYS = int(env("DICH_KEEP_DAYS", "7"))   # days to keep keep="last" outputs of older runs (0: delete at once)

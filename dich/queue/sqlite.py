@@ -16,13 +16,14 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from dich import settings
+from dich.core.ids import new_id
 from dich.logging.trace import new_span_id, new_trace_id
 from dich.queue.base import Busy, NeedsConfirm
 from dich.storage.artifacts import Artifact
 
 SCHEMA = """
 create table if not exists jobs (
-    id integer primary key,
+    id text primary key,
     title text not null,
     source text not null,
     template text not null,
@@ -33,8 +34,8 @@ create table if not exists jobs (
     created_at real not null
 );
 create table if not exists tasks (
-    id integer primary key,
-    job_id integer not null references jobs(id) on delete cascade,
+    id text primary key,
+    job_id text not null references jobs(id) on delete cascade,
     key text not null,
     position integer not null,
     stage text not null,
@@ -56,15 +57,15 @@ create table if not exists tasks (
     retries integer not null default 0,
     lease_until real,
     cancel_requested integer not null default 0,
-    current_attempt integer,
+    current_attempt text,
     exports text not null default '[]',
     updated_at real not null,
     unique (job_id, key)
 );
 create index if not exists tasks_claim on tasks(status, lane, priority, id);
 create table if not exists attempts (
-    id integer primary key,
-    task_id integer not null references tasks(id) on delete cascade,
+    id text primary key,
+    task_id text not null references tasks(id) on delete cascade,
     n integer not null,
     span_id text not null,
     origin text not null,
@@ -80,10 +81,10 @@ create table if not exists attempts (
 );
 create index if not exists attempts_fp on attempts(fingerprint, status);
 create table if not exists artifacts (
-    id integer primary key,
-    job_id integer not null references jobs(id) on delete cascade,
-    task_id integer not null references tasks(id) on delete cascade,
-    attempt_id integer not null references attempts(id) on delete cascade,
+    id text primary key,
+    job_id text not null references jobs(id) on delete cascade,
+    task_id text not null references tasks(id) on delete cascade,
+    attempt_id text not null references attempts(id) on delete cascade,
     name text not null,
     slot text not null,
     path text not null,
@@ -97,9 +98,9 @@ create table if not exists artifacts (
 create index if not exists artifacts_attempt on artifacts(attempt_id);
 create table if not exists events (
     id integer primary key,
-    job_id integer,
-    task_id integer,
-    attempt_id integer,
+    job_id text,
+    task_id text,
+    attempt_id text,
     ts real not null,
     level text not null,
     type text not null,
@@ -108,7 +109,7 @@ create table if not exists events (
 );
 create index if not exists events_job on events(job_id, id);
 create table if not exists calls (
-    id integer primary key,
+    id text primary key,
     kind text not null,
     args text not null,
     status text not null,
@@ -133,6 +134,7 @@ class Store:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
         self.data_dir = Path(data_dir or path.parent)
+        self._retire_numeric_ids()
         self.db = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None, timeout=30)
         self.db.row_factory = sqlite3.Row
         self.lock = threading.RLock()
@@ -141,6 +143,27 @@ class Store:
             self.db.execute("pragma foreign_keys=on")
             self.db.execute("pragma synchronous=normal")
             self.db.executescript(SCHEMA)
+
+    def _retire_numeric_ids(self):
+        """A database from before job_…/task_… ids (integer ids) is set aside as *.old, with its job folders."""
+        if not self.path.exists():
+            return
+        db = sqlite3.connect(str(self.path))
+        try:
+            numeric = any(c[1] == "id" and c[2].lower() == "integer" for c in db.execute("pragma table_info(jobs)"))
+        finally:
+            db.close()
+        if not numeric:
+            return
+        for suffix in ("", "-wal", "-shm"):
+            old = Path(f"{self.path}{suffix}")
+            if old.exists():
+                old.replace(f"{old}.old")
+        jobs = self.data_dir / "jobs"
+        if jobs.exists():
+            shutil.rmtree(jobs.with_name("jobs.old"), ignore_errors=True)
+            jobs.replace(jobs.with_name("jobs.old"))
+        print(f"Cơ sở dữ liệu cũ (id dạng số) đã được cất sang {self.path}.old — bắt đầu dữ liệu mới")
 
     def close(self):
         self.db.close()
@@ -202,10 +225,10 @@ class Store:
 
     def create_job(self, title, source, template, langs, specs, overrides=None, export_dir=None):
         with self.tx():
-            job_id = self.x("insert into jobs (title, source, template, langs, overrides, export_dir, trace_id,"
-                            " created_at) values (?, ?, ?, ?, ?, ?, ?, ?)", title, str(source), template,
-                            json.dumps(langs), json.dumps(overrides or {}), str(export_dir) if export_dir else None,
-                            new_trace_id(), time.time()).lastrowid
+            job_id = new_id("job")
+            self.x("insert into jobs (id, title, source, template, langs, overrides, export_dir, trace_id, created_at)"
+                   " values (?, ?, ?, ?, ?, ?, ?, ?, ?)", job_id, title, str(source), template, json.dumps(langs),
+                   json.dumps(overrides or {}), str(export_dir) if export_dir else None, new_trace_id(), time.time())
             self._insert_tasks(job_id, specs)
             self.event(job_id, "job", data={"created": True})
             self.advance(job_id)
@@ -213,9 +236,9 @@ class Store:
 
     def _insert_tasks(self, job_id, specs, start=0):
         for position, spec in enumerate(specs, start):
-            self.x("insert into tasks (job_id, key, position, stage, driver, lang, params, inputs, outputs, deps,"
-                   " lane, gate, status, message, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                   job_id, spec.key, position, spec.stage, spec.driver, spec.lang, json.dumps(spec.params),
+            self.x("insert into tasks (id, job_id, key, position, stage, driver, lang, params, inputs, outputs, deps,"
+                   " lane, gate, status, message, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                   new_id("task"), job_id, spec.key, position, spec.stage, spec.driver, spec.lang, json.dumps(spec.params),
                    json.dumps(spec.inputs), json.dumps(spec.outputs), json.dumps(spec.deps), spec.lane,
                    int(spec.gate), "skipped" if spec.skip else "blocked", spec.skip, time.time())
 
@@ -241,7 +264,7 @@ class Store:
         self.event(job_id, "job", data={"title": title})
 
     def jobs(self):
-        rows = self.q("select * from jobs order by id desc")
+        rows = self.q("select * from jobs order by rowid desc")
         tasks = {}
         for t in self.q("select * from tasks order by job_id, position"):
             tasks.setdefault(t["job_id"], []).append(task_dict(t))
@@ -315,7 +338,7 @@ class Store:
             row = self.one(
                 f"update tasks set status = 'running', lease_until = ?, updated_at = ?, done = null, total = null,"
                 f" message = null, error = null where id = (select id from tasks where status = 'queued'"
-                f" and lane in ({marks}){only} order by priority desc, id limit 1) returning *",
+                f" and lane in ({marks}){only} order by priority desc, rowid limit 1) returning *",
                 time.time() + lease, time.time(), *lanes, *([job_id] if job_id is not None else []))
             if row is None:
                 return None
@@ -340,10 +363,11 @@ class Store:
         with self.tx():
             n = self.one("select coalesce(max(n), 0) + 1 as n from attempts where task_id = ?", task["id"])["n"]
             folder = self.job_dir(task["job_id"]) / task["key"].replace("@", "_") / str(n)
-            attempt_id = self.x(
-                "insert into attempts (task_id, n, span_id, origin, status, fingerprint, params, pid, dir, started_at)"
-                " values (?, ?, ?, ?, 'running', ?, ?, ?, ?, ?)", task["id"], n, new_span_id(), origin, fingerprint,
-                json.dumps(params if params is not None else task["params"]), pid, str(folder), time.time()).lastrowid
+            attempt_id = new_id("att")
+            self.x(
+                "insert into attempts (id, task_id, n, span_id, origin, status, fingerprint, params, pid, dir, started_at)"
+                " values (?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?)", attempt_id, task["id"], n, new_span_id(), origin, fingerprint,
+                json.dumps(params if params is not None else task["params"]), pid, str(folder), time.time())
         (folder / "outputs").mkdir(parents=True, exist_ok=True)
         return self.attempt(attempt_id)
 
@@ -363,8 +387,9 @@ class Store:
         with self.tx():
             task = self.task(task_id)
             for out in outputs:
-                self.x("insert into artifacts (job_id, task_id, attempt_id, name, slot, path, sha256, size, keep,"
-                       " external, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", task["job_id"], task_id,
+                self.x("insert into artifacts (id, job_id, task_id, attempt_id, name, slot, path, sha256, size, keep,"
+                       " external, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", new_id("art"),
+                       task["job_id"], task_id,
                        attempt_id, out["name"], out["slot"], str(out["path"]), out.get("sha256"), out.get("size"),
                        out.get("keep", "always"), int(out.get("external", False)), time.time())
             self._finish_attempt(attempt_id, "done", message)
@@ -485,7 +510,8 @@ class Store:
 
     def save_human(self, task_id, name, path, sha256=None, size=None):
         """An edit by hand of a task's output `name`: a new attempt (origin human) that becomes current;
-        tasks after it that were done become stale."""
+        tasks after it that were done become stale. A stale, failed, cancelled or gated task is done with
+        the edit as its result, so the steps after it can run without running it again (and losing the edit)."""
         with self.tx():
             task = self.task(task_id)
             if task["status"] == "running":
@@ -496,17 +522,23 @@ class Store:
             outputs = [a for a in current if a["name"] != name]   # other outputs carry over
             outputs.append({"name": name, "slot": slot, "path": str(path), "sha256": sha256, "size": size})
             for out in outputs:
-                self.x("insert into artifacts (job_id, task_id, attempt_id, name, slot, path, sha256, size, keep,"
-                       " external, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", task["job_id"], task_id,
+                self.x("insert into artifacts (id, job_id, task_id, attempt_id, name, slot, path, sha256, size, keep,"
+                       " external, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", new_id("art"),
+                       task["job_id"], task_id,
                        attempt["id"], out["name"], out["slot"], str(out["path"]), out.get("sha256"), out.get("size"),
                        "always", 1 if out is not outputs[-1] else 0, time.time())
             self._finish_attempt(attempt["id"], "done", "Sửa tay")
             self.x("update tasks set current_attempt = ?, updated_at = ? where id = ?", attempt["id"], time.time(),
                    task_id)
-            self.event(task["job_id"], "task", data={"key": task["key"], "status": task["status"], "edited": True},
-                       task_id=task_id)
+            settled = task["status"] in ("done", "stale", "failed", "cancelled", "waiting_review")
+            if settled and task["status"] != "done":
+                self._status(task, "done", gate_passed=1, message="Sửa tay", error=None, retries=0)
+            else:
+                self.event(task["job_id"], "task", data={"key": task["key"], "status": task["status"], "edited": True},
+                           task_id=task_id)
+            # blocked steps after a done one only wait for "Cập nhật phía sau", like the done ones
             for other in self.descendants(task["job_id"], task["key"]):
-                if other["status"] == "done":
+                if other["status"] == "done" or (settled and other["status"] == "blocked"):
                     self._status(other, "stale", message="Đầu vào đã sửa tay")
         return attempt
 
@@ -559,7 +591,7 @@ class Store:
 
     def find_cached(self, fingerprint):
         """Artifacts of a finished attempt with this fingerprint whose files all still exist, or None."""
-        for row in self.q("select id from attempts where fingerprint = ? and status = 'done' order by id desc",
+        for row in self.q("select id from attempts where fingerprint = ? and status = 'done' order by rowid desc",
                           fingerprint):
             artifacts = self.artifacts_of(row["id"])
             if artifacts and all(Path(a["path"]).exists() for a in artifacts):
@@ -577,23 +609,63 @@ class Store:
                 shutil.rmtree(Path(attempt["dir"]) / "outputs", ignore_errors=True)
 
     def apply_keep(self, task_id):
-        """keep "last": outputs of older attempts are deleted once a newer one is done."""
+        """keep "last": outputs of older attempts are deleted once a newer one is done — at once when
+        KEEP_DAYS is 0, otherwise by prune_old after KEEP_DAYS days."""
+        if settings.KEEP_DAYS > 0:
+            return
         task = self.task(task_id)
         for attempt in self.attempts_of(task_id):
             if attempt["id"] != task["current_attempt"]:
                 self.drop_outputs(attempt["id"], "last")
 
+    def prune_old(self, days=None):
+        """Delete keep "last" outputs of attempts that are no longer current and finished over `days` ago."""
+        days = settings.KEEP_DAYS if days is None else days
+        rows = self.q("select distinct a.attempt_id from artifacts a join attempts t on a.attempt_id = t.id"
+                      " join tasks k on a.task_id = k.id where a.keep = 'last' and a.deleted = 0"
+                      " and a.external = 0 and a.attempt_id != coalesce(k.current_attempt, '')"
+                      " and coalesce(t.finished_at, t.started_at) < ?", time.time() - days * 86400)
+        for row in rows:
+            self.drop_outputs(row["attempt_id"], "last")
+        return len(rows)
+
+    def use_attempt(self, task_id, attempt_id):
+        """An earlier done attempt becomes the task's result again; tasks after it that were done become stale."""
+        with self.tx():
+            task = self.task(task_id)
+            attempt = self.attempt(attempt_id)
+            if task is None or attempt is None or attempt["task_id"] != task_id:
+                raise KeyError(attempt_id)
+            if task["status"] == "running":
+                raise Busy("Bước này đang chạy")
+            if attempt["status"] != "done":
+                raise Busy("Lần chạy này chưa xong")
+            artifacts = self.artifacts_of(attempt_id)
+            if not artifacts or not all(Path(a["path"]).exists() for a in artifacts):
+                raise Busy("File của lần chạy này không còn đủ")
+            if attempt_id == task["current_attempt"] and task["status"] == "done":
+                return attempt
+            self.x("update tasks set current_attempt = ? where id = ?", attempt_id, task_id)
+            self._status(task, "done", gate_passed=1, message=f"Dùng lần {attempt['n']}", error=None, retries=0)
+            for other in self.descendants(task["job_id"], task["key"]):
+                if other["status"] in ("done", "blocked"):
+                    self._status(other, "stale", message="Đầu vào đã đổi")
+            self.advance(task["job_id"])
+        return attempt
+
     # --- calls: short requests answered by a worker (voice preview, voice list) ---
 
     def call(self, kind, args):
         with self.tx():
-            return self.x("insert into calls (kind, args, status, created_at) values (?, ?, 'queued', ?)",
-                          kind, json.dumps(args, ensure_ascii=False), time.time()).lastrowid
+            call_id = new_id("call")
+            self.x("insert into calls (id, kind, args, status, created_at) values (?, ?, ?, 'queued', ?)",
+                   call_id, kind, json.dumps(args, ensure_ascii=False), time.time())
+            return call_id
 
     def claim_call(self):
         with self.tx():
             row = self.one("update calls set status = 'running' where id = (select id from calls where"
-                           " status = 'queued' order by id limit 1) returning *")
+                           " status = 'queued' order by rowid limit 1) returning *")
             return dict(row, args=loads(row["args"], {})) if row else None
 
     def answer_call(self, call_id, result=None, error=None):

@@ -8,13 +8,15 @@ from dich.formats.transcript import Cue
 class EchoTranslator(LLMTranslator):
     chunk_size = 10
 
-    def __init__(self):
-        super().__init__(workers=2)
+    def __init__(self, workers=2):
+        super().__init__(workers=workers)
         self.requests = 0
+        self.payloads = []
 
     def complete(self, payload):
         self.requests += 1
-        return [{"id": item["id"], "text": item["text"].upper()} for item in payload["translate"]]
+        self.payloads.append(payload)
+        return [{"id": cue["id"], "text": cue["text"].upper()} for sentence in payload["translate"] for cue in sentence]
 
 
 def test_progress_counts_cues_up_to_total():
@@ -45,3 +47,29 @@ def test_group_and_split():
     assert group_sentences(cues[:1] + [Cue("x", 9, 10, "later")], max_gap=1) == [[0], [1]]
     assert split_like("khi chúng tôi đến không có ai", ["When we arrived", "nobody was there."]) == [
         "khi chúng tôi", "đến không có ai"]
+
+
+def test_chunks_never_cut_a_sentence():
+    # 8 one-cue sentences, then one sentence over 3 cues that would straddle the 10-cue chunk boundary
+    texts = [f"cue {i}." for i in range(8)] + ["So what", "we did", "was this.", "Done."]
+    translator = EchoTranslator(workers=1)
+    assert translator.translate_texts(texts) == [t.upper() for t in texts]
+    first, second = translator.payloads
+    assert [[c["id"] for c in s] for s in first["translate"]] == [[i] for i in range(8)]
+    assert first["next"] == ["So what", "we did", "was this."]
+    assert [[c["id"] for c in s] for s in second["translate"]] == [[8, 9, 10], [11]]
+    assert second["context"] == [f"cue {i}." for i in range(3, 8)]
+    assert "next" not in second
+
+
+def test_failing_sentence_retries_cue_by_cue():
+    class Flaky(EchoTranslator):
+        def complete(self, payload):
+            items = super().complete(payload)
+            # drop an id whenever a sentence of several cues is sent, so only single cues succeed
+            return items[1:] if any(len(s) > 1 for s in payload["translate"]) else items
+
+    texts = ["One.", "Two and", "three."]
+    translator = Flaky(workers=1)
+    assert translator.translate_texts(texts) == ["ONE.", "TWO AND", "THREE."]
+    assert [[[c["id"] for c in s] for s in p["translate"]] for p in translator.payloads][-2:] == [[[1]], [[2]]]

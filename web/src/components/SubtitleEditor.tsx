@@ -22,7 +22,7 @@ const sameAs = (row: Row, cue: EditCue, hasSource: boolean) =>
 /** Loaded cues plus the unsaved edits — texts, and cues merged, split or with words moved between them
  * (of the translation and its original together), shared by the editor and the player.
  * lang: "src" edits the original alone, a language code its translation with the original next to it. */
-export function useSubtitleDraft(jobId: number, lang: string | undefined, onSaved?: (changed: TranscriptSaved) => void) {
+export function useSubtitleDraft(jobId: string, lang: string | undefined, onSaved?: (changed: TranscriptSaved) => void) {
   const queryClient = useQueryClient()
   const subtitles = useQuery({
     queryKey: ['transcript', jobId, lang],

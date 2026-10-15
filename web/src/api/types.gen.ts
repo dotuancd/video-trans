@@ -21,7 +21,7 @@ export type ArtifactInfo = {
     /**
      * Id
      */
-    id: number;
+    id: string;
     /**
      * Name
      */
@@ -55,11 +55,11 @@ export type Attempt = {
     /**
      * Id
      */
-    id: number;
+    id: string;
     /**
      * Task Id
      */
-    task_id: number;
+    task_id: string;
     /**
      * N
      */
@@ -98,6 +98,10 @@ export type Attempt = {
      * Finished At
      */
     finished_at: number | null;
+    /**
+     * Artifacts
+     */
+    artifacts?: Array<ArtifactInfo>;
 };
 
 /**
@@ -237,15 +241,15 @@ export type Event = {
     /**
      * Job Id
      */
-    job_id: number | null;
+    job_id: string | null;
     /**
      * Task Id
      */
-    task_id: number | null;
+    task_id: string | null;
     /**
      * Attempt Id
      */
-    attempt_id: number | null;
+    attempt_id: string | null;
     /**
      * Ts
      */
@@ -285,7 +289,7 @@ export type Job = {
     /**
      * Id
      */
-    id: number;
+    id: string;
     /**
      * Title
      */
@@ -373,7 +377,7 @@ export type JobsCreated = {
     /**
      * Jobs
      */
-    jobs: Array<number>;
+    jobs: Array<string>;
     /**
      * Skipped
      */
@@ -423,6 +427,68 @@ export type PathBody = {
 };
 
 /**
+ * Preset
+ *
+ * Named advanced options for new jobs: per stage its driver, on/off and params (applied to any template).
+ */
+export type Preset = {
+    /**
+     * Export
+     */
+    export?: boolean;
+    /**
+     * Stages
+     */
+    stages?: {
+        [key: string]: PresetStage;
+    };
+    /**
+     * Name
+     */
+    name: string;
+};
+
+/**
+ * PresetBody
+ */
+export type PresetBody = {
+    /**
+     * Export
+     */
+    export?: boolean;
+    /**
+     * Stages
+     */
+    stages?: {
+        [key: string]: PresetStage;
+    };
+};
+
+/**
+ * PresetStage
+ */
+export type PresetStage = {
+    /**
+     * Driver
+     */
+    driver?: string | null;
+    /**
+     * Enabled
+     */
+    enabled?: boolean | null;
+    /**
+     * Params
+     *
+     * Params per driver name
+     */
+    params?: {
+        [key: string]: {
+            [key: string]: unknown;
+        };
+    };
+};
+
+/**
  * Preview
  */
 export type Preview = {
@@ -447,7 +513,7 @@ export type Preview = {
      *
      * Clone from / read this job's video and subtitles
      */
-    job_id?: number | null;
+    job_id?: string | null;
     /**
      * Lang
      */
@@ -517,11 +583,11 @@ export type Task = {
     /**
      * Id
      */
-    id: number;
+    id: string;
     /**
      * Job Id
      */
-    job_id: number;
+    job_id: string;
     /**
      * Key
      */
@@ -603,7 +669,7 @@ export type Task = {
     /**
      * Current Attempt
      */
-    current_attempt: number | null;
+    current_attempt: string | null;
     /**
      * Exports
      */
@@ -683,13 +749,13 @@ export type TranscriptView = {
      *
      * The task whose output is edited
      */
-    task_id: number;
+    task_id: string;
     /**
      * Source Task Id
      *
      * The task of the original transcript shown next to it
      */
-    source_task_id: number | null;
+    source_task_id: string | null;
     /**
      * Cues
      */
@@ -833,7 +899,7 @@ export type DeleteJobData = {
         /**
          * Job Id
          */
-        job_id: number;
+        job_id: string;
     };
     query?: never;
     url: '/api/jobs/{job_id}';
@@ -863,7 +929,7 @@ export type GetJobData = {
         /**
          * Job Id
          */
-        job_id: number;
+        job_id: string;
     };
     query?: never;
     url: '/api/jobs/{job_id}';
@@ -893,7 +959,7 @@ export type AddLangsData = {
         /**
          * Job Id
          */
-        job_id: number;
+        job_id: string;
     };
     query?: never;
     url: '/api/jobs/{job_id}/langs';
@@ -923,7 +989,7 @@ export type CancelJobData = {
         /**
          * Job Id
          */
-        job_id: number;
+        job_id: string;
     };
     query?: never;
     url: '/api/jobs/{job_id}/cancel';
@@ -953,7 +1019,7 @@ export type ResumeJobData = {
         /**
          * Job Id
          */
-        job_id: number;
+        job_id: string;
     };
     query?: never;
     url: '/api/jobs/{job_id}/resume';
@@ -983,7 +1049,7 @@ export type RefreshJobData = {
         /**
          * Job Id
          */
-        job_id: number;
+        job_id: string;
     };
     query?: never;
     url: '/api/jobs/{job_id}/refresh';
@@ -1013,7 +1079,7 @@ export type RerunTaskData = {
         /**
          * Task Id
          */
-        task_id: number;
+        task_id: string;
     };
     query?: never;
     url: '/api/tasks/{task_id}/rerun';
@@ -1047,7 +1113,7 @@ export type ListAttemptsData = {
         /**
          * Task Id
          */
-        task_id: number;
+        task_id: string;
     };
     query?: never;
     url: '/api/tasks/{task_id}/attempts';
@@ -1073,13 +1139,51 @@ export type ListAttemptsResponses = {
 
 export type ListAttemptsResponse = ListAttemptsResponses[keyof ListAttemptsResponses];
 
+export type PickAttemptData = {
+    body?: never;
+    path: {
+        /**
+         * Task Id
+         */
+        task_id: string;
+        /**
+         * Attempt Id
+         */
+        attempt_id: string;
+    };
+    query?: never;
+    url: '/api/tasks/{task_id}/attempts/{attempt_id}/use';
+};
+
+export type PickAttemptErrors = {
+    /**
+     * Busy or files gone
+     */
+    409: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PickAttemptError = PickAttemptErrors[keyof PickAttemptErrors];
+
+export type PickAttemptResponses = {
+    /**
+     * Successful Response
+     */
+    200: Job;
+};
+
+export type PickAttemptResponse = PickAttemptResponses[keyof PickAttemptResponses];
+
 export type AttemptEventsData = {
     body?: never;
     path: {
         /**
          * Attempt Id
          */
-        attempt_id: number;
+        attempt_id: string;
     };
     query?: never;
     url: '/api/attempts/{attempt_id}/events';
@@ -1111,7 +1215,7 @@ export type GetArtifactData = {
         /**
          * Artifact Id
          */
-        artifact_id: number;
+        artifact_id: string;
     };
     query?: never;
     url: '/api/artifacts/{artifact_id}';
@@ -1139,7 +1243,7 @@ export type ArtifactVttData = {
         /**
          * Artifact Id
          */
-        artifact_id: number;
+        artifact_id: string;
     };
     query?: never;
     url: '/api/artifacts/{artifact_id}/vtt';
@@ -1169,9 +1273,14 @@ export type DownloadArtifactData = {
         /**
          * Artifact Id
          */
-        artifact_id: number;
+        artifact_id: string;
     };
-    query?: never;
+    query?: {
+        /**
+         * Inline
+         */
+        inline?: boolean;
+    };
     url: '/api/artifacts/{artifact_id}/download';
 };
 
@@ -1197,7 +1306,7 @@ export type GetTranscriptData = {
         /**
          * Job Id
          */
-        job_id: number;
+        job_id: string;
     };
     query?: {
         /**
@@ -1232,7 +1341,7 @@ export type SaveTranscriptData = {
         /**
          * Job Id
          */
-        job_id: number;
+        job_id: string;
     };
     query?: {
         /**
@@ -1520,7 +1629,7 @@ export type AttemptSystemLogData = {
         /**
          * Attempt Id
          */
-        attempt_id: number;
+        attempt_id: string;
     };
     query?: {
         /**
@@ -1548,3 +1657,81 @@ export type AttemptSystemLogResponses = {
 };
 
 export type AttemptSystemLogResponse = AttemptSystemLogResponses[keyof AttemptSystemLogResponses];
+
+export type ListPresetsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/presets';
+};
+
+export type ListPresetsResponses = {
+    /**
+     * Response List Presets
+     *
+     * Successful Response
+     */
+    200: Array<Preset>;
+};
+
+export type ListPresetsResponse = ListPresetsResponses[keyof ListPresetsResponses];
+
+export type DeletePresetData = {
+    body?: never;
+    path: {
+        /**
+         * Name
+         */
+        name: string;
+    };
+    query?: never;
+    url: '/api/presets/{name}';
+};
+
+export type DeletePresetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeletePresetError = DeletePresetErrors[keyof DeletePresetErrors];
+
+export type DeletePresetResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeletePresetResponse = DeletePresetResponses[keyof DeletePresetResponses];
+
+export type SavePresetData = {
+    body: PresetBody;
+    path: {
+        /**
+         * Name
+         */
+        name: string;
+    };
+    query?: never;
+    url: '/api/presets/{name}';
+};
+
+export type SavePresetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SavePresetError = SavePresetErrors[keyof SavePresetErrors];
+
+export type SavePresetResponses = {
+    /**
+     * Successful Response
+     */
+    200: Preset;
+};
+
+export type SavePresetResponse = SavePresetResponses[keyof SavePresetResponses];

@@ -1,26 +1,29 @@
 import { useEffect, useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import { ChevronDown, FolderOpen, HardDrive, Link, Loader2, Rocket, Upload } from 'lucide-react'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { FolderOpen, HardDrive, Link, Loader2, Rocket, SlidersHorizontal, Upload } from 'lucide-react'
 import { toast } from 'sonner'
-import { createJobs, type Config, type DriverInfo, type Entry, type TemplateInfo } from '@/api'
+import { createJobs, listPresets, type Config, type DriverInfo, type Entry, type Preset, type TemplateInfo } from '@/api'
+import { AdvancedOptions, changedCount, Count, GENERAL, resetForm, type Stage, type StageForm } from '@/components/AdvancedOptions'
 import { FileBrowser } from '@/components/FileBrowser'
 import { DriverParams, DriverSelect, Field, SwitchField, type PreviewContext } from '@/components/Params'
 import { groupUploads, UploadDrop } from '@/components/UploadDrop'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import { driversOf, errorMessage, loadSaved, save, stageLabel, uploadFile, type Params } from '@/lib/api'
+import { driversOf, errorMessage, loadSaved, save, uploadFile, type Params } from '@/lib/api'
 
 const MEDIA = /\.(mp4|mkv|mov|m4v|webm|avi|wav|mp3|m4a|aac|flac|ogg)$/i
 
-/** What the user changed of a stage of the template: its driver, on/off, and params per driver. */
-type StageForm = { driver?: string; enabled?: boolean; params?: Record<string, Params> }
+/** Select value of "no preset": the template as it is */
+const NO_PRESET = '-'
+/** What "Mặc định" sets: what a preset is compared with to tell it was changed */
+const BLANK: Omit<Preset, 'name'> = { export: true, stages: {} }
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
 type Form = {
   from: 'upload' | 'server' | 'url'
@@ -31,20 +34,20 @@ type Form = {
   export: boolean
   template: string
   langs: string[]
+  /** the preset the options were taken from ('' = none) */
+  preset: string
   stages: Record<string, StageForm>
 }
-
-type Stage = { stage: string; enabled: boolean; driver: DriverInfo | undefined; drivers: DriverInfo[]; params: Params }
 
 export function NewJob({ config, templates, drivers, onCreated }: {
   config: Config
   templates: TemplateInfo[]
   drivers: DriverInfo[]
-  onCreated: (jobIds: number[]) => void
+  onCreated: (jobIds: string[]) => void
 }) {
   const [form, setForm] = useState<Form>(() => loadSaved<Form>('new-job-v2', {
     from: 'upload', path: '', urls: '', recursive: false, useSubtitles: true, export: true,
-    template: 'default', langs: config.default_langs, stages: {},
+    template: 'default', langs: config.default_langs, preset: '', stages: {},
   }))
   const [browsing, setBrowsing] = useState(false)
   const [advanced, setAdvanced] = useState(false)
@@ -64,8 +67,10 @@ export function NewJob({ config, templates, drivers, onCreated }: {
     return {
       stage: conf.stage as string,
       enabled: !!driver && (set.enabled ?? (conf.enabled as boolean)),
+      base: { enabled: !!choices.find((d) => d.name === fallback) && (conf.enabled as boolean), driver: fallback },
       driver, drivers: choices,
       params: { ...(conf.params as Params), ...(set.params?.[name] ?? {}) },
+      defaults: conf.params as Params,
     }
   })
   const stageOf = (name: string) => stages.find((s) => s.stage === name && s.enabled)
@@ -73,6 +78,30 @@ export function NewJob({ config, templates, drivers, onCreated }: {
     update({ stages: { ...form.stages, [stage]: { ...form.stages[stage], ...patch } } })
   const setParams = (s: Stage, params: Params) =>
     setStage(s.stage, { params: { ...form.stages[s.stage]?.params, [s.driver!.name]: params } })
+  const resetStage = (stage: string) => {
+    if (stage !== GENERAL) {
+      const s = stages.find((x) => x.stage === stage)!
+      const { [stage]: _old, ...others } = form.stages
+      const kept = resetForm(s, form.stages[stage])
+      return update({ stages: kept ? { ...others, [stage]: kept } : others })
+    }
+    // on/off of the optional steps lives in Chung
+    const stagesOn = Object.fromEntries(Object.entries(form.stages).map(([k, v]) => [k, { ...v, enabled: undefined }]))
+    update({ export: true, stages: stagesOn })
+  }
+
+  const presets = useQuery({ queryKey: ['presets'], queryFn: async () => (await listPresets()).data, staleTime: Infinity })
+  const picked = presets.data?.find((p) => p.name === form.preset)
+  const options: Omit<Preset, 'name'> = { export: form.export, stages: form.stages }
+  const edited = !same(clean(options), clean(picked ?? BLANK))
+  const pickPreset = (name: string) => {
+    const p = presets.data?.find((x) => x.name === name)
+    update({ preset: p ? name : '', export: p?.export ?? true, stages: (p?.stages ?? {}) as Form['stages'] })
+  }
+  /** after saving: the options stay, only the name they belong to changes */
+  const namePreset = (name: string) => update({ preset: name })
+  const changed = (form.export ? 0 : 1) + stages.reduce((n, s) => n + changedCount(s), 0)
+
   const perLang = stages.some((s) => s.enabled && s.driver?.per_lang)
   const translate = stageOf('translate')
   const dub = stageOf('dub')
@@ -127,8 +156,14 @@ export function NewJob({ config, templates, drivers, onCreated }: {
     return sources
   }
 
+  function presetHint() {
+    if (picked && edited) return `Đã sửa so với “${picked.name}”, chưa lưu`
+    if (picked) return changed ? `${changed} tuỳ chọn khác mặc định` : undefined
+    if (changed) return `${changed} tuỳ chọn khác mặc định · lưu thành preset trong Nâng cao`
+    return presets.data?.length ? undefined : 'Lưu tuỳ chọn nâng cao thành preset để dùng lại'
+  }
+
   const ready = form.from === 'upload' ? files.length > 0 : form.from === 'url' ? !!form.urls.trim() : !!path
-  const optional = stages.filter((s) => s.stage === 'separate' || s.stage === 'refine')
 
   return (
     <Card>
@@ -224,36 +259,22 @@ export function NewJob({ config, templates, drivers, onCreated }: {
               onChange={(params) => setParams(dub, params)} />
           )}
 
-          <Collapsible open={advanced} onOpenChange={setAdvanced}>
-            <CollapsibleTrigger asChild>
-              <Button type="button" variant="ghost" size="sm" className="-ml-2 text-muted-foreground">
-                <ChevronDown className={cn('transition-transform', advanced && 'rotate-180')} />
-                Tuỳ chọn nâng cao
+          <Field label="Cấu hình" hint={presetHint()}>
+            <div className="flex gap-2">
+              <Select value={picked ? picked.name : NO_PRESET} onValueChange={(v) => pickPreset(v === NO_PRESET ? '' : v)}>
+                <SelectTrigger className="w-0 min-w-0 flex-1 overflow-hidden *:data-[slot=select-value]:block *:data-[slot=select-value]:truncate">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_PRESET}>Mặc định</SelectItem>
+                  {presets.data?.map((p) => <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Button type="button" variant="outline" onClick={() => setAdvanced(true)} title="Tuỳ chọn nâng cao">
+                <SlidersHorizontal /> Nâng cao <Count n={changed} />
               </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="grid gap-4 pt-3">
-              <SwitchField label="Ghi kết quả cạnh file gốc" hint="<tên>.vi.srt, <tên>.dub.vi.mp4… (luôn tải về được trong việc)"
-                checked={form.export} onChange={(exported) => update({ export: exported })} />
-              {optional.map((s) => (
-                <SwitchField key={s.stage} label={`Bước ${stageLabel(s.stage)}`}
-                  hint={s.driver ? s.driver.available ?? s.driver.title : 'Chưa có driver cho bước này'}
-                  checked={s.enabled} disabled={!s.driver || !!s.driver.available}
-                  onChange={(enabled) => setStage(s.stage, { enabled })} />
-              ))}
-              {stages.filter((s) => s.enabled && s.driver).map((s) => (
-                <div key={s.stage} className="grid gap-3">
-                  <Separator />
-                  <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{stageLabel(s.stage)}</p>
-                  {s.drivers.length > 1 && s.stage !== 'translate' && (
-                    <DriverSelect drivers={s.drivers} value={s.driver!.name} onChange={(driver) => setStage(s.stage, { driver })} />
-                  )}
-                  <DriverParams driver={s.driver!} value={s.params} context={previewContext}
-                    only={s.stage === 'translate' ? ['!model'] : s.stage === 'dub' ? ['!voice'] : undefined}
-                    onChange={(params) => setParams(s, params)} />
-                </div>
-              ))}
-            </CollapsibleContent>
-          </Collapsible>
+            </div>
+          </Field>
 
           <Button type="submit" size="lg" disabled={!ready || create.isPending || (perLang && !form.langs.length)}>
             {create.isPending ? <Loader2 className="animate-spin" /> : <Rocket />}
@@ -261,8 +282,26 @@ export function NewJob({ config, templates, drivers, onCreated }: {
           </Button>
         </form>
       </CardContent>
+      <AdvancedOptions open={advanced} onOpenChange={setAdvanced} stages={stages} exported={form.export}
+        onExport={(exported) => update({ export: exported })} setStage={setStage} setParams={setParams}
+        resetStage={resetStage} context={previewContext}
+        preset={picked?.name ?? ''} presets={presets.data ?? []} current={options} onPreset={namePreset} />
       <FileBrowser open={browsing} onOpenChange={setBrowsing} initial={form.path || config.root}
         onPick={({ path: picked }: { path: string; kind: Entry['kind'] }) => update({ path: picked })} />
     </Card>
   )
+}
+
+/** Options without empty parts, to compare them with a preset whatever way they were set. */
+function clean(options: Omit<Preset, 'name'>) {
+  const stages = Object.entries(options.stages ?? {}).flatMap(([stage, set]) => {
+    const params = Object.entries(set.params ?? {}).filter(([, p]) => p && Object.keys(p).length)
+    const kept = {
+      ...(set.driver != null && { driver: set.driver }),
+      ...(set.enabled != null && { enabled: set.enabled }),
+      ...(params.length && { params: Object.fromEntries(params.sort(([a], [b]) => a.localeCompare(b))) }),
+    }
+    return Object.keys(kept).length ? [[stage, kept] as const] : []
+  }).sort(([a], [b]) => a.localeCompare(b))
+  return { export: options.export ?? true, stages: Object.fromEntries(stages) }
 }

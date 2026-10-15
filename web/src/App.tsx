@@ -7,14 +7,14 @@ import { NewJob } from '@/components/NewJob'
 import { errorMessage, isActive, STATUS_LABELS, useConfig, useDrivers, useJobs, useLiveJobs, useTemplates } from '@/lib/api'
 
 function useSelectedJob() {
-  const read = () => Number(new URLSearchParams(location.search).get('job')) || undefined
+  const read = () => new URLSearchParams(location.search).get('job') || undefined
   const [selected, setSelected] = useState(read)
   useEffect(() => {
     const onPop = () => setSelected(read())
     addEventListener('popstate', onPop)
     return () => removeEventListener('popstate', onPop)
   }, [])
-  const select = (id?: number) => {
+  const select = (id?: string) => {
     history.pushState(null, '', id ? `?job=${id}` : location.pathname)
     setSelected(id)
   }

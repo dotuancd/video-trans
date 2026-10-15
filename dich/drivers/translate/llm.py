@@ -1,15 +1,17 @@
 # Translate with an LLM: the OpenAI API, or the Claude Code CLI (`claude -p`) so usage counts against a
 # Claude Pro/Max plan instead of being billed per token.
 #
-# Unlike the local NMT model, an LLM can follow a sentence split over several cues, so cues are sent as
-# numbered items and translated one-to-one. Cues go out in chunks with a few previous cues as context;
-# chunks run in parallel.
+# Cues are grouped into sentences and sent as numbered items, one list per sentence: the LLM translates the
+# whole sentence, then splits its translation back over the sentence's cues by meaning (the local NMT model
+# can only split by length). Sentences go out in chunks, never cut between two chunks, with a few cues
+# before and after as context; chunks run in parallel.
 import json
 import os
 import shutil
 import subprocess
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from types import SimpleNamespace
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -17,10 +19,12 @@ from pydantic import BaseModel, Field
 from dich import settings
 from dich.core.langs import english_name
 from dich.drivers import Driver, UserError, module_missing, register
-from dich.drivers.translate.common import clean, translated
+from dich.drivers.translate.common import clean, group_sentences, translated
 from dich.formats.transcript import Transcript
 
 CONTEXT_CUES = 5
+NEXT_CUES = 3
+MAX_GAP = 1.5          # a pause this long (seconds) also ends a sentence, for transcripts without punctuation
 ATTEMPTS = 3
 CLAUDE_TIMEOUT = 600
 
@@ -28,10 +32,13 @@ SYSTEM_PROMPT = """You translate {source} video subtitles into {target}.
 - Translate naturally and concisely, like professional {target} subtitles.
 - Keep technical terms, product names, people's names and code as they are \
 (e.g. model, prompt, token, API, framework, commit).
-- A sentence may be split over several cues: translate so each cue carries the \
-{target} for its own part, in the same order.
+- Each element of "translate" is one sentence, given as the list of cues it is split over. \
+Understand and translate the whole sentence naturally first, then split your translation over its \
+cues in order, so each cue carries the {target} closest to its own part. Word order may move \
+between cues of the same sentence when {target} needs it, but never between sentences.
 - Return exactly one translation for every id in "translate", never merge, drop or add ids.
-- "context" holds the previous cues for reference only, do not translate them."""
+- "context" holds the previous cues and "next" the following cues, for reference only: \
+do not translate them."""
 
 SCHEMA = {
     "type": "object",
@@ -67,18 +74,20 @@ class LLMTranslator:
         """Return [{"id", "text"}] for payload["translate"], or None when the reply can't be parsed."""
         raise NotImplementedError
 
-    def translate_texts(self, texts, progress=None):
-        """progress(done, total) counts cues of finished chunks."""
+    def translate_texts(self, texts, progress=None, sentences=None):
+        """sentences: lists of consecutive cue indexes that form one sentence (by punctuation if not given).
+        progress(done, total) counts cues of finished chunks."""
         texts = [clean(t) for t in texts]
-        chunks = [range(start, min(start + self.chunk_size, len(texts)))
-                  for start in range(0, len(texts), self.chunk_size)]
+        if sentences is None:
+            sentences = group_sentences([SimpleNamespace(text=t) for t in texts])
+        chunks = self.chunks(sentences)
         translations, done = {}, 0
         with ThreadPoolExecutor(self.workers) as pool:
             futures = {pool.submit(self.translate_chunk, texts, chunk): chunk for chunk in chunks}
             try:
                 for future in as_completed(futures):
                     translations.update(future.result())
-                    done += len(futures[future])
+                    done += sum(len(sentence) for sentence in futures[future])
                     if progress:
                         progress(done, len(texts))
             except BaseException:
@@ -86,26 +95,46 @@ class LLMTranslator:
                 raise
         return [translations.get(i, "") for i in range(len(texts))]
 
-    def translate_chunk(self, texts, indexes):
-        """Map cue index → translation; retries, then halves the chunk when ids come back wrong."""
-        wanted = [i for i in indexes if texts[i]]
-        if not wanted:
+    def chunks(self, sentences):
+        """Consecutive sentences packed up to chunk_size cues; a longer sentence is a chunk of its own."""
+        chunks, current, size = [], [], 0
+        for sentence in sentences:
+            if current and size + len(sentence) > self.chunk_size:
+                chunks.append(current)
+                current, size = [], 0
+            current.append(sentence)
+            size += len(sentence)
+        if current:
+            chunks.append(current)
+        return chunks
+
+    def translate_chunk(self, texts, sentences):
+        """Map cue index → translation; retries, then halves the chunk between sentences when ids come back
+        wrong. A single sentence that keeps failing falls back to its cues one by one."""
+        sentences = [kept for sentence in sentences if (kept := [i for i in sentence if texts[i]])]
+        if not sentences:
             return {}
         for _ in range(ATTEMPTS):
-            result = self.request(texts, wanted)
+            result = self.request(texts, sentences)
             if result is not None:
                 return result
-        if len(wanted) == 1:
-            raise RuntimeError(f"No translation returned for cue {wanted[0] + 1}")
-        half = len(wanted) // 2
-        return {**self.translate_chunk(texts, wanted[:half]), **self.translate_chunk(texts, wanted[half:])}
+        if len(sentences) == 1:
+            if len(sentences[0]) == 1:
+                raise RuntimeError(f"No translation returned for cue {sentences[0][0] + 1}")
+            sentences = [[i] for i in sentences[0]]
+        half = len(sentences) // 2
+        return {**self.translate_chunk(texts, sentences[:half]), **self.translate_chunk(texts, sentences[half:])}
 
-    def request(self, texts, wanted):
-        first = wanted[0]
+    def request(self, texts, sentences):
+        wanted = [i for sentence in sentences for i in sentence]
+        first, last = wanted[0], wanted[-1]
         payload = {
             "context": [texts[i] for i in range(max(0, first - CONTEXT_CUES), first) if texts[i]],
-            "translate": [{"id": i, "text": texts[i]} for i in wanted],
+            "translate": [[{"id": i, "text": texts[i]} for i in sentence] for sentence in sentences],
         }
+        following = [t for t in texts[last + 1:last + 1 + NEXT_CUES] if t]
+        if following:
+            payload["next"] = following
         items = self.complete(payload)
         if items is None:
             return None
@@ -192,7 +221,8 @@ class LLMDriver(Driver):
         source = Transcript.load(inputs["transcript"].path)
         prompt = system_prompt(source.lang, ctx.lang)
         ctx.log.info(f"Dịch {len(source.cues)} câu sang {english_name(ctx.lang)} bằng {self.name} ({params.model})")
-        texts = self.make(params, prompt).translate_texts([c.text for c in source.cues], ctx.progress)
+        sentences = group_sentences(source.cues, max_gap=MAX_GAP)
+        texts = self.make(params, prompt).translate_texts([c.text for c in source.cues], ctx.progress, sentences)
         empty = sum(1 for t, c in zip(texts, source.cues) if c.text.strip() and not t)
         if empty:
             ctx.log.warn(f"{empty} câu không có bản dịch")

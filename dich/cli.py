@@ -134,7 +134,7 @@ def run(args):
                                 use_subtitles=args.use_srt)
         except Exception as error:   # unknown driver, bad params
             sys.exit(str(error).strip("'"))
-        print(f"[{index}] {Path(str(source)).name} (việc #{job_id})")
+        print(f"[{index}] {Path(str(source)).name} ({job_id})")
         try:
             job = run_job(store, job_id, echo)
         except KeyboardInterrupt:

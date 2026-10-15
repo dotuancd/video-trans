@@ -53,8 +53,35 @@
 - **Driver `separate` (demucs) và `refine` (LLM + glossary):** slot đã sẵn (`audio.speech`, `audio.background`, `transcript.src`), chỉ cần viết driver.
 - **ASR khác:** `parakeet`, `openai` (Whisper API) — cùng interface với `asr/needle`.
 - **Dọn workspace:** xoá attempt cũ / artifact `keep: none` theo tuổi; trang quản trị dung lượng `data/jobs`.
-- **Trùng job theo nguồn:** UI bỏ qua video đã có việc ("đã có việc #n"); có thể thêm nút "Tạo việc mới cho video này" khi muốn chạy lại từ đầu với template khác.
+- **Trùng job theo nguồn:** UI bỏ qua video đã có việc ("đã có việc job_…"); có thể thêm nút "Tạo việc mới cho video này" khi muốn chạy lại từ đầu với template khác.
 - **Câu báo "Bỏ qua … Thiếu đầu vào: audio.dub.ja"** còn kỹ thuật: dịch slot sang tên người dùng hiểu ("chưa có bản lồng tiếng tiếng Nhật").
 - **Nhãn bước khi dùng lại cache:** message hiện "Dùng lại kết quả đã có" — có thể kèm thông điệp gốc của lần chạy được dùng lại (số câu, thời lượng).
 - **Hàng đợi Redis/Postgres:** `dich/queue/base.py` đã tách interface nếu cần nhiều máy.
 - **Export chọn thư mục:** hiện xuất cạnh file gốc hoặc thư mục job; thêm ô chọn thư mục xuất khi tạo việc.
+
+## Giao diện tuỳ chọn nâng cao
+
+- ~~**Tuỳ chọn nâng cao bị chật trong cột 24rem:**~~ (đã làm: Sheet tab dọc + preset lưu ở `<data>/presets.json`) đưa ra Sheet rộng (tabs dọc theo bước) thay vì xổ xuống trong card "Việc mới"; kết hợp **preset cấu hình** (lưu bộ tham số thành tên, chọn 1 chạm) để hầu hết lần tạo việc không phải mở phần nâng cao. Các phương án khác: card tự giãn full-width, dialog lưới nhiều cột, trang "Cấu hình" riêng.
+- **Đổi preset làm mất chỉnh sửa chưa lưu:** chọn preset khác khi đang "Đã sửa, chưa lưu" sẽ ghi đè im lặng; nên hỏi lại hoặc cho "Hoàn tác" trong toast.
+- **Preset cho CLI:** `dich run --preset "Anime JP"` đọc cùng `presets.json`, để CLI và web dùng chung cấu hình.
+- **Preset nhớ cả template + ngôn ngữ đích:** hiện preset chỉ giữ tuỳ chọn từng bước + "ghi cạnh file gốc"; có thể tuỳ chọn lưu kèm "Việc cần làm" và "Dịch sang".
+
+## Chất lượng dịch (đề xuất 2026-10-15)
+
+Thứ tự nên làm: (1) bộ đo → (2) bản tóm tắt toàn video → (3) ngữ cảnh 2 chiều + giới hạn độ dài → (4) glossary/xưng hô → (5) refine nguồn → (6) lượt rà soát.
+
+1. **Bản tóm tắt toàn video (pre-pass):** 1 lần gọi LLM đọc cả transcript, sinh `brief` (chủ đề, giọng điệu, danh sách người nói + cách xưng hô tiếng Việt, thuật ngữ → cách dịch), chèn vào system prompt mọi chunk. Sửa lỗi lớn nhất hiện nay: các chunk chạy song song tự chọn "tôi/mình/anh/em" và dịch thuật ngữ khác nhau.
+2. ~~**Ngữ cảnh hai chiều:**~~ (đã làm: chunk theo ranh giới câu, gửi theo nhóm câu, thêm `next` 3 cue sau) **Còn lại — bản dịch trước:** `context` hiện chỉ 5 câu gốc phía trước. Thêm vài câu phía sau (vẫn song song được) để khỏi dịch cụt câu bị cắt ngang chunk.
+3. **Dịch theo thời lượng:** gửi kèm `duration` mỗi cue + giới hạn ký tự (~17 ký tự/giây cho phụ đề, theo tốc độ đọc TTS khi lồng tiếng) để bản dịch vừa khung, bớt dub bị tràn/tăng tốc.
+4. **Glossary + xưng hô do người dùng sửa, lưu trong preset:** chèn vào prompt LLM; với model local thì thay thế sau dịch. Gộp với ý "Glossary theo job/dự án" ở trên; `brief` ở (1) có thể điền sẵn để người dùng chỉ duyệt.
+5. **Lượt rà soát (driver `review`):** LLM đọc song song gốc + bản dịch theo cửa sổ lớn, chỉ trả về các cue cần sửa kèm lý do (sai nghĩa, không nhất quán, quá dài). Tốn thêm ~1x token; chỉ trả diff để không viết lại bản đã ổn.
+6. **Bộ đo chất lượng:** 3–5 đoạn video mẫu có bản dịch chuẩn, chấm bằng LLM-judge (hoặc COMET) để so sánh prompt/model/driver thay vì cảm tính.
+- **Gộp câu khi transcript không có dấu câu:** `MAX_GAP = 1.5s` trong `llm.py` là ước lượng; nên đo trên video thật (vlog nói liền vs. bài giảng) hoặc đưa thành tham số bước Dịch.
+
+- **Lồng tiếng: co giãn theo đoạn nói thực tế (VAD)** — hiện giảm tốc theo `end - start` của cue. Timing phụ đề thường dư đầu/cuối, nên câu có thể bị kéo chậm quá mức cần. Dùng VAD trên `audio.speech` để lấy đúng đoạn nói rồi so với đoạn đó.
+
+- **ID ngắn khi hiển thị:** ID dạng `job_01JA…` dài 30 ký tự; UI/CLI có thể hiện 6–8 ký tự cuối (như git short hash) và nút sao chép ID đầy đủ.
+
+- **Sửa tay = bước hoàn tất (đã làm):** sửa bản dịch khi bước dịch đang `stale/failed/cancelled/chờ duyệt` thì bản sửa thành kết quả (`done`), "Cập nhật phía sau" chỉ chạy lồng tiếng/ghép. Ý tiếp theo: nút "Cập nhật phía sau" ngay trong trình sửa phụ đề (không phải đợi toast), và tuỳ chọn tự chạy phía sau sau khi lưu (debounce vài giây).
+
+- **So sánh hai lần chạy:** đã có xem/tải/"Dùng lần này" cho lần cũ (audio `keep="last"` giữ `DICH_KEEP_DAYS` ngày). Ý tiếp: xem song song phụ đề/audio của 2 lần (diff cue theo cue) để chọn nhanh hơn; hiện dung lượng đang chiếm bởi các lần cũ và nút dọn ngay.

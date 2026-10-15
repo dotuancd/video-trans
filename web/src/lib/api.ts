@@ -58,8 +58,10 @@ export function needsConfirm(error: unknown): boolean {
 }
 
 export const fileName = (path: string) => path.split('/').pop() ?? path
-export const artifactUrl = (id: number) => `/api/artifacts/${id}`
-export const downloadUrl = (id: number) => `/api/artifacts/${id}/download`
+export const artifactUrl = (id: string) => `/api/artifacts/${id}`
+export const downloadUrl = (id: string) => `/api/artifacts/${id}/download`
+/** Shown in the browser (transcripts as SRT text) instead of downloaded. */
+export const inlineUrl = (id: string) => `/api/artifacts/${id}/download?inline=true`
 
 /** The current output of a job for a slot: the last task producing it that has one. */
 export function slotArtifact(job: Job, slot: string): (ArtifactInfo & { task: Task }) | undefined {
@@ -125,9 +127,9 @@ export function putJob(queryClient: QueryClient, job: Job) {
 
 type LiveEvent =
   | { type: 'job'; job: Job }
-  | { type: 'progress'; job_id: number; task_id: number; done: number; total: number }
-  | { type: 'log'; job_id: number; task_id: number; event: Event }
-  | { type: 'deleted'; id: number }
+  | { type: 'progress'; job_id: string; task_id: string; done: number; total: number }
+  | { type: 'log'; job_id: string; task_id: string; event: Event }
+  | { type: 'deleted'; id: string }
 
 /** Keeps the ['jobs'] cache (and open pipeline logs) in sync with the server's event stream;
  * onJobFinished fires when a job stops running. */
@@ -173,7 +175,7 @@ export function useLiveJobs(onJobFinished?: (job: Job) => void) {
 }
 
 /** The pipeline log of an attempt, kept current by useLiveJobs. */
-export function useAttemptEvents(attemptId: number | null | undefined) {
+export function useAttemptEvents(attemptId: string | null | undefined) {
   return useQuery({
     queryKey: ['events', attemptId],
     queryFn: async () => (await attemptEvents({ path: { attempt_id: attemptId! } })).data,

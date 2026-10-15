@@ -46,7 +46,7 @@ uv run dich serve --root ~/Videos   # chỉ cho UI đọc/ghi trong thư mục n
 uv run dich worker --lanes cpu      # (tuỳ chọn) thêm worker ở terminal khác
 ```
 
-- **Việc mới**: nguồn từ **Tải lên** (nhiều file; `a.srt`/`a.vi.srt` tải cùng `a.mp4` được dùng luôn), **Trên máy** (file hoặc thư mục) hoặc **URL**. Chọn việc cần làm (template), các ngôn ngữ đích, driver dịch, giọng đọc (mặc định clone giọng gốc; ▶ nghe thử). Tham số của mọi driver nằm trong "Tuỳ chọn nâng cao" (form tự sinh từ driver).
+- **Việc mới**: nguồn từ **Tải lên** (nhiều file; `a.srt`/`a.vi.srt` tải cùng `a.mp4` được dùng luôn), **Trên máy** (file hoặc thư mục) hoặc **URL**. Chọn việc cần làm (template), các ngôn ngữ đích, driver dịch, giọng đọc (mặc định clone giọng gốc; ▶ nghe thử). Tham số của mọi driver nằm trong ngăn "Nâng cao" (tab theo bước, form tự sinh từ driver); lưu thành **preset** để lần sau chọn 1 chạm ở ô "Cấu hình" (lưu ở `<data>/presets.json`).
 - **Chi tiết việc**: từng bước với trạng thái, tiến độ, **Log** theo từng lần chạy (log pipeline; "Log hệ thống" cho lỗi kỹ thuật), **Chạy lại…** (đổi driver/tham số; chỉ bước này hoặc cả các bước sau), **Dừng** (dừng được giữa bất kỳ bước nào), **Tiếp tục**, **+ Ngôn ngữ** (dịch thêm, dùng lại phụ đề đã có), tải kết quả về.
 - **Sửa phụ đề**: song ngữ ngay dưới video, phụ đề trên video theo bản đang gõ; tách/gộp/chuyển chữ. Lưu = bản sửa tay mới; các bước sau thành "Cần chạy lại" → **Cập nhật phía sau**. Chạy lại một bước sẽ hỏi trước khi thay bản đã sửa tay.
 - Template **Lồng tiếng, duyệt bản dịch trước** dừng trước bước lồng tiếng để bạn sửa bản dịch/nghe thử giọng rồi bấm Tiếp tục.
@@ -122,7 +122,7 @@ uv run dich file.mp4 --dub --set mux.original_volume=0     # chỉ giọng lồn
 uv run dich file.mp4 --dub --set mux.add_track=true        # giữ audio gốc, thêm track lồng tiếng
 ```
 
-Các cue được gộp thành câu để đọc tự nhiên. Mỗi câu bắt đầu đúng lúc cue đầu tiên của nó. Câu tiếng Việt dài hơn slot thì được đọc tràn sang khoảng lặng phía sau. Nếu vẫn không đủ chỗ thì tăng tốc (không đổi cao độ), tối đa `max_speed` (mặc định 1.3). Đến mức đó vẫn dài thì câu sau bị lùi lại; log báo số câu bị lùi và độ trễ lớn nhất.
+Các cue được gộp thành câu để đọc tự nhiên. Mỗi câu bắt đầu đúng lúc cue đầu tiên của nó. Câu tiếng Việt dài hơn slot thì được đọc tràn sang khoảng lặng phía sau. Nếu vẫn không đủ chỗ thì tăng tốc (không đổi cao độ), tối đa `max_speed` (mặc định 1.3). Đến mức đó vẫn dài thì câu sau bị lùi lại; log báo số câu bị lùi và độ trễ lớn nhất. Ngược lại, câu Việt ngắn hơn 90% đoạn nói gốc thì được đọc chậm lại cho vừa đoạn đó, chậm nhất `min_speed` (mặc định 0.85, đặt 1 để tắt).
 
 Bước Ghép video trộn giọng đọc lên audio gốc (mặc định giữ audio gốc ở mức 15%; khi có bước Tách nền thì dùng nhạc nền đã tách) và mặc định thay audio gốc; `add_track` giữ nguyên audio gốc và thêm giọng lồng tiếng thành audio track mới. Phụ đề bản dịch (mặc định) và phụ đề gốc được nhúng vào video. Audio từng câu được cache trong `~/.cache/dich-video/tts`, nên chạy lại với cùng giọng sẽ nhanh. `int8` chạy nhanh hơn nhưng audio có thể bị méo. Audio có watermark AI (mặc định của VieNeu).
 

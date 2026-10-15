@@ -8,8 +8,8 @@ TaskStatus = Literal["blocked", "queued", "running", "done", "failed", "cancelle
 
 
 class Task(BaseModel):
-    id: int
-    job_id: int
+    id: str
+    job_id: str
     key: str
     position: int
     stage: str
@@ -28,14 +28,14 @@ class Task(BaseModel):
     total: int | None
     retries: int
     cancel_requested: bool
-    current_attempt: int | None
+    current_attempt: str | None
     exports: list[str]
     updated_at: float
     artifacts: list["ArtifactInfo"] = Field(default_factory=list)
 
 
 class ArtifactInfo(BaseModel):
-    id: int
+    id: str
     name: str
     slot: str
     path: str
@@ -45,7 +45,7 @@ class ArtifactInfo(BaseModel):
 
 
 class Job(BaseModel):
-    id: int
+    id: str
     title: str
     source: str
     template: str
@@ -64,6 +64,22 @@ class StageOverride(BaseModel):
     params: dict[str, Any] | None = None
 
 
+class PresetStage(BaseModel):
+    driver: str | None = None
+    enabled: bool | None = None
+    params: dict[str, dict[str, Any]] = Field(default_factory=dict, description="Params per driver name")
+
+
+class PresetBody(BaseModel):
+    export: bool = True
+    stages: dict[str, PresetStage] = Field(default_factory=dict)
+
+
+class Preset(PresetBody):
+    """Named advanced options for new jobs: per stage its driver, on/off and params (applied to any template)."""
+    name: str
+
+
 class JobCreate(BaseModel):
     sources: list[str] = Field(description="Files, folders (their videos), or URLs")
     langs: list[str] = Field(default_factory=lambda: ["vi"])
@@ -75,7 +91,7 @@ class JobCreate(BaseModel):
 
 
 class JobsCreated(BaseModel):
-    jobs: list[int]
+    jobs: list[str]
     skipped: list[str]
 
 
@@ -91,8 +107,8 @@ class Rerun(BaseModel):
 
 
 class Attempt(BaseModel):
-    id: int
-    task_id: int
+    id: str
+    task_id: str
     n: int
     span_id: str
     origin: Literal["driver", "cache", "human"]
@@ -102,13 +118,14 @@ class Attempt(BaseModel):
     error: str | None
     started_at: float
     finished_at: float | None
+    artifacts: list[ArtifactInfo] = []
 
 
 class Event(BaseModel):
     id: int
-    job_id: int | None
-    task_id: int | None
-    attempt_id: int | None
+    job_id: str | None
+    task_id: str | None
+    attempt_id: str | None
     ts: float
     level: str
     type: str
@@ -162,8 +179,8 @@ class Word(BaseModel):
 
 class TranscriptView(BaseModel):
     lang: str | None
-    task_id: int = Field(description="The task whose output is edited")
-    source_task_id: int | None = Field(description="The task of the original transcript shown next to it")
+    task_id: str = Field(description="The task whose output is edited")
+    source_task_id: str | None = Field(description="The task of the original transcript shown next to it")
     cues: list[EditCue]
     words: list[Word] | None = Field(description="Timed words of the original, for cutting cues where words are spoken")
     edited: bool
@@ -212,6 +229,6 @@ class Preview(BaseModel):
     ref_audio: str | None = None
     int8: bool = False
     text: str | None = None
-    job_id: int | None = Field(None, description="Clone from / read this job's video and subtitles")
+    job_id: str | None = Field(None, description="Clone from / read this job's video and subtitles")
     lang: str = "vi"
     path: str | None = Field(None, description="Or a video (with <name>.srt / <name>.vi.srt next to it)")
