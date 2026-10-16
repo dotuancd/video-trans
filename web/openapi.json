@@ -309,6 +309,213 @@
     }
    }
   },
+  "/api/jobs/pause": {
+   "post": {
+    "summary": "Pause Jobs",
+    "description": "Pause many jobs: running steps stop, waiting ones stay put. Jobs waiting for review are left alone.\nReturns the jobs that were paused.",
+    "operationId": "pause_jobs",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/JobIds"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Job"
+         },
+         "type": "array",
+         "title": "Response Pause Jobs"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/jobs/unpause": {
+   "post": {
+    "summary": "Unpause Jobs",
+    "description": "Continue many paused jobs from their stopped steps; review gates and failed steps are left alone.\nReturns the jobs that continue.",
+    "operationId": "unpause_jobs",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/JobIds"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Job"
+         },
+         "type": "array",
+         "title": "Response Unpause Jobs"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/jobs/move": {
+   "post": {
+    "summary": "Move Jobs",
+    "description": "Moves many jobs into a project (or out of any). Returns the jobs moved.",
+    "operationId": "move_jobs",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/JobsMove"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Job"
+         },
+         "type": "array",
+         "title": "Response Move Jobs"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/jobs/delete": {
+   "post": {
+    "summary": "Delete Jobs",
+    "description": "Removes many jobs and their workspaces; exported files stay. Running jobs are skipped.",
+    "operationId": "delete_jobs",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/JobIds"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/JobsDeleted"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/jobs/rerun": {
+   "post": {
+    "summary": "Rerun Jobs",
+    "description": "Runs a stage again in many jobs (each of its languages), with a new driver or params. A job whose\nstep is busy or has no such step is skipped; one that would lose edits by hand waits for confirm.",
+    "operationId": "rerun_jobs",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/JobsRerun"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/JobsDone"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/jobs/{job_id}/refresh": {
    "post": {
     "summary": "Refresh Job",
@@ -526,6 +733,103 @@
         }
        }
       }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/tasks/{task_id}/live": {
+   "get": {
+    "summary": "Get Live",
+    "operationId": "get_live",
+    "parameters": [
+     {
+      "name": "task_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Task Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LiveAudio"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/tasks/{task_id}/live/{n}": {
+   "get": {
+    "summary": "Get Live Chunk",
+    "description": "attempt: the attempt_id of the index read (chunks are cached per attempt).",
+    "operationId": "get_live_chunk",
+    "parameters": [
+     {
+      "name": "task_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Task Id"
+      }
+     },
+     {
+      "name": "n",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "N"
+      }
+     },
+     {
+      "name": "attempt",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Attempt"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response"
      },
      "422": {
       "description": "Validation Error",
@@ -823,6 +1127,75 @@
     }
    }
   },
+  "/api/queue": {
+   "get": {
+    "summary": "Get Queue",
+    "description": "What the workers are doing and what waits for them, by lane.",
+    "operationId": "get_queue",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/QueueView"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/queue/lanes/{lane}/workers": {
+   "put": {
+    "summary": "Set Workers",
+    "description": "How many worker processes run on a lane, from now on and after a restart. Fewer: the extra\nworkers finish their task first.",
+    "operationId": "set_workers",
+    "parameters": [
+     {
+      "name": "lane",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Lane"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/WorkerCount"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/QueueView"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/fs": {
    "get": {
     "summary": "List Dir",
@@ -1055,7 +1428,7 @@
   "/api/events": {
    "get": {
     "summary": "Events",
-    "description": "{\"type\": \"job\", \"job\"} when a job or one of its tasks changed, {\"type\": \"progress\", \"job_id\", \"task_id\",\n\"done\", \"total\"}, {\"type\": \"log\", \"job_id\", \"task_id\", \"event\"}, {\"type\": \"deleted\", \"id\"}.",
+    "description": "{\"type\": \"job\", \"job\"} when a job or one of its tasks changed, {\"type\": \"progress\", \"job_id\", \"task_id\",\n\"done\", \"total\"}, {\"type\": \"log\", \"job_id\", \"task_id\", \"event\"}, {\"type\": \"deleted\", \"id\"},\n{\"type\": \"project\", \"id\", \"deleted\"} when a project was created, changed or deleted.",
     "operationId": "events",
     "responses": {
      "200": {
@@ -1935,6 +2308,18 @@
       },
       "type": "array",
       "title": "Tasks"
+     },
+     "cost_usd": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cost Usd",
+      "description": "USD paid to paid APIs (OpenAI…) over all attempts"
      }
     },
     "type": "object",
@@ -2017,6 +2402,23 @@
     ],
     "title": "JobCreate"
    },
+   "JobIds": {
+    "properties": {
+     "ids": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Ids",
+      "description": "Jobs to act on; unknown ids are ignored"
+     }
+    },
+    "type": "object",
+    "required": [
+     "ids"
+    ],
+    "title": "JobIds"
+   },
    "JobPatch": {
     "properties": {
      "project_id": {
@@ -2061,6 +2463,213 @@
      "skipped"
     ],
     "title": "JobsCreated"
+   },
+   "JobsDeleted": {
+    "properties": {
+     "deleted": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Deleted"
+     },
+     "skipped": {
+      "items": {
+       "$ref": "#/components/schemas/Skipped"
+      },
+      "type": "array",
+      "title": "Skipped"
+     }
+    },
+    "type": "object",
+    "required": [
+     "deleted",
+     "skipped"
+    ],
+    "title": "JobsDeleted"
+   },
+   "JobsDone": {
+    "properties": {
+     "jobs": {
+      "items": {
+       "$ref": "#/components/schemas/Job"
+      },
+      "type": "array",
+      "title": "Jobs",
+      "description": "Jobs acted on, as they are now"
+     },
+     "skipped": {
+      "items": {
+       "$ref": "#/components/schemas/Skipped"
+      },
+      "type": "array",
+      "title": "Skipped"
+     },
+     "needs_confirm": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Needs Confirm",
+      "description": "Jobs left alone: they would lose edits made by hand"
+     }
+    },
+    "type": "object",
+    "required": [
+     "jobs",
+     "skipped",
+     "needs_confirm"
+    ],
+    "title": "JobsDone"
+   },
+   "JobsMove": {
+    "properties": {
+     "ids": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Ids",
+      "description": "Jobs to act on; unknown ids are ignored"
+     },
+     "project_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Project Id",
+      "description": "Move the jobs into this project; null: no project"
+     }
+    },
+    "type": "object",
+    "required": [
+     "ids",
+     "project_id"
+    ],
+    "title": "JobsMove"
+   },
+   "JobsRerun": {
+    "properties": {
+     "ids": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Ids",
+      "description": "Jobs to act on; unknown ids are ignored"
+     },
+     "stage": {
+      "type": "string",
+      "title": "Stage",
+      "description": "Every step of this stage (each language) runs again"
+     },
+     "mode": {
+      "type": "string",
+      "enum": [
+       "only",
+       "cascade"
+      ],
+      "title": "Mode",
+      "default": "cascade"
+     },
+     "params": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Params",
+      "description": "Only what changes; a job keeps its other params (unless the driver changes)"
+     },
+     "driver": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Driver"
+     },
+     "confirm": {
+      "type": "boolean",
+      "title": "Confirm",
+      "description": "Replace edits made by hand",
+      "default": false
+     }
+    },
+    "type": "object",
+    "required": [
+     "ids",
+     "stage"
+    ],
+    "title": "JobsRerun"
+   },
+   "Lane": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "workers": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/components/schemas/Worker"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Workers",
+      "description": "the processes this server started; None when it started none (workers run by `dich worker` are not known here)"
+     },
+     "configured": {
+      "type": "integer",
+      "title": "Configured",
+      "description": "processes wanted on this lane (set in the UI, else DICH_WORKERS_…)"
+     },
+     "scalable": {
+      "type": "boolean",
+      "title": "Scalable",
+      "description": "this server starts the lane's workers, so their number can be changed"
+     },
+     "running": {
+      "items": {
+       "$ref": "#/components/schemas/QueueItem"
+      },
+      "type": "array",
+      "title": "Running"
+     },
+     "queued": {
+      "items": {
+       "$ref": "#/components/schemas/QueueItem"
+      },
+      "type": "array",
+      "title": "Queued"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "workers",
+     "configured",
+     "scalable",
+     "running",
+     "queued"
+    ],
+    "title": "Lane"
    },
    "Language": {
     "properties": {
@@ -2112,6 +2721,75 @@
      "entries"
     ],
     "title": "Listing"
+   },
+   "LiveAudio": {
+    "properties": {
+     "attempt_id": {
+      "type": "string",
+      "title": "Attempt Id"
+     },
+     "chunks": {
+      "items": {
+       "$ref": "#/components/schemas/LiveChunk"
+      },
+      "type": "array",
+      "title": "Chunks"
+     },
+     "ready_until": {
+      "type": "number",
+      "title": "Ready Until",
+      "description": "Seconds of the track playable so far"
+     },
+     "duration": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Duration",
+      "description": "Expected length: end of the last cue"
+     },
+     "finished": {
+      "type": "boolean",
+      "title": "Finished"
+     }
+    },
+    "type": "object",
+    "required": [
+     "attempt_id",
+     "chunks",
+     "ready_until",
+     "duration",
+     "finished"
+    ],
+    "title": "LiveAudio",
+    "description": "Back-to-back pieces of a dub track that is still being made (GET /tasks/{id}/live/{n})."
+   },
+   "LiveChunk": {
+    "properties": {
+     "n": {
+      "type": "integer",
+      "title": "N"
+     },
+     "start": {
+      "type": "number",
+      "title": "Start"
+     },
+     "end": {
+      "type": "number",
+      "title": "End"
+     }
+    },
+    "type": "object",
+    "required": [
+     "n",
+     "start",
+     "end"
+    ],
+    "title": "LiveChunk"
    },
    "PathBody": {
     "properties": {
@@ -2407,6 +3085,187 @@
     "title": "ProjectBody",
     "description": "What new videos of the project run with by default; the web form sends it with each job it creates."
    },
+   "QueueItem": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id",
+      "description": "task id"
+     },
+     "job_id": {
+      "type": "string",
+      "title": "Job Id"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title",
+      "description": "the job's title"
+     },
+     "project_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Project Id"
+     },
+     "key": {
+      "type": "string",
+      "title": "Key"
+     },
+     "stage": {
+      "type": "string",
+      "title": "Stage"
+     },
+     "driver": {
+      "type": "string",
+      "title": "Driver"
+     },
+     "lang": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Lang"
+     },
+     "lane": {
+      "type": "string",
+      "title": "Lane"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "running",
+       "queued"
+      ],
+      "title": "Status"
+     },
+     "done": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Done"
+     },
+     "total": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Total"
+     },
+     "retries": {
+      "type": "integer",
+      "title": "Retries"
+     },
+     "cancel_requested": {
+      "type": "boolean",
+      "title": "Cancel Requested"
+     },
+     "message": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Message"
+     },
+     "updated_at": {
+      "type": "number",
+      "title": "Updated At",
+      "description": "when it was queued, or taken by a worker"
+     },
+     "started_at": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Started At",
+      "description": "the running attempt's start"
+     },
+     "pid": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pid",
+      "description": "the worker running it"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "job_id",
+     "title",
+     "project_id",
+     "key",
+     "stage",
+     "driver",
+     "lang",
+     "lane",
+     "status",
+     "done",
+     "total",
+     "retries",
+     "cancel_requested",
+     "message",
+     "updated_at"
+    ],
+    "title": "QueueItem"
+   },
+   "QueueView": {
+    "properties": {
+     "lanes": {
+      "items": {
+       "$ref": "#/components/schemas/Lane"
+      },
+      "type": "array",
+      "title": "Lanes"
+     },
+     "blocked": {
+      "type": "integer",
+      "title": "Blocked",
+      "description": "tasks waiting for an earlier step"
+     },
+     "waiting_review": {
+      "type": "integer",
+      "title": "Waiting Review"
+     }
+    },
+    "type": "object",
+    "required": [
+     "lanes",
+     "blocked",
+     "waiting_review"
+    ],
+    "title": "QueueView"
+   },
    "Rerun": {
     "properties": {
      "mode": {
@@ -2450,6 +3309,29 @@
     },
     "type": "object",
     "title": "Rerun"
+   },
+   "Skipped": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "reason": {
+      "type": "string",
+      "title": "Reason"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "title",
+     "reason"
+    ],
+    "title": "Skipped"
    },
    "StageOverride": {
     "properties": {
@@ -2948,6 +3830,52 @@
      "end"
     ],
     "title": "Word"
+   },
+   "Worker": {
+    "properties": {
+     "pid": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pid"
+     },
+     "alive": {
+      "type": "boolean",
+      "title": "Alive"
+     },
+     "retiring": {
+      "type": "boolean",
+      "title": "Retiring",
+      "description": "no longer wanted (fewer workers set): exits after its task",
+      "default": false
+     }
+    },
+    "type": "object",
+    "required": [
+     "pid",
+     "alive"
+    ],
+    "title": "Worker"
+   },
+   "WorkerCount": {
+    "properties": {
+     "count": {
+      "type": "integer",
+      "maximum": 16.0,
+      "minimum": 0.0,
+      "title": "Count"
+     }
+    },
+    "type": "object",
+    "required": [
+     "count"
+    ],
+    "title": "WorkerCount"
    }
   }
  }

@@ -56,10 +56,25 @@ class Job(BaseModel):
     project_id: str | None = None
     status: Literal["blocked", "queued", "running", "done", "failed", "cancelled", "waiting_review", "stale"]
     tasks: list[Task]
+    cost_usd: float | None = Field(None, description="USD paid to paid APIs (OpenAI…) over all attempts")
+
+
+class JobIds(BaseModel):
+    ids: list[str] = Field(description="Jobs to act on; unknown ids are ignored")
 
 
 class JobPatch(BaseModel):
     project_id: str | None = Field(description="Move the job into this project; null: no project")
+
+
+class JobsMove(JobIds):
+    project_id: str | None = Field(description="Move the jobs into this project; null: no project")
+
+
+class Skipped(BaseModel):
+    id: str
+    title: str
+    reason: str
 
 
 class StageOverride(BaseModel):
@@ -129,6 +144,26 @@ class Rerun(BaseModel):
     confirm: bool = Field(False, description="Replace edits made by hand")
 
 
+class JobsDone(BaseModel):
+    jobs: list[Job] = Field(description="Jobs acted on, as they are now")
+    skipped: list[Skipped]
+    needs_confirm: list[str] = Field(description="Jobs left alone: they would lose edits made by hand")
+
+
+class JobsDeleted(BaseModel):
+    deleted: list[str]
+    skipped: list[Skipped]
+
+
+class JobsRerun(JobIds):
+    stage: str = Field(description="Every step of this stage (each language) runs again")
+    mode: Literal["only", "cascade"] = "cascade"
+    params: dict[str, Any] | None = Field(None, description="Only what changes; a job keeps its other params "
+                                                             "(unless the driver changes)")
+    driver: str | None = None
+    confirm: bool = Field(False, description="Replace edits made by hand")
+
+
 class Attempt(BaseModel):
     id: str
     task_id: str
@@ -186,6 +221,53 @@ class Config(BaseModel):
     default_drivers: dict[str, str] = Field(description="stage → driver used for 'env' in templates")
 
 
+class QueueItem(BaseModel):
+    id: str = Field(description="task id")
+    job_id: str
+    title: str = Field(description="the job's title")
+    project_id: str | None
+    key: str
+    stage: str
+    driver: str
+    lang: str | None
+    lane: str
+    status: Literal["running", "queued"]
+    done: int | None
+    total: int | None
+    retries: int
+    cancel_requested: bool
+    message: str | None
+    updated_at: float = Field(description="when it was queued, or taken by a worker")
+    started_at: float | None = Field(None, description="the running attempt's start")
+    pid: int | None = Field(None, description="the worker running it")
+
+
+class Worker(BaseModel):
+    pid: int | None
+    alive: bool
+    retiring: bool = Field(False, description="no longer wanted (fewer workers set): exits after its task")
+
+
+class Lane(BaseModel):
+    name: str
+    workers: list[Worker] | None = Field(description="the processes this server started; None when it started none"
+                                                     " (workers run by `dich worker` are not known here)")
+    configured: int = Field(description="processes wanted on this lane (set in the UI, else DICH_WORKERS_…)")
+    scalable: bool = Field(description="this server starts the lane's workers, so their number can be changed")
+    running: list[QueueItem]
+    queued: list[QueueItem]
+
+
+class WorkerCount(BaseModel):
+    count: int = Field(ge=0, le=16)
+
+
+class QueueView(BaseModel):
+    lanes: list[Lane]
+    blocked: int = Field(description="tasks waiting for an earlier step")
+    waiting_review: int
+
+
 class EditCue(BaseModel):
     id: str | None = None
     start: float
@@ -198,6 +280,21 @@ class Word(BaseModel):
     word: str
     start: float
     end: float
+
+
+class LiveChunk(BaseModel):
+    n: int
+    start: float
+    end: float
+
+
+class LiveAudio(BaseModel):
+    """Back-to-back pieces of a dub track that is still being made (GET /tasks/{id}/live/{n})."""
+    attempt_id: str
+    chunks: list[LiveChunk]
+    ready_until: float = Field(description="Seconds of the track playable so far")
+    duration: float | None = Field(description="Expected length: end of the last cue")
+    finished: bool
 
 
 class TranscriptView(BaseModel):

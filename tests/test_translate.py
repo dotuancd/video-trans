@@ -73,3 +73,37 @@ def test_failing_sentence_retries_cue_by_cue():
     translator = Flaky(workers=1)
     assert translator.translate_texts(texts) == ["ONE.", "TWO AND", "THREE."]
     assert [[[c["id"] for c in s] for s in p["translate"]] for p in translator.payloads][-2:] == [[[1]], [[2]]]
+
+
+def test_checkpoint_resumes_finished_chunks(tmp_path):
+    from dich.storage.checkpoint import Checkpoint
+
+    class LimitedTranslator(EchoTranslator):   # e.g. the Claude plan's usage limit hit on the 3rd request
+        def complete(self, payload):
+            if self.requests == 2:
+                raise RuntimeError("usage limit")
+            return super().complete(payload)
+
+    texts = [f"cue {i}." for i in range(30)]   # 3 chunks of 10
+    first = LimitedTranslator(workers=1)
+    first.checkpoint = Checkpoint(tmp_path / "cp", "fp1")
+    with pytest.raises(RuntimeError):
+        first.translate_texts(texts)
+
+    again = EchoTranslator(workers=1)
+    again.checkpoint = Checkpoint(tmp_path / "cp", "fp1")
+    assert again.checkpoint.resumed == 2
+    assert again.translate_texts(texts) == [t.upper() for t in texts]
+    assert again.requests == 1                     # only the chunk not done before
+
+    other = Checkpoint(tmp_path / "cp", "fp2")     # other params or inputs: start over
+    assert other.resumed == 0 and not (tmp_path / "cp").exists()
+
+
+def test_checkpoint_skips_a_half_written_line(tmp_path):
+    from dich.storage.checkpoint import PIECES, Checkpoint
+
+    Checkpoint(tmp_path, "fp").put("a", {"0": "x"})
+    with (tmp_path / PIECES).open("a") as file:
+        file.write('{"key": "b", "val')
+    assert Checkpoint(tmp_path, "fp").get("a") == {"0": "x"}

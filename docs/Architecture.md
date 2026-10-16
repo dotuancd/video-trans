@@ -121,7 +121,7 @@ Supervisor ── worker[cpu] ── worker[gpu] ── worker[net] ×N
 - **Claim nguyên tử**: `UPDATE tasks SET status='running', lease_until=? WHERE id=(SELECT … WHERE status='queued' AND lane IN (…) AND deps_done ORDER BY priority, created_at LIMIT 1) RETURNING *`.
 - **Lease + heartbeat**: worker chết (crash, OOM) → hết lease → task về `queued` (tối đa `max_retries`), không kẹt "running" mãi.
 - **Process, không thread**: dừng = supervisor kill process rồi spawn lại → dừng được *giữa* bất kỳ bước nào (ASR, dịch, mux), và bắt được cả output tầng C (fd 1/2) của ffmpeg/onnx/ctranslate2.
-- **Lane theo tài nguyên** (`cpu`, `gpu`, `net`), số worker mỗi lane cấu hình được. `net` có thể chạy 3–4 task song song.
+- **Lane theo tài nguyên** (`cpu`, `gpu`, `net`), số worker mỗi lane cấu hình được (`DICH_WORKERS_*`) và đổi được khi đang chạy từ trang Hàng đợi — worker thừa làm xong task rồi thoát; số mới lưu ở `<data>/workers.json`. `net` có thể chạy 3–4 task song song.
 - **Interface `Queue`** (`enqueue`, `claim`, `heartbeat`, `complete`, `fail`) → sau này đổi sang Redis/Postgres mà không đụng driver.
 - Một lệnh duy nhất `dich serve` khởi động API + supervisor (người dùng không phải mở 2 terminal); `dich worker --lanes gpu` cho máy phụ khi cần.
 
@@ -153,6 +153,7 @@ data/
   jobs.sqlite
   jobs/<job_id>/<task_key>/<attempt>/
       outputs/…          transcript.jsonl, dub.wav, out.mp4
+      live/              0000.wav, 0001.wav…, index.json (dub đang chạy, xem bên dưới)
       events.jsonl
       system.log
   blobs/<sha256>          (tuỳ chọn: dedupe file lớn)
@@ -161,6 +162,8 @@ data/
 - Bảng `artifacts`: `slot`, `kind`, `path`, `sha256`, `size`, `attempt_id`, `origin` (`driver` | `human`).
 - **Fingerprint** task = hash(driver.name, driver.version, params, hash các input). Trùng fingerprint với attempt đã `done` → dùng lại, không chạy (thay cho "bỏ qua nếu output đã có" theo tên file).
 - `keep` theo stage: `always` (transcript, out.mp4), `last` (chỉ attempt mới nhất: dub.wav), `success_only`, `none` (wav trích xuất tạm).
+- **Xem trước khi đang lồng tiếng** (`dich/storage/live.py`): dub ghi các đoạn đã chốt (đầu ~8s, sau ~30s, nối liền, ghép lại đúng bằng `dub.wav`) vào `live/` + `index.json` (`ready_until`, `duration`, `finished`). API `GET /api/tasks/{id}/live[/{n}]`. Web phát video gốc (tiếng 15%) + các đoạn này bằng Web Audio, tự dừng ở mép phần đã xong và phát tiếp khi có đoạn mới; khi `media.out` có thì dùng bản ghép thật. Không tạo video tạm — ffmpeg/mux không đổi.
+- **Checkpoint** (`dich/storage/checkpoint.py`, `ctx.checkpoint`): driver lưu từng phần đã xong (chunk dịch LLM) vào `jobs/<job_id>/<task_key>/checkpoint/` — dùng chung giữa các attempt cùng fingerprint, khác fingerprint thì xoá, task `done` thì engine xoá. Dừng/lỗi rồi chạy lại = tiếp tục từ giữa.
 - **Export**: kết quả cuối được copy/hardlink ra cạnh file gốc hoặc thư mục người dùng chọn — giữ thói quen "thấy ngay trong Finder" mà workspace vẫn sạch và có version.
 
 ## 8. Chạy lại & sửa tay

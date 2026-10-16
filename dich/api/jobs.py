@@ -7,13 +7,15 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import ValidationError
 
-from dich.api.models import (AddLangs, Attempt, EditCue, Event, Job, JobCreate, JobPatch, JobsCreated, Rerun,
-                             TranscriptSave, TranscriptSaved, TranscriptView, Word)
+from dich.api.models import (AddLangs, Attempt, EditCue, Event, Job, JobCreate, JobIds, JobPatch, JobsCreated, JobsDeleted,
+                             JobsDone, JobsMove, JobsRerun, LiveAudio, Rerun, Skipped, TranscriptSave, TranscriptSaved,
+                             TranscriptView, Word)
 from dich.core import jobs as job_service
 from dich.formats.transcript import Cue, Transcript, ensure_ids, to_srt, to_vtt
 from dich.media import is_media, is_subtitle, sha256
 from dich.queue.base import Busy, NeedsConfirm
 from dich.runtime.engine import export_task
+from dich.storage.live import live_chunk, read_live
 
 
 def find_media(folder, recursive):
@@ -139,6 +141,75 @@ def router(ctx):
         store.resume(job_id)
         return job_or_404(job_id)
 
+    @api.post("/jobs/pause")
+    def pause_jobs(body: JobIds) -> list[Job]:
+        """Pause many jobs: running steps stop, waiting ones stay put. Jobs waiting for review are left alone.
+        Returns the jobs that were paused."""
+        return jobs_of(store.pause_jobs(body.ids))
+
+    @api.post("/jobs/unpause")
+    def unpause_jobs(body: JobIds) -> list[Job]:
+        """Continue many paused jobs from their stopped steps; review gates and failed steps are left alone.
+        Returns the jobs that continue."""
+        return jobs_of(store.unpause_jobs(body.ids))
+
+    def jobs_of(ids):
+        jobs = [job for job in map(store.job, ids) if job]
+        return attach_artifacts(store, jobs) if jobs else []
+
+    def skip(job, reason):
+        return Skipped(id=job["id"], title=job["title"], reason=reason)
+
+    @api.post("/jobs/move")
+    def move_jobs(body: JobsMove) -> list[Job]:
+        """Moves many jobs into a project (or out of any). Returns the jobs moved."""
+        if body.project_id and not store.project(body.project_id):
+            raise HTTPException(404, "Không có project này")
+        ids = [job["id"] for job in map(store.job, body.ids) if job]
+        for job_id in ids:
+            store.set_job_project(job_id, body.project_id)
+        return jobs_of(ids)
+
+    @api.post("/jobs/delete")
+    def delete_jobs(body: JobIds) -> JobsDeleted:
+        """Removes many jobs and their workspaces; exported files stay. Running jobs are skipped."""
+        deleted, skipped = [], []
+        for job in filter(None, map(store.job, body.ids)):
+            try:
+                store.delete_job(job["id"])
+                deleted.append(job["id"])
+            except Busy as error:
+                skipped.append(skip(job, str(error)))
+        return JobsDeleted(deleted=deleted, skipped=skipped)
+
+    @api.post("/jobs/rerun")
+    def rerun_jobs(body: JobsRerun) -> JobsDone:
+        """Runs a stage again in many jobs (each of its languages), with a new driver or params. A job whose
+        step is busy or has no such step is skipped; one that would lose edits by hand waits for confirm."""
+        done, skipped, needs_confirm = [], [], []
+        for job in filter(None, map(store.job, body.ids)):
+            tasks = [t for t in job["tasks"] if t["stage"] == body.stage and t["status"] != "skipped"]
+            if not tasks:
+                skipped.append(skip(job, "Không có bước này"))
+                continue
+            later = [t for task in tasks for t in store.descendants(job["id"], task["key"])]
+            touched = tasks + (later if body.mode == "cascade" else [])
+            if any(t["status"] == "running" for t in touched):   # checked first: no job half rerun
+                skipped.append(skip(job, "Bước này hoặc bước sau đang chạy"))
+                continue
+            if not body.confirm and store.human_conflicts(touched):
+                needs_confirm.append(job["id"])
+                continue
+            try:
+                for task in tasks:
+                    store.rerun(task["id"], body.mode, body.params, body.driver, confirm=True)
+                done.append(job["id"])
+            except Busy as error:
+                skipped.append(skip(job, str(error)))
+            except (KeyError, ValidationError) as error:
+                raise HTTPException(400, str(error).strip("'"))
+        return JobsDone(jobs=jobs_of(done), skipped=skipped, needs_confirm=needs_confirm)
+
     @api.post("/jobs/{job_id}/refresh")
     def refresh_job(job_id: str) -> Job:
         """Run the steps whose input changed (stale) again."""
@@ -199,6 +270,36 @@ def router(ctx):
         if not store.attempt(attempt_id):
             raise HTTPException(404, "Không có lần chạy này")
         return store.attempt_events(attempt_id)
+
+    # --- live audio (a running dub, playable before it is done) ---
+
+    def live_attempt(task_id):
+        """The attempt whose live audio is shown: the running one, else the one in use."""
+        task = task_or_404(task_id)
+        if task["status"] == "running":
+            attempt = next(iter(store.attempts_of(task_id)), None)
+        else:
+            attempt = store.attempt(task["current_attempt"]) if task["current_attempt"] else None
+        if not attempt:
+            raise HTTPException(404, "Chưa có bản nghe trước")
+        return attempt
+
+    @api.get("/tasks/{task_id}/live")
+    def get_live(task_id: str) -> LiveAudio:
+        attempt = live_attempt(task_id)
+        index = read_live(attempt["dir"])
+        if not index:
+            raise HTTPException(404, "Chưa có bản nghe trước")
+        return {**index, "attempt_id": attempt["id"]}
+
+    @api.get("/tasks/{task_id}/live/{n}", response_class=FileResponse)
+    def get_live_chunk(task_id: str, n: int, attempt: str | None = None):
+        """attempt: the attempt_id of the index read (chunks are cached per attempt)."""
+        found = store.attempt(attempt) if attempt else live_attempt(task_id)
+        path = live_chunk(found["dir"], n) if found and found["task_id"] == task_id else None
+        if not path:
+            raise HTTPException(404, "Không có đoạn này")
+        return FileResponse(path, media_type="audio/wav", headers={"Cache-Control": "max-age=3600"})
 
     # --- artifacts ---
 

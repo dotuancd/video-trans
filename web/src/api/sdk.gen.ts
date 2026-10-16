@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type ServerSentEventsResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddLangsData, AddLangsErrors, AddLangsResponses, ArtifactVttData, ArtifactVttErrors, ArtifactVttResponses, AttemptEventsData, AttemptEventsErrors, AttemptEventsResponses, AttemptSystemLogData, AttemptSystemLogErrors, AttemptSystemLogResponses, CancelJobData, CancelJobErrors, CancelJobResponses, CreateJobsData, CreateJobsErrors, CreateJobsResponses, CreateProjectData, CreateProjectErrors, CreateProjectResponses, DeleteJobData, DeleteJobErrors, DeleteJobResponses, DeletePresetData, DeletePresetErrors, DeletePresetResponses, DeleteProjectData, DeleteProjectErrors, DeleteProjectResponses, DownloadArtifactData, DownloadArtifactErrors, DownloadArtifactResponses, EventsData, EventsResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetConfigData, GetConfigResponses, GetJobData, GetJobErrors, GetJobResponses, GetTranscriptData, GetTranscriptErrors, GetTranscriptResponses, ListAttemptsData, ListAttemptsErrors, ListAttemptsResponses, ListDirData, ListDirErrors, ListDirResponses, ListDriversData, ListDriversResponses, ListJobsData, ListJobsResponses, ListPresetsData, ListPresetsResponses, ListProjectsData, ListProjectsResponses, ListTemplatesData, ListTemplatesResponses, ListVoicesData, ListVoicesResponses, PickAttemptData, PickAttemptErrors, PickAttemptResponses, PreviewVoiceData, PreviewVoiceErrors, PreviewVoiceResponses, RefreshJobData, RefreshJobErrors, RefreshJobResponses, RerunTaskData, RerunTaskErrors, RerunTaskResponses, ResumeJobData, ResumeJobErrors, ResumeJobResponses, RevealData, RevealErrors, RevealResponses, SavePresetData, SavePresetErrors, SavePresetResponses, SaveProjectData, SaveProjectErrors, SaveProjectResponses, SaveTranscriptData, SaveTranscriptErrors, SaveTranscriptResponses, TraceData, TraceErrors, TraceResponses, UpdateJobData, UpdateJobErrors, UpdateJobResponses, UploadData, UploadErrors, UploadResponses, UploadVoiceData, UploadVoiceErrors, UploadVoiceResponses } from './types.gen';
+import type { AddLangsData, AddLangsErrors, AddLangsResponses, ArtifactVttData, ArtifactVttErrors, ArtifactVttResponses, AttemptEventsData, AttemptEventsErrors, AttemptEventsResponses, AttemptSystemLogData, AttemptSystemLogErrors, AttemptSystemLogResponses, CancelJobData, CancelJobErrors, CancelJobResponses, CreateJobsData, CreateJobsErrors, CreateJobsResponses, CreateProjectData, CreateProjectErrors, CreateProjectResponses, DeleteJobData, DeleteJobErrors, DeleteJobResponses, DeleteJobsData, DeleteJobsErrors, DeleteJobsResponses, DeletePresetData, DeletePresetErrors, DeletePresetResponses, DeleteProjectData, DeleteProjectErrors, DeleteProjectResponses, DownloadArtifactData, DownloadArtifactErrors, DownloadArtifactResponses, EventsData, EventsResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetConfigData, GetConfigResponses, GetJobData, GetJobErrors, GetJobResponses, GetLiveChunkData, GetLiveChunkErrors, GetLiveChunkResponses, GetLiveData, GetLiveErrors, GetLiveResponses, GetQueueData, GetQueueResponses, GetTranscriptData, GetTranscriptErrors, GetTranscriptResponses, ListAttemptsData, ListAttemptsErrors, ListAttemptsResponses, ListDirData, ListDirErrors, ListDirResponses, ListDriversData, ListDriversResponses, ListJobsData, ListJobsResponses, ListPresetsData, ListPresetsResponses, ListProjectsData, ListProjectsResponses, ListTemplatesData, ListTemplatesResponses, ListVoicesData, ListVoicesResponses, MoveJobsData, MoveJobsErrors, MoveJobsResponses, PauseJobsData, PauseJobsErrors, PauseJobsResponses, PickAttemptData, PickAttemptErrors, PickAttemptResponses, PreviewVoiceData, PreviewVoiceErrors, PreviewVoiceResponses, RefreshJobData, RefreshJobErrors, RefreshJobResponses, RerunJobsData, RerunJobsErrors, RerunJobsResponses, RerunTaskData, RerunTaskErrors, RerunTaskResponses, ResumeJobData, ResumeJobErrors, ResumeJobResponses, RevealData, RevealErrors, RevealResponses, SavePresetData, SavePresetErrors, SavePresetResponses, SaveProjectData, SaveProjectErrors, SaveProjectResponses, SaveTranscriptData, SaveTranscriptErrors, SaveTranscriptResponses, SetWorkersData, SetWorkersErrors, SetWorkersResponses, TraceData, TraceErrors, TraceResponses, UnpauseJobsData, UnpauseJobsErrors, UnpauseJobsResponses, UpdateJobData, UpdateJobErrors, UpdateJobResponses, UploadData, UploadErrors, UploadResponses, UploadVoiceData, UploadVoiceErrors, UploadVoiceResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -86,6 +86,79 @@ export const cancelJob = <ThrowOnError extends boolean = true>(options: Options<
 export const resumeJob = <ThrowOnError extends boolean = true>(options: Options<ResumeJobData, ThrowOnError>): RequestResult<ResumeJobResponses, ResumeJobErrors, ThrowOnError> => (options.client ?? client).post<ResumeJobResponses, ResumeJobErrors, ThrowOnError>({ url: '/api/jobs/{job_id}/resume', ...options });
 
 /**
+ * Pause Jobs
+ *
+ * Pause many jobs: running steps stop, waiting ones stay put. Jobs waiting for review are left alone.
+ * Returns the jobs that were paused.
+ */
+export const pauseJobs = <ThrowOnError extends boolean = true>(options: Options<PauseJobsData, ThrowOnError>): RequestResult<PauseJobsResponses, PauseJobsErrors, ThrowOnError> => (options.client ?? client).post<PauseJobsResponses, PauseJobsErrors, ThrowOnError>({
+    url: '/api/jobs/pause',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Unpause Jobs
+ *
+ * Continue many paused jobs from their stopped steps; review gates and failed steps are left alone.
+ * Returns the jobs that continue.
+ */
+export const unpauseJobs = <ThrowOnError extends boolean = true>(options: Options<UnpauseJobsData, ThrowOnError>): RequestResult<UnpauseJobsResponses, UnpauseJobsErrors, ThrowOnError> => (options.client ?? client).post<UnpauseJobsResponses, UnpauseJobsErrors, ThrowOnError>({
+    url: '/api/jobs/unpause',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Move Jobs
+ *
+ * Moves many jobs into a project (or out of any). Returns the jobs moved.
+ */
+export const moveJobs = <ThrowOnError extends boolean = true>(options: Options<MoveJobsData, ThrowOnError>): RequestResult<MoveJobsResponses, MoveJobsErrors, ThrowOnError> => (options.client ?? client).post<MoveJobsResponses, MoveJobsErrors, ThrowOnError>({
+    url: '/api/jobs/move',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete Jobs
+ *
+ * Removes many jobs and their workspaces; exported files stay. Running jobs are skipped.
+ */
+export const deleteJobs = <ThrowOnError extends boolean = true>(options: Options<DeleteJobsData, ThrowOnError>): RequestResult<DeleteJobsResponses, DeleteJobsErrors, ThrowOnError> => (options.client ?? client).post<DeleteJobsResponses, DeleteJobsErrors, ThrowOnError>({
+    url: '/api/jobs/delete',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Rerun Jobs
+ *
+ * Runs a stage again in many jobs (each of its languages), with a new driver or params. A job whose
+ * step is busy or has no such step is skipped; one that would lose edits by hand waits for confirm.
+ */
+export const rerunJobs = <ThrowOnError extends boolean = true>(options: Options<RerunJobsData, ThrowOnError>): RequestResult<RerunJobsResponses, RerunJobsErrors, ThrowOnError> => (options.client ?? client).post<RerunJobsResponses, RerunJobsErrors, ThrowOnError>({
+    url: '/api/jobs/rerun',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * Refresh Job
  *
  * Run the steps whose input changed (stale) again.
@@ -122,6 +195,18 @@ export const pickAttempt = <ThrowOnError extends boolean = true>(options: Option
  * Attempt Events
  */
 export const attemptEvents = <ThrowOnError extends boolean = true>(options: Options<AttemptEventsData, ThrowOnError>): RequestResult<AttemptEventsResponses, AttemptEventsErrors, ThrowOnError> => (options.client ?? client).get<AttemptEventsResponses, AttemptEventsErrors, ThrowOnError>({ url: '/api/attempts/{attempt_id}/events', ...options });
+
+/**
+ * Get Live
+ */
+export const getLive = <ThrowOnError extends boolean = true>(options: Options<GetLiveData, ThrowOnError>): RequestResult<GetLiveResponses, GetLiveErrors, ThrowOnError> => (options.client ?? client).get<GetLiveResponses, GetLiveErrors, ThrowOnError>({ url: '/api/tasks/{task_id}/live', ...options });
+
+/**
+ * Get Live Chunk
+ *
+ * attempt: the attempt_id of the index read (chunks are cached per attempt).
+ */
+export const getLiveChunk = <ThrowOnError extends boolean = true>(options: Options<GetLiveChunkData, ThrowOnError>): RequestResult<GetLiveChunkResponses, GetLiveChunkErrors, ThrowOnError> => (options.client ?? client).get<GetLiveChunkResponses, GetLiveChunkErrors, ThrowOnError>({ url: '/api/tasks/{task_id}/live/{n}', ...options });
 
 /**
  * Get Artifact
@@ -175,6 +260,28 @@ export const listDrivers = <ThrowOnError extends boolean = true>(options?: Optio
  * List Templates
  */
 export const listTemplates = <ThrowOnError extends boolean = true>(options?: Options<ListTemplatesData, ThrowOnError>): RequestResult<ListTemplatesResponses, unknown, ThrowOnError> => (options?.client ?? client).get<ListTemplatesResponses, unknown, ThrowOnError>({ url: '/api/templates', ...options });
+
+/**
+ * Get Queue
+ *
+ * What the workers are doing and what waits for them, by lane.
+ */
+export const getQueue = <ThrowOnError extends boolean = true>(options?: Options<GetQueueData, ThrowOnError>): RequestResult<GetQueueResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetQueueResponses, unknown, ThrowOnError>({ url: '/api/queue', ...options });
+
+/**
+ * Set Workers
+ *
+ * How many worker processes run on a lane, from now on and after a restart. Fewer: the extra
+ * workers finish their task first.
+ */
+export const setWorkers = <ThrowOnError extends boolean = true>(options: Options<SetWorkersData, ThrowOnError>): RequestResult<SetWorkersResponses, SetWorkersErrors, ThrowOnError> => (options.client ?? client).put<SetWorkersResponses, SetWorkersErrors, ThrowOnError>({
+    url: '/api/queue/lanes/{lane}/workers',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * List Dir
@@ -250,7 +357,8 @@ export const previewVoice = <ThrowOnError extends boolean = true>(options: Optio
  * Events
  *
  * {"type": "job", "job"} when a job or one of its tasks changed, {"type": "progress", "job_id", "task_id",
- * "done", "total"}, {"type": "log", "job_id", "task_id", "event"}, {"type": "deleted", "id"}.
+ * "done", "total"}, {"type": "log", "job_id", "task_id", "event"}, {"type": "deleted", "id"},
+ * {"type": "project", "id", "deleted"} when a project was created, changed or deleted.
  */
 export const events = <ThrowOnError extends boolean = true>(options?: Options<EventsData, ThrowOnError, unknown>): Promise<ServerSentEventsResult<EventsResponses>> => (options?.client ?? client).sse.get<EventsResponses, unknown, ThrowOnError>({ url: '/api/events', ...options });
 

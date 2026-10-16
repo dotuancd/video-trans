@@ -77,6 +77,7 @@ class Engine:
                     outputs = self._call(cls, ctx, inputs, params)
                 rows = describe(cls, task, outputs, ctx.outdir)
             store.complete(task["id"], attempt["id"], rows, self._message(ctx))
+            ctx.drop_checkpoint()
             self._export(task)
             return "done"
         except UserError as error:

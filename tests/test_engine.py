@@ -154,6 +154,19 @@ def test_cancel_and_resume(store, video):
     assert run_job(store, job_id)["status"] == "done"
 
 
+def test_pause_and_unpause_many(store, video):
+    a, b = make_job(store, video, export=False), make_job(store, video, export=False)
+    gated = store.task_by_key(b, "dub@vi")
+    store.x("update tasks set gate = 1 where id = ?", gated["id"])
+    assert store.pause_jobs([a, b, "nope"]) == [a, b]
+    assert set(statuses(store, a).values()) <= {"cancelled", "skipped"}
+    assert store.pause_jobs([a]) == []                    # nothing left to pause
+    assert store.unpause_jobs([a, b]) == [a, b]
+    assert run_job(store, a)["status"] == "done"
+    assert run_job(store, b)["status"] == "waiting_review"   # unpausing does not pass a review gate
+    assert store.unpause_jobs([b]) == []
+
+
 def test_add_language_reuses_done_tasks(store, video):
     from dich.core.jobs import add_langs
     job_id = make_job(store, video, export=False)
@@ -291,3 +304,28 @@ def test_human_edit_of_failed_task_unblocks_later_steps(store, video, tmp_path):
     assert statuses(store, job_id)["translate@vi"] == "done"
     store.refresh(job_id)
     assert run_job(store, job_id)["status"] == "done"
+
+
+def test_job_cost_sums_paid_usage_logs(store, video):
+    job = make_job(store, video)
+    store.event(job, "log", "Dịch xong", {"cost_usd": 0.002, "billed": True})
+    store.event(job, "log", "Đã dùng trước khi lỗi", {"cost_usd": 0.001})
+    store.event(job, "log", "Claude", {"cost_usd": 5.0, "billed": False})   # plan usage, not paid
+    store.event(job, "log", "Không có giá", {"cost_usd": None, "billed": True})
+    assert store.job(job)["cost_usd"] == pytest.approx(0.003)
+    assert [j["cost_usd"] for j in store.jobs() if j["id"] == job] == [pytest.approx(0.003)]
+    other = make_job(store, video, export=False)
+    assert store.job(other)["cost_usd"] is None
+
+
+def test_checkpoint_kept_across_attempts_until_done(store, video):
+    from dich.runtime.context import TaskContext
+
+    job_id = make_job(store, video, export=False)
+    task = store.task_by_key(job_id, "translate@vi")
+    attempt = store.start_attempt(task, fingerprint="fp")
+    TaskContext(store, task, attempt).checkpoint.put("chunk", {"0": "xin chào"})
+    later = TaskContext(store, task, store.start_attempt(task, fingerprint="fp"))
+    assert later.checkpoint.resumed == 1
+    assert run_job(store, job_id)["status"] == "done"
+    assert not (later.dir.parent / "checkpoint").exists()

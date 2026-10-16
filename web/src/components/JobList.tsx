@@ -1,7 +1,10 @@
-import { AlertCircle, Check, Circle, CircleDashed, CirclePause, Loader2, Minus, RotateCcw, Square } from 'lucide-react'
-import type { Job, Task } from '@/api'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { AlertCircle, Check, Circle, CircleDashed, CirclePause, Loader2, Minus, Pause, Play, RotateCcw, Square } from 'lucide-react'
+import { toast } from 'sonner'
+import { pauseJobs, unpauseJobs, type Job, type Task } from '@/api'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { STATUS_LABELS, stageLabel, type Status } from '@/lib/api'
+import { STATUS_LABELS, errorMessage, formatCost, putJob, stageLabel, type Status } from '@/lib/api'
 
 export const STATUS_STYLE: Record<Status, { icon: typeof Check; className: string }> = {
   blocked: { icon: CircleDashed, className: 'text-muted-foreground border-border' },
@@ -33,10 +36,14 @@ export function TaskChip({ task }: { task: Task }) {
   )
 }
 
-export function JobList({ jobs, selected, onSelect }: {
+export function JobList({ jobs, selected, onSelect, checked, onCheck }: {
   jobs: Job[]
   selected?: string
   onSelect: (id: string) => void
+  /** jobs ticked for the bulk actions */
+  checked: Set<string>
+  /** shift: tick every job from the last one ticked */
+  onCheck: (id: string, range: boolean) => void
 }) {
   if (!jobs.length) {
     return (
@@ -51,20 +58,27 @@ export function JobList({ jobs, selected, onSelect }: {
     <ul className="grid gap-2">
       {jobs.map((job) => {
         const failed = job.tasks.find((t) => t.status === 'failed')
+        const ticked = checked.has(job.id)
         return (
-          <li key={job.id}>
+          <li key={job.id} className={cn(
+            'flex rounded-xl border bg-card transition-colors hover:border-foreground/20 hover:bg-accent/40',
+            selected === job.id && 'border-foreground/30 bg-accent/40',
+            ticked && 'border-sky-400/70 bg-sky-50/60 dark:border-sky-700 dark:bg-sky-950/30',
+          )}>
+            <label className="flex cursor-pointer items-start py-4 pr-1 pl-4" title="Chọn để thao tác nhiều việc (Shift: chọn cả đoạn)">
+              <input type="checkbox" className="mt-0.5 size-4 cursor-pointer accent-sky-600" checked={ticked}
+                aria-label={`Chọn ${job.title}`} onChange={() => {}} onClick={(e) => onCheck(job.id, e.shiftKey)} />
+            </label>
             <button
               type="button"
               onClick={() => onSelect(job.id)}
-              className={cn(
-                'grid w-full gap-2 rounded-xl border bg-card p-4 text-left transition-colors hover:border-foreground/20 hover:bg-accent/40',
-                selected === job.id && 'border-foreground/30 bg-accent/40',
-              )}
+              className="grid min-w-0 flex-1 gap-2 py-4 pr-4 pl-2 text-left"
             >
               <div className="flex items-baseline justify-between gap-3">
                 <span className="truncate font-medium">{job.title}</span>
                 <span className="shrink-0 text-xs text-muted-foreground">
                   {job.langs.length > 0 && `${job.langs.join(', ')} · `}{STATUS_LABELS[job.status]}
+                  {formatCost(job.cost_usd) && <span title="Chi phí API (OpenAI…), tính cả các lần chạy lại"> · {formatCost(job.cost_usd)}</span>}
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -78,5 +92,44 @@ export function JobList({ jobs, selected, onSelect }: {
         )
       })}
     </ul>
+  )
+}
+
+const pausable = (job: Job) =>
+  job.tasks.some((t) => t.status === 'queued' || t.status === 'blocked' || (t.status === 'running' && !t.cancel_requested))
+const paused = (job: Job) =>
+  job.tasks.some((t) => t.status === 'cancelled' || (t.status === 'running' && t.cancel_requested))
+
+/** Pause / continue the jobs given (those ticked, or every job shown). Jobs waiting for review and failed
+ * steps are left to each job. */
+export function BulkActions({ jobs, className }: { jobs: Job[]; className?: string }) {
+  const queryClient = useQueryClient()
+  const toPause = jobs.filter(pausable).map((j) => j.id)
+  const toResume = jobs.filter(paused).map((j) => j.id)
+  const act = useMutation({
+    mutationFn: async (pause: boolean) =>
+      (await (pause ? pauseJobs : unpauseJobs)({ body: { ids: pause ? toPause : toResume } })).data,
+    onSuccess: (changed, pause) => {
+      for (const job of changed) putJob(queryClient, job)
+      toast.success(`${pause ? 'Đã tạm dừng' : 'Tiếp tục'} ${changed.length} việc`)
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  })
+  if (!toPause.length && !toResume.length) return null
+  return (
+    <div className={cn('flex gap-2', className)}>
+      {toPause.length > 0 && (
+        <Button size="sm" variant="outline" disabled={act.isPending} onClick={() => act.mutate(true)}
+          title="Dừng các việc đang chạy và đang chờ; bước đang chạy dở sẽ chạy lại từ đầu khi tiếp tục">
+          <Pause /> Tạm dừng {toPause.length}
+        </Button>
+      )}
+      {toResume.length > 0 && (
+        <Button size="sm" variant="outline" disabled={act.isPending} onClick={() => act.mutate(false)}
+          title="Chạy tiếp các việc đã dừng; bước chờ duyệt và bước lỗi vẫn để bạn xử lý từng việc">
+          <Play /> Tiếp tục {toResume.length}
+        </Button>
+      )}
+    </div>
   )
 }

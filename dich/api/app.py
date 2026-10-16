@@ -20,6 +20,7 @@ class Context:
     store: Store
     root: Path
     data_dir: Path
+    supervisor: object = None   # the worker processes started with the app, if any
 
     @property
     def uploads(self):
@@ -61,7 +62,8 @@ def create_app(root=None, db_path=None, data_dir=None, workers=True):
         supervisor = None
         if workers:
             from dich.runtime.supervisor import Supervisor
-            supervisor = Supervisor(db_path, data_dir).start()
+            supervisor = Supervisor(db_path, data_dir, counts_file=data_dir / "workers.json").start()
+            ctx.supervisor = supervisor
         yield
         if supervisor:
             supervisor.stop()

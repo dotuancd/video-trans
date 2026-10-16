@@ -38,6 +38,28 @@ def test_workers_run_cancel_and_capture_fd(store, video, tmp_path):
         supervisor.stop()
 
 
+def test_scale_up_and_down_while_running(store, video, tmp_path):
+    counts = tmp_path / "workers.json"
+    supervisor = Supervisor(store.path, store.data_dir, {"cpu": 1, "net": 1}, counts_file=counts).start()
+    try:
+        assert supervisor.scale("cpu", 3) == 3
+        assert len([k for k in supervisor.processes if k[0] == "cpu"]) == 3
+        assert Supervisor(store.path, store.data_dir, {"cpu": 1}, counts_file=counts).workers["cpu"] == 3
+
+        # a busy worker that is no longer wanted finishes its step, then exits (not killed, not retried)
+        job_id = make_job(store, video, export=False)
+        asr = store.task_by_key(job_id, "asr")
+        store.rerun(asr["id"], "only", params={"sleep": 2})
+        assert wait(lambda: store.task(asr["id"])["status"] == "running")
+        supervisor.scale("cpu", 0)
+        assert len(supervisor.retiring) == 3 and all(r for *_, r in supervisor.status()["cpu"])
+        assert wait(lambda: not supervisor.retiring, 15)
+        task = store.task(asr["id"])
+        assert task["status"] == "done" and task["retries"] == 0
+    finally:
+        supervisor.stop()
+
+
 def test_old_database_gets_project_column(tmp_path):
     import sqlite3
     from dich.queue.sqlite import Store

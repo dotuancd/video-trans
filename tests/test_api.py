@@ -132,6 +132,42 @@ def test_add_language_cancel_resume_delete(app):
     assert client.get(f"/api/jobs/{job_id}").status_code == 404
 
 
+def test_pause_unpause_many(app):
+    client, ctx = app
+    [job_id] = create(client, ctx)
+    [paused] = client.post("/api/jobs/pause", json={"ids": [job_id, "nope"]}).json()
+    assert paused["id"] == job_id and paused["status"] == "cancelled"
+    assert client.post("/api/jobs/pause", json={"ids": [job_id]}).json() == []
+    [resumed] = client.post("/api/jobs/unpause", json={"ids": [job_id]}).json()
+    assert resumed["status"] in ("queued", "blocked")
+
+
+def test_move_rerun_delete_many(app):
+    client, ctx = app
+    [job_id] = create(client, ctx, langs=["vi", "ja"])
+    run_job(ctx.store, job_id)
+    project = client.post("/api/projects", json={"name": "P"}).json()["id"]
+    [moved] = client.post("/api/jobs/move", json={"ids": [job_id, "nope"], "project_id": project}).json()
+    assert moved["project_id"] == project
+    assert client.post("/api/jobs/move", json={"ids": [job_id], "project_id": "nope"}).status_code == 404
+
+    done = client.post("/api/jobs/rerun", json={"ids": [job_id], "stage": "translate", "mode": "only"}).json()
+    statuses = {t["key"]: t["status"] for t in done["jobs"][0]["tasks"]}
+    assert statuses["translate@vi"] == statuses["translate@ja"] == "queued" and statuses["dub@vi"] == "stale"
+    assert client.post("/api/jobs/rerun", json={"ids": [job_id], "stage": "nope"}).json()["skipped"][0]["id"] == job_id
+
+    run_job(ctx.store, job_id)
+    transcript = client.get(f"/api/jobs/{job_id}/transcript", params={"lang": "vi"}).json()
+    transcript["cues"][0]["text"] = "sửa tay"
+    assert client.put(f"/api/jobs/{job_id}/transcript", params={"lang": "vi"}, json=transcript).status_code == 200
+    held = client.post("/api/jobs/rerun", json={"ids": [job_id], "stage": "translate"}).json()
+    assert held["needs_confirm"] == [job_id] and held["jobs"] == []
+    assert client.post("/api/jobs/rerun", json={"ids": [job_id], "stage": "translate", "confirm": True}).json()["jobs"]
+
+    assert client.post("/api/jobs/delete", json={"ids": [job_id, "nope"]}).json() == {"deleted": [job_id], "skipped": []}
+    assert client.get(f"/api/jobs/{job_id}").status_code == 404
+
+
 def test_system_error_has_trace(app):
     client, ctx = app
     [job_id] = create(client, ctx, overrides={**FAKE, "asr": {"driver": "fake", "params": {"fail": "system"}}})
@@ -239,3 +275,67 @@ def test_prune_uploads(app):
     create(client, ctx, sources=[str(used / "a.mp4")])
     assert prune_uploads(ctx.store, ctx.uploads) == [old.name]
     assert not old.exists() and used.exists() and fresh.exists()
+
+
+def test_queue(app):
+    client, ctx = app
+    [job_id] = create(client, ctx, langs=["vi"])
+    view = client.get("/api/queue").json()
+    lanes = {lane["name"]: lane for lane in view["lanes"]}
+    assert {"cpu", "net", "gpu"} <= set(lanes) and "interactive" not in lanes
+    queued = [item for lane in view["lanes"] for item in lane["queued"]]
+    assert queued and all(item["job_id"] == job_id and item["title"] for item in queued)
+    assert view["blocked"] > 0 and lanes["cpu"]["workers"] is None
+
+    task = ctx.store.claim([queued[0]["lane"]])
+    ctx.store.start_attempt(task, pid=4242)
+    lane = next(lane for lane in client.get("/api/queue").json()["lanes"] if lane["name"] == task["lane"])
+    assert [(item["id"], item["pid"]) for item in lane["running"]] == [(task["id"], 4242)]
+    assert lane["running"][0]["started_at"]
+
+
+def test_set_workers(app):
+    client, ctx = app
+    assert client.put("/api/queue/lanes/cpu/workers", json={"count": 2}).status_code == 409   # no supervisor here
+
+    class Fake:
+        workers = {"cpu": 1, "net": 3, "gpu": 0}
+
+        def scale(self, lane, count):
+            self.workers[lane] = count
+
+        def status(self):
+            return {lane: [(1, True, False)] * n for lane, n in self.workers.items()}
+
+    ctx.supervisor = Fake()
+    try:
+        view = client.put("/api/queue/lanes/gpu/workers", json={"count": 2}).json()
+        gpu = next(lane for lane in view["lanes"] if lane["name"] == "gpu")
+        assert gpu["configured"] == 2 and len(gpu["workers"]) == 2 and gpu["scalable"]
+        assert client.put("/api/queue/lanes/nope/workers", json={"count": 1}).status_code == 404
+        assert client.put("/api/queue/lanes/cpu/workers", json={"count": 99}).status_code == 422
+    finally:
+        ctx.supervisor = None
+
+
+def test_live_dub_chunks(app):
+    import numpy as np
+
+    from dich.storage.live import LIVE_DIR, LiveAudio
+
+    client, ctx = app
+    [job_id] = create(client, ctx, langs=["vi"])
+    run_job(ctx.store, job_id)
+    dub = {t["key"]: t for t in client.get(f"/api/jobs/{job_id}").json()["tasks"]}["dub@vi"]
+    assert client.get(f"/api/tasks/{dub['id']}/live").status_code == 404
+
+    attempt = ctx.store.attempt(dub["current_attempt"])
+    live = LiveAudio(f"{attempt['dir']}/{LIVE_DIR}", 8000, duration=3.0)
+    live.add(0.0, np.zeros(8000, dtype=np.float32))
+    index = client.get(f"/api/tasks/{dub['id']}/live").json()
+    assert index["chunks"] == [{"n": 0, "start": 0.0, "end": 1.0}] and index["ready_until"] == 1.0
+    assert index["attempt_id"] == attempt["id"] and not index["finished"]
+    chunk = client.get(f"/api/tasks/{dub['id']}/live/0", params={"attempt": attempt["id"]})
+    assert chunk.status_code == 200 and chunk.content[:4] == b"RIFF"
+    assert client.get(f"/api/tasks/{dub['id']}/live/1").status_code == 404
+    assert client.get(f"/api/tasks/{dub['id']}/live/0", params={"attempt": "att_nope"}).status_code == 404

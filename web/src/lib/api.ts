@@ -23,6 +23,10 @@ export const STAGE_LABELS: Record<string, string> = {
 }
 export const stageLabel = (stage: string) => STAGE_LABELS[stage] ?? stage
 
+/** What a job paid to paid APIs, e.g. "$0.012"; null when it paid nothing. */
+export const formatCost = (usd?: number | null) =>
+  usd ? `$${usd < 0.01 ? usd.toFixed(4) : usd < 1 ? usd.toFixed(3) : usd.toFixed(2)}` : null
+
 export const STATUS_LABELS: Record<Status, string> = {
   blocked: 'Chờ bước trước',
   queued: 'Đang chờ',

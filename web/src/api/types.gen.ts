@@ -330,6 +330,12 @@ export type Job = {
      * Tasks
      */
     tasks: Array<Task>;
+    /**
+     * Cost Usd
+     *
+     * USD paid to paid APIs (OpenAI…) over all attempts
+     */
+    cost_usd?: number | null;
 };
 
 /**
@@ -381,6 +387,18 @@ export type JobCreate = {
 };
 
 /**
+ * JobIds
+ */
+export type JobIds = {
+    /**
+     * Ids
+     *
+     * Jobs to act on; unknown ids are ignored
+     */
+    ids: Array<string>;
+};
+
+/**
  * JobPatch
  */
 export type JobPatch = {
@@ -404,6 +422,136 @@ export type JobsCreated = {
      * Skipped
      */
     skipped: Array<string>;
+};
+
+/**
+ * JobsDeleted
+ */
+export type JobsDeleted = {
+    /**
+     * Deleted
+     */
+    deleted: Array<string>;
+    /**
+     * Skipped
+     */
+    skipped: Array<Skipped>;
+};
+
+/**
+ * JobsDone
+ */
+export type JobsDone = {
+    /**
+     * Jobs
+     *
+     * Jobs acted on, as they are now
+     */
+    jobs: Array<Job>;
+    /**
+     * Skipped
+     */
+    skipped: Array<Skipped>;
+    /**
+     * Needs Confirm
+     *
+     * Jobs left alone: they would lose edits made by hand
+     */
+    needs_confirm: Array<string>;
+};
+
+/**
+ * JobsMove
+ */
+export type JobsMove = {
+    /**
+     * Ids
+     *
+     * Jobs to act on; unknown ids are ignored
+     */
+    ids: Array<string>;
+    /**
+     * Project Id
+     *
+     * Move the jobs into this project; null: no project
+     */
+    project_id: string | null;
+};
+
+/**
+ * JobsRerun
+ */
+export type JobsRerun = {
+    /**
+     * Ids
+     *
+     * Jobs to act on; unknown ids are ignored
+     */
+    ids: Array<string>;
+    /**
+     * Stage
+     *
+     * Every step of this stage (each language) runs again
+     */
+    stage: string;
+    /**
+     * Mode
+     */
+    mode?: 'only' | 'cascade';
+    /**
+     * Params
+     *
+     * Only what changes; a job keeps its other params (unless the driver changes)
+     */
+    params?: {
+        [key: string]: unknown;
+    } | null;
+    /**
+     * Driver
+     */
+    driver?: string | null;
+    /**
+     * Confirm
+     *
+     * Replace edits made by hand
+     */
+    confirm?: boolean;
+};
+
+/**
+ * Lane
+ */
+export type Lane = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Workers
+     *
+     * the processes this server started; None when it started none (workers run by `dich worker` are not known here)
+     */
+    workers: Array<Worker> | null;
+    /**
+     * Configured
+     *
+     * processes wanted on this lane (set in the UI, else DICH_WORKERS_…)
+     */
+    configured: number;
+    /**
+     * Scalable
+     *
+     * this server starts the lane's workers, so their number can be changed
+     */
+    scalable: boolean;
+    /**
+     * Running
+     */
+    running: Array<QueueItem>;
+    /**
+     * Queued
+     */
+    queued: Array<QueueItem>;
 };
 
 /**
@@ -436,6 +584,56 @@ export type Listing = {
      * Entries
      */
     entries: Array<Entry>;
+};
+
+/**
+ * LiveAudio
+ *
+ * Back-to-back pieces of a dub track that is still being made (GET /tasks/{id}/live/{n}).
+ */
+export type LiveAudio = {
+    /**
+     * Attempt Id
+     */
+    attempt_id: string;
+    /**
+     * Chunks
+     */
+    chunks: Array<LiveChunk>;
+    /**
+     * Ready Until
+     *
+     * Seconds of the track playable so far
+     */
+    ready_until: number;
+    /**
+     * Duration
+     *
+     * Expected length: end of the last cue
+     */
+    duration: number | null;
+    /**
+     * Finished
+     */
+    finished: boolean;
+};
+
+/**
+ * LiveChunk
+ */
+export type LiveChunk = {
+    /**
+     * N
+     */
+    n: number;
+    /**
+     * Start
+     */
+    start: number;
+    /**
+     * End
+     */
+    end: number;
 };
 
 /**
@@ -641,6 +839,114 @@ export type ProjectBody = {
 };
 
 /**
+ * QueueItem
+ */
+export type QueueItem = {
+    /**
+     * Id
+     *
+     * task id
+     */
+    id: string;
+    /**
+     * Job Id
+     */
+    job_id: string;
+    /**
+     * Title
+     *
+     * the job's title
+     */
+    title: string;
+    /**
+     * Project Id
+     */
+    project_id: string | null;
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Stage
+     */
+    stage: string;
+    /**
+     * Driver
+     */
+    driver: string;
+    /**
+     * Lang
+     */
+    lang: string | null;
+    /**
+     * Lane
+     */
+    lane: string;
+    /**
+     * Status
+     */
+    status: 'running' | 'queued';
+    /**
+     * Done
+     */
+    done: number | null;
+    /**
+     * Total
+     */
+    total: number | null;
+    /**
+     * Retries
+     */
+    retries: number;
+    /**
+     * Cancel Requested
+     */
+    cancel_requested: boolean;
+    /**
+     * Message
+     */
+    message: string | null;
+    /**
+     * Updated At
+     *
+     * when it was queued, or taken by a worker
+     */
+    updated_at: number;
+    /**
+     * Started At
+     *
+     * the running attempt's start
+     */
+    started_at?: number | null;
+    /**
+     * Pid
+     *
+     * the worker running it
+     */
+    pid?: number | null;
+};
+
+/**
+ * QueueView
+ */
+export type QueueView = {
+    /**
+     * Lanes
+     */
+    lanes: Array<Lane>;
+    /**
+     * Blocked
+     *
+     * tasks waiting for an earlier step
+     */
+    blocked: number;
+    /**
+     * Waiting Review
+     */
+    waiting_review: number;
+};
+
+/**
  * Rerun
  */
 export type Rerun = {
@@ -664,6 +970,24 @@ export type Rerun = {
      * Replace edits made by hand
      */
     confirm?: boolean;
+};
+
+/**
+ * Skipped
+ */
+export type Skipped = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Reason
+     */
+    reason: string;
 };
 
 /**
@@ -964,6 +1288,36 @@ export type Word = {
     end: number;
 };
 
+/**
+ * Worker
+ */
+export type Worker = {
+    /**
+     * Pid
+     */
+    pid: number | null;
+    /**
+     * Alive
+     */
+    alive: boolean;
+    /**
+     * Retiring
+     *
+     * no longer wanted (fewer workers set): exits after its task
+     */
+    retiring?: boolean;
+};
+
+/**
+ * WorkerCount
+ */
+export type WorkerCount = {
+    /**
+     * Count
+     */
+    count: number;
+};
+
 export type ListJobsData = {
     body?: never;
     path?: never;
@@ -1187,6 +1541,137 @@ export type ResumeJobResponses = {
 
 export type ResumeJobResponse = ResumeJobResponses[keyof ResumeJobResponses];
 
+export type PauseJobsData = {
+    body: JobIds;
+    path?: never;
+    query?: never;
+    url: '/api/jobs/pause';
+};
+
+export type PauseJobsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PauseJobsError = PauseJobsErrors[keyof PauseJobsErrors];
+
+export type PauseJobsResponses = {
+    /**
+     * Response Pause Jobs
+     *
+     * Successful Response
+     */
+    200: Array<Job>;
+};
+
+export type PauseJobsResponse = PauseJobsResponses[keyof PauseJobsResponses];
+
+export type UnpauseJobsData = {
+    body: JobIds;
+    path?: never;
+    query?: never;
+    url: '/api/jobs/unpause';
+};
+
+export type UnpauseJobsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UnpauseJobsError = UnpauseJobsErrors[keyof UnpauseJobsErrors];
+
+export type UnpauseJobsResponses = {
+    /**
+     * Response Unpause Jobs
+     *
+     * Successful Response
+     */
+    200: Array<Job>;
+};
+
+export type UnpauseJobsResponse = UnpauseJobsResponses[keyof UnpauseJobsResponses];
+
+export type MoveJobsData = {
+    body: JobsMove;
+    path?: never;
+    query?: never;
+    url: '/api/jobs/move';
+};
+
+export type MoveJobsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type MoveJobsError = MoveJobsErrors[keyof MoveJobsErrors];
+
+export type MoveJobsResponses = {
+    /**
+     * Response Move Jobs
+     *
+     * Successful Response
+     */
+    200: Array<Job>;
+};
+
+export type MoveJobsResponse = MoveJobsResponses[keyof MoveJobsResponses];
+
+export type DeleteJobsData = {
+    body: JobIds;
+    path?: never;
+    query?: never;
+    url: '/api/jobs/delete';
+};
+
+export type DeleteJobsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteJobsError = DeleteJobsErrors[keyof DeleteJobsErrors];
+
+export type DeleteJobsResponses = {
+    /**
+     * Successful Response
+     */
+    200: JobsDeleted;
+};
+
+export type DeleteJobsResponse = DeleteJobsResponses[keyof DeleteJobsResponses];
+
+export type RerunJobsData = {
+    body: JobsRerun;
+    path?: never;
+    query?: never;
+    url: '/api/jobs/rerun';
+};
+
+export type RerunJobsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RerunJobsError = RerunJobsErrors[keyof RerunJobsErrors];
+
+export type RerunJobsResponses = {
+    /**
+     * Successful Response
+     */
+    200: JobsDone;
+};
+
+export type RerunJobsResponse = RerunJobsResponses[keyof RerunJobsResponses];
+
 export type RefreshJobData = {
     body?: never;
     path: {
@@ -1352,6 +1837,73 @@ export type AttemptEventsResponses = {
 };
 
 export type AttemptEventsResponse = AttemptEventsResponses[keyof AttemptEventsResponses];
+
+export type GetLiveData = {
+    body?: never;
+    path: {
+        /**
+         * Task Id
+         */
+        task_id: string;
+    };
+    query?: never;
+    url: '/api/tasks/{task_id}/live';
+};
+
+export type GetLiveErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetLiveError = GetLiveErrors[keyof GetLiveErrors];
+
+export type GetLiveResponses = {
+    /**
+     * Successful Response
+     */
+    200: LiveAudio;
+};
+
+export type GetLiveResponse = GetLiveResponses[keyof GetLiveResponses];
+
+export type GetLiveChunkData = {
+    body?: never;
+    path: {
+        /**
+         * Task Id
+         */
+        task_id: string;
+        /**
+         * N
+         */
+        n: number;
+    };
+    query?: {
+        /**
+         * Attempt
+         */
+        attempt?: string | null;
+    };
+    url: '/api/tasks/{task_id}/live/{n}';
+};
+
+export type GetLiveChunkErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetLiveChunkError = GetLiveChunkErrors[keyof GetLiveChunkErrors];
+
+export type GetLiveChunkResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
 
 export type GetArtifactData = {
     body?: never;
@@ -1565,6 +2117,52 @@ export type ListTemplatesResponses = {
 };
 
 export type ListTemplatesResponse = ListTemplatesResponses[keyof ListTemplatesResponses];
+
+export type GetQueueData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/queue';
+};
+
+export type GetQueueResponses = {
+    /**
+     * Successful Response
+     */
+    200: QueueView;
+};
+
+export type GetQueueResponse = GetQueueResponses[keyof GetQueueResponses];
+
+export type SetWorkersData = {
+    body: WorkerCount;
+    path: {
+        /**
+         * Lane
+         */
+        lane: string;
+    };
+    query?: never;
+    url: '/api/queue/lanes/{lane}/workers';
+};
+
+export type SetWorkersErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SetWorkersError = SetWorkersErrors[keyof SetWorkersErrors];
+
+export type SetWorkersResponses = {
+    /**
+     * Successful Response
+     */
+    200: QueueView;
+};
+
+export type SetWorkersResponse = SetWorkersResponses[keyof SetWorkersResponses];
 
 export type ListDirData = {
     body?: never;

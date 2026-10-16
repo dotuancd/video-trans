@@ -1,5 +1,6 @@
 # Decoding media in-process with PyAV (bundles the FFmpeg libraries): no ffmpeg binary needed to read.
 import hashlib
+import itertools
 import json
 from pathlib import Path
 
@@ -48,6 +49,27 @@ def load_audio(path, rate=ASR_SAMPLE_RATE, start=None, duration=None):
         begin = int((offset or 0) * rate)
         audio = audio[begin:begin + int(duration * rate) if duration else None]
     return audio.tobytes()
+
+
+def loudness(path, hop=0.02, rate=ASR_SAMPLE_RATE):
+    """float32 array of the RMS level (dBFS) of every hop seconds of the file, decoded as a stream."""
+    import av
+    import numpy as np
+
+    size, levels, rest = int(hop * rate), [], np.zeros(0, dtype=np.float32)
+    with av.open(str(path)) as container:
+        if not container.streams.audio:
+            raise RuntimeError("no audio stream")
+        resampler = av.AudioResampler(format="flt", layout="mono", rate=rate)
+        frames = itertools.chain(container.decode(container.streams.audio[0]), [None])   # None flushes
+        for out in (out for frame in frames for out in resampler.resample(frame)):
+            rest = np.concatenate([rest, out.to_ndarray().ravel()])
+            whole = len(rest) // size * size
+            if whole:
+                blocks = rest[:whole].reshape(-1, size)
+                levels.append(10 * np.log10(np.mean(blocks * blocks, axis=1) + 1e-10))
+                rest = rest[whole:]
+    return np.concatenate(levels).astype(np.float32) if levels else np.zeros(0, dtype=np.float32)
 
 
 def has_video(path):

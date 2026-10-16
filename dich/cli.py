@@ -34,7 +34,7 @@ def build_parser():
     run.add_argument("--template", "-t", help="default | subs-only | dub-review | transcribe (xem `dich templates`)")
     run.add_argument("--dub", action="store_true", help="lồng tiếng và ghép video (template default)")
     run.add_argument("--recursive", "-r", action="store_true", help="quét cả thư mục con")
-    run.add_argument("--engine", "-e", help=f"driver dịch: local | openai | claude (mặc định: {settings.ENGINE})")
+    run.add_argument("--engine", "-e", help=f"driver dịch: local | openai | openai-batch | claude (mặc định: {settings.ENGINE})")
     run.add_argument("--language", help="ngôn ngữ nói, VD en (mặc định: tự nhận)")
     run.add_argument("--voice", help="giọng lồng tiếng: source (clone từ video) hoặc giọng mẫu")
     run.add_argument("--ref-audio", type=Path, help="clone giọng từ clip 3–8 giây")

@@ -282,14 +282,24 @@ class Store:
         tasks = {}
         for t in self.q("select * from tasks order by job_id, position"):
             tasks.setdefault(t["job_id"], []).append(task_dict(t))
-        return [job_dict(r, tasks.get(r["id"], [])) for r in rows]
+        costs = self.job_costs()
+        return [job_dict(r, tasks.get(r["id"], []), costs.get(r["id"])) for r in rows]
 
     def job(self, job_id):
         row = self.one("select * from jobs where id = ?", job_id)
         if not row:
             return None
         return job_dict(row, [task_dict(t) for t in self.q("select * from tasks where job_id = ? order by position",
-                                                           job_id)])
+                                                           job_id)], self.job_costs(job_id).get(job_id))
+
+    def job_costs(self, job_id=None):
+        """job id → USD paid for paid APIs, over every attempt (failed ones and reruns too): the sum of
+        the cost_usd that drivers log with their usage summary."""
+        rows = self.q("select job_id, sum(json_extract(data, '$.cost_usd')) as cost from events"
+                      " where type = 'log' and data like '%cost_usd%'"
+                      " and json_extract(data, '$.billed') is not 0"
+                      + (" and job_id = ?" if job_id else "") + " group by job_id", *([job_id] if job_id else []))
+        return {r["job_id"]: r["cost"] for r in rows if r["cost"] is not None}
 
     def job_row(self, job_id):
         return self.one("select * from jobs where id = ?", job_id)
@@ -394,6 +404,21 @@ class Store:
             task = task_dict(row)
             self.event(task["job_id"], "task", data={"key": task["key"], "status": "running"}, task_id=task["id"])
             return task
+
+    def queue(self):
+        """The running and queued tasks, in the order workers take them (running first), with their job's
+        title and, when running, the attempt (start time, worker pid); plus how many wait on something else."""
+        rows = self.q(
+            "select t.id, t.job_id, j.title, j.project_id, t.key, t.stage, t.driver, t.lang, t.lane, t.status,"
+            " t.done, t.total, t.retries, t.cancel_requested, t.message, t.updated_at, a.started_at, a.pid"
+            " from tasks t join jobs j on j.id = t.job_id"
+            " left join attempts a on a.task_id = t.id and a.status = 'running'"
+            " where t.status in ('running', 'queued')"
+            " order by t.status = 'queued', t.priority desc, t.rowid")
+        counts = {r["status"]: r["n"] for r in self.q(
+            "select status, count(*) as n from tasks where status in ('blocked', 'waiting_review') group by status")}
+        items = [{**dict(r), "cancel_requested": bool(r["cancel_requested"])} for r in rows]
+        return items, counts.get("blocked", 0), counts.get("waiting_review", 0)
 
     def heartbeat(self, task_id, lease=LEASE):
         """Renews the lease; returns True when the user asked to stop the task."""
@@ -506,6 +531,43 @@ class Store:
                 elif task["status"] in ("cancelled", "failed"):
                     self._status(task, "blocked", gate_passed=1, retries=0, message=None, error=None)
             self.advance(job_id)
+
+    def pause_jobs(self, job_ids):
+        """Pause many jobs: like cancel_job, but a job waiting for review keeps waiting (it uses nothing).
+        Returns the ids of the jobs that had something to pause."""
+        paused = []
+        with self.tx():
+            for job_id in job_ids:
+                hit = False
+                for task in self.tasks_of(job_id):
+                    if task["status"] in ("queued", "blocked"):
+                        self._status(task, "cancelled", message="Tạm dừng")
+                        hit = True
+                    elif task["status"] == "running" and not task["cancel_requested"]:
+                        self.x("update tasks set cancel_requested = 1 where id = ?", task["id"])
+                        hit = True
+                if hit:
+                    paused.append(job_id)
+        return paused
+
+    def unpause_jobs(self, job_ids):
+        """Continue many jobs from their stopped tasks. Unlike resume, review gates and failed tasks are
+        left alone: those need the user to look at each job. Returns the ids of the jobs continued."""
+        resumed = []
+        with self.tx():
+            for job_id in job_ids:
+                tasks = self.tasks_of(job_id)
+                stopped = [t for t in tasks if t["status"] == "cancelled"]
+                for task in stopped:
+                    self._status(task, "blocked", retries=0, message=None, error=None)
+                # paused a moment ago and its worker has not stopped it yet: let it run on
+                stopping = [t for t in tasks if t["status"] == "running" and t["cancel_requested"]]
+                for task in stopping:
+                    self.x("update tasks set cancel_requested = 0 where id = ?", task["id"])
+                if stopped or stopping:
+                    self.advance(job_id)
+                    resumed.append(job_id)
+        return resumed
 
     def refresh(self, job_id):
         """Run the stale tasks again with their new inputs."""
@@ -755,11 +817,11 @@ def job_status(tasks):
     return "done"
 
 
-def job_dict(row, tasks):
+def job_dict(row, tasks, cost_usd=None):
     return {"id": row["id"], "title": row["title"], "source": row["source"], "template": row["template"],
             "langs": loads(row["langs"], []), "export_dir": row["export_dir"], "trace_id": row["trace_id"],
             "created_at": row["created_at"], "project_id": row["project_id"], "status": job_status(tasks),
-            "tasks": tasks}
+            "tasks": tasks, "cost_usd": cost_usd}
 
 
 def project_row(fields):

@@ -33,6 +33,7 @@ load_env()
 ENGINE = env("DICH_ENGINE", "local")                  # translate driver: local | openai | claude
 LOCAL_MODEL = env("DICH_LOCAL_MODEL", "vinai")        # vinai | opus
 OPENAI_MODEL = env("OPENAI_MODEL", "gpt-5-mini")
+OPENAI_PRICE = env("OPENAI_PRICE", "")                # "input,cached,output" USD per 1M tokens, for the cost log
 CLAUDE_MODEL = env("DICH_CLAUDE_MODEL", "sonnet")     # sonnet | haiku | opus
 
 # dubbing

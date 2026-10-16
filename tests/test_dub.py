@@ -57,7 +57,7 @@ class FakeDubber:
     def __init__(self):
         self.read = []
 
-    def dub(self, cues, max_speed, min_speed, progress):
+    def dub(self, cues, max_speed, min_speed, progress, voiced=None):
         return np.zeros(vieneu.SAMPLE_RATE, dtype=np.float32), {"sentences": 1, "sped_up": 0, "slowed": 0, "late": 0, "max_late": 0}
 
     def synthesize(self, text):
@@ -119,3 +119,57 @@ def test_dub_slowing_can_be_disabled(tmp_path, monkeypatch):
 def test_change_speed_slows_down():
     audio = np.sin(np.arange(vieneu.SAMPLE_RATE, dtype=np.float32) / 10)
     assert len(vieneu.change_speed(audio, 0.8)) == pytest.approx(vieneu.SAMPLE_RATE / 0.8, rel=0.02)
+
+
+def test_voiced_trims_padding_around_speech():
+    hop = vieneu.VAD_HOP
+    levels = np.full(int(10 / hop), -80.0)       # 10s of silence…
+    levels[int(2.5 / hop):int(4 / hop)] = -20     # …speech 2.5–4s
+    levels[int(7 / hop):int(7.1 / hop)] = -20     # …a 0.1s blip at 7s
+    voiced = vieneu.Voiced(levels)
+    assert voiced.trim(2, 5) == pytest.approx((2.5, 4))
+    assert voiced.trim(3, 5) == pytest.approx((3, 4))      # never wider than the cue
+    assert voiced.trim(6, 8) == (6, 8)                     # a blip is not trusted
+    assert voiced.trim(8, 9) == (8, 9)                     # silence: keep the timing
+
+
+def test_dub_slows_to_the_voiced_span_not_the_cue(tmp_path, monkeypatch):
+    hop = vieneu.VAD_HOP
+    levels = np.full(int(10 / hop), -80.0)
+    levels[int(0.5 / hop):int(1.6 / hop)] = -20   # cue 0–3 but speech only 0.5–1.6
+    stats, seconds = dub_lengths(tmp_path, monkeypatch, [(0, 3)], voiced=vieneu.Voiced(levels))
+    assert stats["slowed"] == 0 and seconds == []   # 1s fills 1.1s of speech: no stretching to 3s
+
+
+def test_loudness(wav):
+    from dich.media import loudness
+    levels = loudness(wav, 0.5)
+    assert len(levels) == 40 and levels[-1] > levels[1]
+
+
+def test_dub_live_chunks_add_up_to_the_track(tmp_path, monkeypatch):
+    monkeypatch.setattr(vieneu, "CACHE_DIR", tmp_path / "tts")
+    monkeypatch.setattr(vieneu, "LIVE_FIRST", 2.0)
+    monkeypatch.setattr(vieneu, "LIVE_CHUNK", 3.0)
+    chunks = []
+    track, _stats = vieneu.Dubber(tts=FakeTTS()).dub(
+        cues(*[(i * 1.5, i * 1.5 + 1) for i in range(8)]), on_chunk=lambda start, audio: chunks.append((start, audio)))
+    assert len(chunks) > 2 and chunks[0][0] == 0
+    position = 0
+    for start, audio in chunks:   # back to back
+        assert round(start * vieneu.SAMPLE_RATE) == position
+        position += len(audio)
+    assert len(chunks[0][1]) / vieneu.SAMPLE_RATE <= 2.0 + 1.5
+    assert np.array_equal(np.concatenate([audio for _start, audio in chunks]), track)
+
+
+def test_dub_live_chunks_survive_rounding_at_the_cursor(tmp_path, monkeypatch):
+    # 1.3s + 1s of audio: int(2.3 * 48000) is one sample before where the first clip ends
+    monkeypatch.setattr(vieneu, "CACHE_DIR", tmp_path / "tts")
+    monkeypatch.setattr(vieneu, "LIVE_FIRST", 1.0)
+    chunks = []
+    track, _stats = vieneu.Dubber(tts=FakeTTS()).dub(
+        cues((1.3, 2.3), (1.5, 2.5), (5, 6)), max_speed=1.0, min_speed=1.0,
+        on_chunk=lambda start, audio: chunks.append(audio))
+    assert len(chunks) > 1
+    assert np.array_equal(np.concatenate(chunks), track)

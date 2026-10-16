@@ -11,8 +11,8 @@ from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 
 from dich import drivers, settings
-from dich.api.models import (Config, DriverInfo, Entry, Language, Listing, PathBody, Preview, TemplateInfo, Uploaded,
-                             Voice)
+from dich.api.models import (Config, DriverInfo, Entry, Lane, Language, Listing, PathBody, Preview, QueueItem, QueueView,
+                             TemplateInfo, Uploaded, Voice, Worker, WorkerCount)
 from dich.core.ids import is_id, new_id
 from dich.core.langs import LANGUAGES
 from dich.core.template import load_templates
@@ -68,6 +68,38 @@ def router(ctx):
     def list_templates() -> list[TemplateInfo]:
         return [TemplateInfo(name=t.name, title=t.title, description=t.description,
                              stages=[s.model_dump() for s in t.stages]) for t in load_templates().values()]
+
+    # --- queue ---
+
+    @api.get("/queue")
+    def get_queue() -> QueueView:
+        """What the workers are doing and what waits for them, by lane."""
+        items, blocked, waiting_review = store.queue()
+        supervisor = ctx.supervisor
+        started = supervisor.status() if supervisor else {}
+        wanted = supervisor.workers if supervisor else settings.WORKERS
+        names = [n for n in settings.WORKERS if n != "interactive"]
+        names += sorted({i["lane"] for i in items} - set(names))
+        lanes = []
+        for name in names:
+            mine = [QueueItem(**i) for i in items if i["lane"] == name]
+            lanes.append(Lane(
+                name=name, configured=wanted.get(name, 0), scalable=supervisor is not None,
+                workers=[Worker(pid=pid, alive=alive, retiring=retiring) for pid, alive, retiring in started[name]]
+                if name in started else None,
+                running=[i for i in mine if i.status == "running"], queued=[i for i in mine if i.status == "queued"]))
+        return QueueView(lanes=lanes, blocked=blocked, waiting_review=waiting_review)
+
+    @api.put("/queue/lanes/{lane}/workers")
+    def set_workers(lane: str, body: WorkerCount) -> QueueView:
+        """How many worker processes run on a lane, from now on and after a restart. Fewer: the extra
+        workers finish their task first."""
+        if not ctx.supervisor:
+            raise HTTPException(409, "Server này không tự chạy worker (dùng `dich worker` để thêm)")
+        if lane not in settings.WORKERS or lane == "interactive":
+            raise HTTPException(404, f"Không có lane {lane}")
+        ctx.supervisor.scale(lane, body.count)
+        return get_queue()
 
     # --- files ---
 

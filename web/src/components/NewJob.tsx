@@ -43,6 +43,8 @@ export function NewJob({ config, templates, drivers, project, onCreated }: {
   useEffect(() => save('new-job-v2', form), [form])
   const update = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }))
   const [browsing, setBrowsing] = useState(false)
+  /** the options shown (no project: they are the last used, folded to one line until Sửa) */
+  const [editing, setEditing] = useState(false)
   const tray = useUploadTray()
 
   // in a project: its options, or the ones changed for this run (null: the project's)
@@ -145,28 +147,34 @@ export function NewJob({ config, templates, drivers, project, onCreated }: {
             </TabsContent>
           </Tabs>
 
-          {base && (
-            <div className="flex items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2">
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium">{edit ? 'Cấu hình cho lần chạy này' : 'Theo cấu hình project'}</div>
-                <div className="truncate text-xs text-muted-foreground">{configText(run, env)}</div>
+          <div className="flex items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium">
+                {base ? (edit ? 'Cấu hình cho lần chạy này' : 'Theo cấu hình project') : 'Cấu hình'}
               </div>
+              <div className="truncate text-xs text-muted-foreground">{configText(run, env)}</div>
+            </div>
+            {base ? (
               <Button type="button" variant="outline" size="sm" onClick={() => setEdit(edit ? null : base)}>
                 {edit ? 'Bỏ thay đổi' : 'Sửa'}
               </Button>
-            </div>
-          )}
-          {(!base || edit) && <JobConfig {...env} value={run} onChange={setRun} base={base} context={context} />}
+            ) : (
+              <Button type="button" variant="outline" size="sm" aria-expanded={editing} onClick={() => setEditing(!editing)}>
+                {editing ? 'Thu gọn' : 'Sửa'}
+              </Button>
+            )}
+          </div>
+          {(base ? edit : editing) && <JobConfig {...env} value={run} onChange={setRun} base={base} context={context} />}
 
-          <div className="grid gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
             {form.from === 'upload' && rows.length > 0 && (
-              <p className="text-xs text-muted-foreground">
+              <p className="mr-auto text-xs text-muted-foreground">
                 {uploading ? `Đang tải lên ${uploading} video · ` : ''}
                 {picked.length ? `${picked.length} video đã chọn` : 'Chọn video đã tải lên để bắt đầu'}
               </p>
             )}
             {differs ? (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="flex gap-2">
                 <Button type="submit" variant="outline" disabled={disabled}>Chỉ chạy lần này</Button>
                 <Button type="button" disabled={disabled} onClick={() => create.mutate(true)}
                   title={`Video thêm sau vào ${project!.name} cũng dùng cấu hình này`}>
@@ -174,7 +182,7 @@ export function NewJob({ config, templates, drivers, project, onCreated }: {
                 </Button>
               </div>
             ) : (
-              <Button type="submit" size="lg" disabled={disabled}>{icon} Bắt đầu{count}</Button>
+              <Button type="submit" size="lg" className="min-w-40" disabled={disabled}>{icon} Bắt đầu{count}</Button>
             )}
           </div>
         </form>

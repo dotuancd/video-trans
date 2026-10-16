@@ -4,8 +4,10 @@ import time
 from pathlib import Path
 
 from dich.logging.events import EventLog
+from dich.storage.checkpoint import Checkpoint
 
 PROGRESS_EVERY = 0.5   # seconds between progress events
+CHECKPOINT_DIR = "checkpoint"   # in the task folder, shared by its attempts
 
 
 class TaskContext:
@@ -19,6 +21,7 @@ class TaskContext:
         self.dir = Path(attempt["dir"])
         self.outdir = self.dir / "outputs"
         self._tmpdir = None
+        self._checkpoint = None
         self._last_progress = 0.0
         self.echo = echo
 
@@ -35,6 +38,16 @@ class TaskContext:
             self._tmpdir = self.dir / "tmp"
             self._tmpdir.mkdir(parents=True, exist_ok=True)
         return self._tmpdir
+
+    @property
+    def checkpoint(self):
+        """Pieces finished by earlier attempts of this task with the same fingerprint (see storage/checkpoint)."""
+        if self._checkpoint is None:
+            self._checkpoint = Checkpoint(self.dir.parent / CHECKPOINT_DIR, self.attempt.get("fingerprint"))
+        return self._checkpoint
+
+    def drop_checkpoint(self):
+        shutil.rmtree(self.dir.parent / CHECKPOINT_DIR, ignore_errors=True)
 
     def output(self, filename):
         self.outdir.mkdir(parents=True, exist_ok=True)

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { FolderOpen, Inbox, Layers, Plus, Trash2 } from 'lucide-react'
+import { FolderOpen, Inbox, Layers, ListOrdered, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { deleteProject, saveProject, type Config, type DriverInfo, type Project, type TemplateInfo } from '@/api'
 import { FileBrowser } from '@/components/FileBrowser'
@@ -16,6 +16,8 @@ export const COLORS = ['#14a394', '#e0456b', '#e09a1a', '#6366f1', '#3fa34d', '#
 /** What the sidebar shows: every job, the jobs of no project, or a project's */
 export const ALL = 'all'
 export const NONE = 'none'
+/** Not a project: the workers' queue */
+export const QUEUE = 'queue'
 
 export const Dot = ({ color }: { color: string }) =>
   <span className="inline-block size-2 shrink-0 rounded-full" style={{ background: color }} />
@@ -49,6 +51,7 @@ export function ProjectSidebar({ projects, counts, selected, onSelect, onCreate 
       <div className="hidden px-2 pb-1 text-[11px] font-medium tracking-wider text-muted-foreground uppercase lg:block">Projects</div>
       {item(ALL, 'Tất cả', <Layers className="size-4 shrink-0 text-muted-foreground" />)}
       {item(NONE, 'Chưa phân loại', <Inbox className="size-4 shrink-0 text-muted-foreground" />)}
+      {item(QUEUE, 'Hàng đợi', <ListOrdered className="size-4 shrink-0 text-muted-foreground" />)}
       <div className="mx-2 my-1 hidden h-px bg-border lg:block" />
       {projects.map((p) => item(p.id, p.name, <Dot color={p.color ?? COLORS[0]} />))}
       {naming ? (

@@ -6,7 +6,7 @@ import {
 import { toast } from 'sonner'
 import {
   addLangs, cancelJob, deleteJob, listAttempts, pickAttempt, refreshJob, rerunTask, resumeJob, reveal, updateJob,
-  type Config, type DriverInfo, type Job, type Project, type Task, type TranscriptSaved,
+  type Config, type DriverInfo, type Job, type LiveAudio, type Project, type Task, type TranscriptSaved,
 } from '@/api'
 import { STATUS_STYLE, taskLabel } from '@/components/JobList'
 import { DriverParams, DriverSelect, SwitchField } from '@/components/Params'
@@ -18,9 +18,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import {
-  artifactUrl, downloadUrl, driversOf, errorMessage, inlineUrl, isActive, needsConfirm, putJob, slotArtifact,
+  artifactUrl, downloadUrl, driversOf, errorMessage, formatCost, inlineUrl, isActive, needsConfirm, putJob, slotArtifact,
   STATUS_LABELS, useAttemptEvents, type Params,
 } from '@/lib/api'
+import { clock, useLiveDub, useLiveIndex } from '@/lib/liveDub'
 
 /** Select value of "no project" */
 const NO_PROJECT = '-'
@@ -119,10 +120,18 @@ function JobBody({ job, drivers, config, projects, onClose }: {
   const out = target ? slotArtifact(job, `media.out.${target}`) : undefined
   const voice = target ? slotArtifact(job, `audio.dub.${target}`) : undefined
   const original = slotArtifact(job, 'media.video')
-  const sources = [
-    out && { label: 'Bản lồng tiếng', id: out.id, path: out.path },
-    original && { label: 'Bản gốc', id: original.id, path: original.path },
-    !out && voice && { label: 'Giọng đọc', id: voice.id, path: voice.path },
+  // before the dubbed video exists: the original with the dub made so far laid over it
+  const dubTask = target ? task(`dub@${target}`) : undefined
+  const liveIndex = useLiveIndex(dubTask, !out && !!original && (dubTask?.status === 'running' || dubTask?.status === 'done'))
+  const live = !out && original && dubTask && liveIndex.data?.chunks.length ? liveIndex.data : undefined
+  const sources: Source[] = [
+    out && { label: 'Bản lồng tiếng', id: out.id, artifact: out.id, path: out.path },
+    live && original && dubTask && {
+      label: live.finished ? 'Lồng tiếng (xem trước)' : 'Lồng tiếng (đang tạo)',
+      id: `live-${original.id}`, artifact: original.id, path: original.path, live: { taskId: dubTask.id, index: live },
+    },
+    original && { label: 'Bản gốc', id: original.id, artifact: original.id, path: original.path },
+    !out && voice && { label: 'Giọng đọc', id: voice.id, artifact: voice.id, path: voice.path },
   ].filter((x) => !!x)
   const exported = job.tasks.flatMap((t) => t.exports)
   const skipped = job.tasks.filter((t) => t.status === 'skipped' && t.message && !t.message.includes('nguồn'))
@@ -138,6 +147,11 @@ function JobBody({ job, drivers, config, projects, onClose }: {
       <SheetHeader className="border-b">
         <SheetTitle className="pr-8 break-all">{job.title}</SheetTitle>
         <SheetDescription className="font-mono text-xs break-all">{job.source}</SheetDescription>
+        {formatCost(job.cost_usd) && (
+          <p className="text-xs text-muted-foreground" title="Chi phí API (OpenAI…), tính cả các lần chạy lại và lần lỗi">
+            Chi phí API: {formatCost(job.cost_usd)}
+          </p>
+        )}
         <div className="flex flex-wrap gap-2 pt-2">
           <Select value={job.project_id ?? NO_PROJECT} onValueChange={(v) => move.mutate(v === NO_PROJECT ? null : v)}>
             <SelectTrigger size="sm" className="max-w-48" aria-label="Project"><SelectValue /></SelectTrigger>
@@ -271,11 +285,13 @@ function AddLanguage({ job, config, onAdded }: { job: Job; config: Config; onAdd
   )
 }
 
+type Source = { label: string; id: string; artifact: string; path: string; live?: { taskId: string; index: LiveAudio } }
+
 const escapeVtt = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 /** Player showing the subtitle draft as it is typed (unsaved edits included), and reporting the cue under the playhead. */
 function Preview({ sources, draft, media, onMedia, onActive }: {
-  sources: { label: string; id: string; path: string }[]
+  sources: Source[]
   draft: SubtitleDraft
   media: HTMLMediaElement | null
   onMedia: (el: HTMLMediaElement | null) => void
@@ -283,6 +299,7 @@ function Preview({ sources, draft, media, onMedia, onActive }: {
 }) {
   const [choice, setChoice] = useState(sources[0].id)
   const source = sources.find((s) => s.id === choice) ?? sources[0]
+  const waiting = useLiveDub(source.live ? media : null, source.live?.taskId, source.live?.index)
   const resume = useRef(0) // keep the position when switching between sources
   const { rows } = draft
   const latestRows = useRef(rows)
@@ -317,7 +334,7 @@ function Preview({ sources, draft, media, onMedia, onActive }: {
     onActive(latestRows.current.findIndex((r) => r.start <= t && t < r.end))
   }
   const props = {
-    ref: onMedia, src: artifactUrl(source.id), controls: true, onTimeUpdate,
+    ref: onMedia, src: artifactUrl(source.artifact), controls: true, onTimeUpdate,
     onLoadedMetadata: (e: SyntheticEvent<HTMLMediaElement>) => { e.currentTarget.currentTime = resume.current },
   }
 
@@ -329,13 +346,34 @@ function Preview({ sources, draft, media, onMedia, onActive }: {
             {s.label}
           </Button>
         ))}
-        <Button asChild size="sm" variant="ghost" className="ml-auto text-muted-foreground">
-          <a href={downloadUrl(source.id)} download><Download /> Tải về</a>
-        </Button>
+        {!source.live && (
+          <Button asChild size="sm" variant="ghost" className="ml-auto text-muted-foreground">
+            <a href={downloadUrl(source.artifact)} download><Download /> Tải về</a>
+          </Button>
+        )}
       </div>
-      {VIDEO.test(source.path)
-        ? <video key={source.id} {...props} className="aspect-video w-full rounded-lg bg-black" />
-        : <audio key={source.id} {...props} className="w-full" />}
+      {VIDEO.test(source.path) ? (
+        <div className="relative">
+          <video key={source.id} {...props} className="aspect-video w-full rounded-lg bg-black" />
+          {waiting && source.live && (
+            <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center">
+              <span className="flex items-center gap-2 rounded-md bg-black/70 px-3 py-1.5 text-sm text-white">
+                <Loader2 className="size-4 animate-spin" />
+                Đang lồng tiếng… sẽ phát tiếp khi xong đoạn sau {clock(source.live.index.ready_until)}
+              </span>
+            </div>
+          )}
+        </div>
+      ) : <audio key={source.id} {...props} className="w-full" />}
+      {source.live && (
+        <p className="text-xs text-muted-foreground">
+          {source.live.index.finished
+            ? 'Bản xem trước: video gốc + giọng lồng tiếng, chờ ghép video xong.'
+            : `Lồng tiếng đã có đến ${clock(source.live.index.ready_until)}`
+              + (source.live.index.duration ? ` / ${clock(source.live.index.duration)}` : '')
+              + ' — phát được phần đã xong, phần sau tự nối tiếp.'}
+        </p>
+      )}
       {/\.mkv$/i.test(source.path) && (
         <p className="text-xs text-muted-foreground">Trình duyệt có thể không phát được .mkv — mở bằng trình phát video.</p>
       )}

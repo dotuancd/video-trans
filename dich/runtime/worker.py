@@ -14,7 +14,8 @@ from dich.runtime.engine import Engine
 IDLE = 0.3   # seconds between polls when there is nothing to do
 
 
-def worker_main(lanes, db_path=None, data_dir=None, log_path=None):
+def worker_main(lanes, db_path=None, data_dir=None, log_path=None, retire=None):
+    """retire: an Event set by the supervisor when this worker is no longer wanted; checked between tasks."""
     if log_path:   # what the worker prints between tasks (model loading output goes to the task's log)
         Path(log_path).parent.mkdir(parents=True, exist_ok=True)
         file = open(log_path, "ab", buffering=0)
@@ -32,7 +33,7 @@ def worker_main(lanes, db_path=None, data_dir=None, log_path=None):
     engine = Engine(store, capture=True, on_cancel=on_cancel)
     task_lanes = [lane for lane in lanes if lane != "interactive"]
     print(f"worker {os.getpid()} lanes={','.join(lanes)}", flush=True)
-    while True:
+    while not (retire and retire.is_set()):
         if "interactive" in lanes:
             call = store.claim_call()
             if call:
@@ -43,3 +44,4 @@ def worker_main(lanes, db_path=None, data_dir=None, log_path=None):
             engine.run(task)
             continue
         time.sleep(IDLE)
+    print(f"worker {os.getpid()} retired", flush=True)

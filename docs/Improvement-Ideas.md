@@ -2,11 +2,8 @@
 
 ## Web UI / pipeline
 
-- ~~**Tiến độ cho bước Phụ đề và Dịch**~~: bước Dịch đã báo % (local: mỗi 64 câu, LLM: mỗi chunk) và dừng được giữa chừng. Bước Phụ đề giữ một lần gọi: chia audio làm transcript lệch 3–9% từ và mất dấu kết câu; needle chạy ~70× thời gian thực nên không cần.
-- ~~**Dừng giữa bước**~~ (đã làm trong pipeline v2): Dừng chỉ ngắt được bước Lồng tiếng (kiểm tra theo câu); Phụ đề/Dịch/Ghép chạy hết bước rồi mới dừng. Có thể chạy các bước này trong subprocess để kill được.
-- ~~**Chạy song song theo loại tài nguyên**~~: hai lane `cpu` / `net`, bước Dịch dùng OpenAI/Claude chạy cùng lúc với Phụ đề/Lồng tiếng/Ghép của job khác.
-- ~~**Lane theo GPU/MPS**~~ (đã làm trong pipeline v2): nếu sau này needle hoặc TTS chạy trên GPU, có thể tách thêm lane `gpu` để Phụ đề chạy song song với dịch local.
-- ~~**Xem trước video gốc + phụ đề khi sửa**~~: player luôn hiện trên editor, phụ đề theo bản nháp, highlight + tự cuộn câu đang phát, chuyển Bản lồng tiếng/Bản gốc.
+- **Dịch lại chỉ câu gốc đã sửa:** sửa phụ đề gốc rồi "Dịch lại" sẽ dịch cả file và ghi đè các câu tiếng Việt đã sửa tay. Có thể chỉ dịch lại các nhóm câu có câu gốc đổi (so với bản `.srt` lúc dịch), giữ nguyên phần còn lại.
+
 - **Phím tắt khi sửa phụ đề**: `Ctrl/Cmd+S` lưu, `Alt+↑/↓` sang câu trước/sau và seek theo, `Ctrl+Space` phát/dừng — sửa cả video mà không rời bàn phím.
 - **Phụ đề trên player khi phát `.mkv`/audio**: audio-only chỉ có highlight, chưa có khung chữ; có thể vẽ overlay riêng.
 - **Cảnh báo câu quá dài** trong editor (dựa trên thống kê `sped_up`/`late` của bước dub) để người dùng rút gọn bản dịch.
@@ -25,7 +22,6 @@
 - ~~**Log cho thread con của bước dịch:**~~ (đã làm trong pipeline v2) `llm_translation.py` gọi OpenAI/Claude qua `ThreadPoolExecutor`, nên những gì các thread này in ra/log chưa vào log của bước. Có thể bọc các task bằng `steplog` (gắn writer của thread cha) để thấy lỗi/retry của từng batch.
 - ~~**Output tầng C (ffmpeg trong `load_audio`, ctranslate2, onnx):**~~ (đã làm trong pipeline v2) đi thẳng ra fd 2 nên không vào log. Với ffmpeg, có thể chuyển sang `stderr=PIPE` giống `mux`.
 
-- **Dịch lại chỉ câu gốc đã sửa:** sửa phụ đề gốc rồi "Dịch lại" sẽ dịch cả file và ghi đè các câu tiếng Việt đã sửa tay. Có thể chỉ dịch lại các nhóm câu có câu gốc đổi (so với bản `.srt` lúc dịch), giữ nguyên phần còn lại.
 - **Sửa phụ đề gốc khi đang dịch:** editor cho sửa `.srt` ngay sau bước Phụ đề, nhưng nếu bước Dịch đang chạy thì nó dùng bản cũ. Có thể khoá cột gốc hoặc báo "Dịch lại" khi bước Dịch xong.
 
 - **Dọn thư mục upload:** xoá job không xoá `storage/uploads/<id>/`. Có thể hỏi "Xoá cả file" khi xoá job tải lên, hoặc dọn upload cũ hơn N ngày.
@@ -78,8 +74,6 @@ Thứ tự nên làm: (1) bộ đo → (2) bản tóm tắt toàn video → (3) 
 6. **Bộ đo chất lượng:** 3–5 đoạn video mẫu có bản dịch chuẩn, chấm bằng LLM-judge (hoặc COMET) để so sánh prompt/model/driver thay vì cảm tính.
 - **Gộp câu khi transcript không có dấu câu:** `MAX_GAP = 1.5s` trong `llm.py` là ước lượng; nên đo trên video thật (vlog nói liền vs. bài giảng) hoặc đưa thành tham số bước Dịch.
 
-- **Lồng tiếng: co giãn theo đoạn nói thực tế (VAD)** — hiện giảm tốc theo `end - start` của cue. Timing phụ đề thường dư đầu/cuối, nên câu có thể bị kéo chậm quá mức cần. Dùng VAD trên `audio.speech` để lấy đúng đoạn nói rồi so với đoạn đó.
-
 - **ID ngắn khi hiển thị:** ID dạng `job_01JA…` dài 30 ký tự; UI/CLI có thể hiện 6–8 ký tự cuối (như git short hash) và nút sao chép ID đầy đủ.
 
 - **Sửa tay = bước hoàn tất (đã làm):** sửa bản dịch khi bước dịch đang `stale/failed/cancelled/chờ duyệt` thì bản sửa thành kết quả (`done`), "Cập nhật phía sau" chỉ chạy lồng tiếng/ghép. Ý tiếp theo: nút "Cập nhật phía sau" ngay trong trình sửa phụ đề (không phải đợi toast), và tuỳ chọn tự chạy phía sau sau khi lưu (debounce vài giây).
@@ -93,3 +87,53 @@ Thứ tự nên làm: (1) bộ đo → (2) bản tóm tắt toàn video → (3) 
   - **Tự đoán project theo tên file** khi tải lên ở chế độ "Tất cả" (tiền tố tên giống video đã có).
   - **Thuật ngữ theo project:** gộp với ý Glossary ở trên, nạp vào prompt dịch mọi video trong project.
   - **Để sau — watch folder:** project gắn thư mục, file mới chép vào tự vào hàng đợi; cần watcher ở supervisor.
+
+## Dịch bằng OpenAI Batch
+
+- **Gộp nhiều job/ngôn ngữ vào một batch:** hiện mỗi task dịch là một batch; một lane "batch" gom các task đang chờ sẽ đỡ thời gian xếp hàng.
+
+- **Dọn file batch trên OpenAI:** file input/output không bị xoá sau khi xong (để chạy lại vẫn đọc được); có thể đặt `output_expires_after`.
+
+## Tạm dừng / tiếp tục hàng loạt
+
+- **Đã làm:** nút "Tạm dừng N" / "Tiếp tục N" trên danh sách việc (theo project đang xem), API `POST /api/jobs/pause|unpause`. Không đụng việc chờ duyệt và bước lỗi.
+
+- **Đã làm — giữ tiến độ bước đang chạy dở:** dịch LLM (openai/claude, phần dịch lại trực tiếp của batch) lưu từng chunk đã xong vào `<job>/<task>/checkpoint/` (theo fingerprint, xoá khi task xong); dừng/lỗi/hết quota rồi chạy lại chỉ gửi các chunk còn thiếu. Lồng tiếng vốn đã cache từng câu theo giọng+chữ (`CACHE_DIR/tts`), giờ log thêm số câu dùng lại.
+- **Checkpoint cho dịch local (NMT) và ASR:** chưa làm — chạy local, không tốn tiền; ASR không chia đoạn nên khó cắt giữa chừng.
+- **Live preview của dub sau khi tiếp tục:** các câu cũ đọc từ cache nên nhanh, nhưng `live/` vẫn bắt đầu lại từ 0 ở attempt mới.
+
+- **Tạm dừng cả hàng đợi (pause worker):** một công tắc toàn cục "không nhận việc mới" nhưng để bước đang chạy chạy xong — nhẹ nhàng hơn kill, hợp khi cần máy làm việc khác.
+
+- **"Chạy lại các bước lỗi" hàng loạt:** tách riêng khỏi Tiếp tục vì có thể tốn tiền API.
+
+- **Đã làm — chọn nhiều việc (checkbox):** tick từng việc (Shift: chọn cả đoạn, Esc: bỏ chọn, ô đầu danh sách: chọn tất cả) rồi Tạm dừng / Tiếp tục / Chuyển vào project / Chạy lại một bước với engine-thông số mới / Xoá. API `POST /api/jobs/move|rerun|delete`. Chạy lại chỉ gửi thông số đã đổi (mỗi việc giữ phần còn lại); việc có bản sửa tay được hỏi lại riêng; việc đang chạy bị bỏ qua và báo lại.
+- **Thêm ngôn ngữ cho các việc đã chọn:** cùng thanh thao tác, gọi `add_langs` cho từng việc.
+- **Tải về hàng loạt:** zip các file kết quả (phụ đề/video lồng tiếng) của các việc đã chọn.
+- **Lọc theo trạng thái (Lỗi / Chờ duyệt / Đang chạy)** trước khi "Chọn tất cả" — hợp với chạy lại hàng loạt các việc lỗi.
+
+## Theo dõi hàng đợi
+
+- **Đã làm:** mục "Hàng đợi" ở sidebar (`?project=queue`, bấm "N việc đang xử lý" trên header cũng tới đây). Mỗi lane (CPU / Mạng / GPU): worker bận/rảnh/đang khởi động lại, bước đang chạy (tiến độ, thời gian chạy, pid, lần thử lại, đang dừng), bước đang chờ theo đúng thứ tự worker sẽ lấy; cảnh báo khi lane có việc mà không có worker (vd. GPU mặc định 0). API `GET /api/queue`, giao diện poll 1,5s.
+
+- **Đẩy lên đầu / hạ ưu tiên:** cột `tasks.priority` đã có trong lệnh claim nhưng chưa có API/UI để đổi — thêm nút "Ưu tiên" trên mỗi dòng đang chờ.
+- **Worker tự đăng ký:** worker chạy bằng `dich worker` (terminal khác) không hiện được trong UI vì API chỉ biết process nó tự khởi động. Một bảng `workers` (pid, lanes, heartbeat, task hiện tại) sẽ cho thấy mọi worker, kể cả trên máy khác.
+- **Đã làm — đổi số worker khi đang chạy:** nút +/− trên mỗi lane ở trang Hàng đợi (`PUT /api/queue/lanes/{lane}/workers`). Bớt worker: worker thừa làm xong bước đang chạy rồi mới thoát (chấm vàng), không bị kill, không tính là lần thử lại. Số đã chọn lưu ở `<data>/workers.json`, ghi đè `DICH_WORKERS_*` ở lần chạy sau. Lane đang tắt (GPU) hiện một dòng "Bật 1 worker". Hạ mọi lane về 0 = tạm dừng hàng đợi nhẹ nhàng.
+- **Nút "Tạm dừng hàng đợi" một chạm:** đưa mọi lane về 0 rồi khôi phục số cũ, thay cho bấm − từng lane.
+- **Ước lượng thời gian còn lại:** từ thời gian chạy các bước cùng driver trước đó (bảng attempts) → "còn ~12 phút" cho từng việc và cả hàng đợi.
+- **Đẩy qua SSE thay vì poll:** stream `/api/events` đã có sự kiện task/progress; có thể dựng hàng đợi từ cache jobs + một event "queue" thay vì gọi lại mỗi 1,5s.
+
+## Xem trước bản lồng tiếng khi đang tạo
+
+- **Đã làm:** khi `dub@lang` đang chạy, player có nguồn "Lồng tiếng (đang tạo)": video gốc + phần lồng tiếng đã xong (đoạn đầu ~8s), tự chờ ở mép rồi phát tiếp. API `GET /api/tasks/{id}/live`.
+- **Pipeline theo đoạn (lớn):** hiện vẫn phải chờ ASR + dịch xong toàn bộ video mới bắt đầu lồng tiếng. Cho ASR/dịch/lồng tiếng chạy theo cửa sổ (vd. 2 phút) sẽ có tiếng Việt sau ~1 phút thay vì sau cả pipeline — cần slot "streaming" trong DAG.
+- **Ưu tiên lồng tiếng quanh chỗ đang xem:** khi người dùng tua tới phút 20, dub có thể nhảy tới đó trước (thứ tự câu không còn tuần tự → cần đặt câu độc lập, bỏ cơ chế đẩy câu sau).
+- **Chỉnh âm lượng tiếng gốc ngay trong player** (đang cố định 15% như mux mặc định), và áp luôn giá trị đó làm `original_volume` cho bước ghép.
+- **Dọn `live/` sau khi ghép xong:** đang giữ cùng attempt (≈ dung lượng `dub.wav`); có thể xoá khi `media.out` đã có.
+
+- ~~**Tiến độ cho bước Phụ đề và Dịch**~~: bước Dịch đã báo % (local: mỗi 64 câu, LLM: mỗi chunk) và dừng được giữa chừng. Bước Phụ đề giữ một lần gọi: chia audio làm transcript lệch 3–9% từ và mất dấu kết câu; needle chạy ~70× thời gian thực nên không cần.
+- ~~**Dừng giữa bước**~~ (đã làm trong pipeline v2): Dừng chỉ ngắt được bước Lồng tiếng (kiểm tra theo câu); Phụ đề/Dịch/Ghép chạy hết bước rồi mới dừng. Có thể chạy các bước này trong subprocess để kill được.
+- ~~**Chạy song song theo loại tài nguyên**~~: hai lane `cpu` / `net`, bước Dịch dùng OpenAI/Claude chạy cùng lúc với Phụ đề/Lồng tiếng/Ghép của job khác.
+- ~~**Lane theo GPU/MPS**~~ (đã làm trong pipeline v2): nếu sau này needle hoặc TTS chạy trên GPU, có thể tách thêm lane `gpu` để Phụ đề chạy song song với dịch local.
+- ~~**Xem trước video gốc + phụ đề khi sửa**~~: player luôn hiện trên editor, phụ đề theo bản nháp, highlight + tự cuộn câu đang phát, chuyển Bản lồng tiếng/Bản gốc.
+
+- ~~**Lồng tiếng: co giãn theo đoạn nói thực tế (VAD)**~~ (đã làm: `Voiced` trong `vieneu.py`, VAD theo mức âm lượng trên `audio.speech` hoặc audio gốc; mỗi câu được thu hẹp về đoạn có tiếng nói thật, bắt đầu đọc đúng lúc người nói mở miệng và chỉ giảm tốc để lấp đoạn nói đó). Còn lại: VAD theo mức âm lượng gần như không có tác dụng khi có nhạc nền, nên cần **driver tách giọng `demucs`** (template đang để `enabled: false`, chưa có code) hoặc VAD bằng model (Silero) để chạy tốt trên audio gốc; các ngưỡng `VAD_RANGE=35dB`/`VAD_MIN_SECONDS=0.3` mới là ước lượng, cần thử trên video thật.  - **Benchmark RMS vs Silero v5 ONNX** (M-series CPU, 2026-10): video 3,6 phút — RMS 0,67s / 86 MB, Silero 0,85s; video 110 phút — RMS 16s / 132 MB peak (streaming), Silero 28s (RTF 0,004, 1 thread; 4 thread không nhanh hơn) + giải mã 15s, ~1 GB peak vì `load_audio` nạp cả file (đổi sang streaming thì ~150 MB). Hai cách khớp 93% khung trên audio giọng nói sạch; Silero bắt thêm ~5% khung nói nhỏ, RMS bắt thêm 0,4–2,4% khung tạp âm. Kết luận: chỉ đáng thay khi chạy trên audio gốc có nhạc; khi đó chạy Silero *bên cạnh* RMS (cùng vòng giải mã streaming, model 2,3 MB, `onnxruntime` đã có trong extra `tts`), không thay `demucs`.

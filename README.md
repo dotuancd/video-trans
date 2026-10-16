@@ -5,6 +5,7 @@ Công cụ chuyển ngữ video
 
 ## Model sử dụng
 
+- https://github.com/snakers4/silero-vad (Voice Activity Detection)
 - https://huggingface.co/openbmb/VoxCPM2
 - https://huggingface.co/tencent/Hy-MT2-1.8B
 
@@ -51,7 +52,7 @@ uv run dich worker --lanes cpu      # (tuỳ chọn) thêm worker ở terminal k
 - **Sửa phụ đề**: song ngữ ngay dưới video, phụ đề trên video theo bản đang gõ; tách/gộp/chuyển chữ. Lưu = bản sửa tay mới; các bước sau thành "Cần chạy lại" → **Cập nhật phía sau**. Chạy lại một bước sẽ hỏi trước khi thay bản đã sửa tay.
 - Template **Lồng tiếng, duyệt bản dịch trước** dừng trước bước lồng tiếng để bạn sửa bản dịch/nghe thử giọng rồi bấm Tiếp tục.
 
-Dữ liệu ở `~/.local/share/dich-video/` (`dich.sqlite`, `jobs/<id>/<bước>/<lần>/` chứa outputs, `events.jsonl`, `system.log`; `uploads/`). Worker là process riêng theo lane (`cpu`, `net`, `interactive`); worker chết thì việc tự chạy lại (tối đa 2 lần). Lỗi hệ thống hiện mã ngắn; xem chi tiết tại `/api/admin/traces/<mã>`.
+Dữ liệu ở `~/.local/share/dich-video/` (`dich.sqlite`, `jobs/<id>/<bước>/<lần>/` chứa outputs, `events.jsonl`, `system.log`; `uploads/`). Worker là process riêng theo lane (`cpu`, `net`, `interactive`); worker chết thì việc tự chạy lại (tối đa 2 lần). Số worker mỗi lane đổi bằng nút +/− ở trang Hàng đợi, không cần khởi động lại. Lỗi hệ thống hiện mã ngắn; xem chi tiết tại `/api/admin/traces/<mã>`.
 
 ### Phát triển
 

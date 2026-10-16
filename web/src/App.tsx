@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Inbox, Languages, Layers, Loader2, Settings } from 'lucide-react'
+import { Inbox, Languages, Layers, ListOrdered, Loader2, Settings } from 'lucide-react'
 import { toast } from 'sonner'
 import { createProject, type Project } from '@/api'
 import { configText, projectConfig, projectFields, type RunConfig } from '@/components/JobConfig'
 import { JobDetail } from '@/components/JobDetail'
+import { BulkBar } from '@/components/BulkBar'
 import { JobList } from '@/components/JobList'
 import { NewJob } from '@/components/NewJob'
-import { ALL, COLORS, Dot, NONE, ProjectSettings, ProjectSidebar } from '@/components/Projects'
+import { ALL, COLORS, Dot, NONE, ProjectSettings, ProjectSidebar, QUEUE } from '@/components/Projects'
+import { QueueView } from '@/components/QueueView'
 import { Button } from '@/components/ui/button'
 import {
   errorMessage, isActive, loadSaved, STATUS_LABELS, useConfig, useDrivers, useJobs, useLiveJobs, useProjects, useTemplates,
@@ -44,6 +46,20 @@ export default function App() {
   const projects = useProjects()
   const [{ project: selected, job }, go] = useUrlState()
   const [settings, setSettings] = useState(false)
+  const [checked, setChecked] = useState<Set<string>>(new Set())
+  const anchor = useRef<string>(undefined) // the job last ticked: Shift ticks the jobs between it and another
+  const [checkedIn, setCheckedIn] = useState(selected) // another project shown: nothing ticked
+  if (checkedIn !== selected) {
+    setCheckedIn(selected)
+    setChecked(new Set())
+  }
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !job && !document.querySelector('[role=dialog]')) setChecked(new Set())
+    }
+    addEventListener('keydown', onKey)
+    return () => removeEventListener('keydown', onKey)
+  }, [job])
   const select = (id?: string) => go({ project: selected, job: id })
   useLiveJobs((job) => {
     const message = `${job.title}: ${STATUS_LABELS[job.status as keyof typeof STATUS_LABELS] ?? job.status}`
@@ -67,10 +83,11 @@ export default function App() {
 
   const all = jobs.data ?? []
   const project = projects.data.find((p) => p.id === selected)
-  const view = project ? project.id : selected === NONE ? NONE : ALL
+  const view = project ? project.id : selected === NONE || selected === QUEUE ? selected : ALL
   const shown = all.filter((j) => view === ALL || (view === NONE ? !j.project_id : j.project_id === view))
   const counts: Record<string, number> = { [ALL]: all.length }
   for (const j of all) counts[j.project_id ?? NONE] = (counts[j.project_id ?? NONE] ?? 0) + 1
+  counts[QUEUE] = all.reduce((n, j) => n + j.tasks.filter((t) => t.status === 'running' || t.status === 'queued').length, 0)
 
   const create = async (name: string) => {
     try {
@@ -87,25 +104,37 @@ export default function App() {
     }
   }
 
+  const check = (id: string, range: boolean) => {
+    const next = new Set(checked)
+    const on = !checked.has(id)
+    const from = shown.findIndex((j) => j.id === anchor.current)
+    const to = shown.findIndex((j) => j.id === id)
+    const ids = range && from >= 0 ? shown.slice(Math.min(from, to), Math.max(from, to) + 1).map((j) => j.id) : [id]
+    for (const x of ids) if (on) next.add(x); else next.delete(x)
+    anchor.current = id
+    setChecked(next)
+  }
+
   const done = shown.filter((j) => j.status === 'done').length
   const active = shown.filter((j) => isActive(j.status)).length
-  const title = project ? project.name : view === NONE ? 'Chưa phân loại' : 'Tất cả'
+  const title = project ? project.name : view === NONE ? 'Chưa phân loại' : view === QUEUE ? 'Hàng đợi' : 'Tất cả'
 
   return (
     <div className="min-h-svh bg-background">
       <header className="border-b">
-        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
           <Languages className="size-5" />
           <h1 className="font-semibold">Dịch video</h1>
           <span className="hidden text-sm text-muted-foreground sm:inline">Phụ đề → Dịch → Lồng tiếng → Ghép video</span>
           {running > 0 && (
-            <span className="ml-auto flex items-center gap-1.5 text-sm text-muted-foreground">
+            <button type="button" onClick={() => go({ project: QUEUE })} title="Xem hàng đợi"
+              className="ml-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-accent hover:text-foreground">
               <Loader2 className="size-4 animate-spin" /> {running} việc đang xử lý
-            </span>
+            </button>
           )}
         </div>
       </header>
-      <div className="mx-auto grid max-w-7xl items-start gap-4 px-4 py-6 lg:grid-cols-[12.5rem_minmax(0,1fr)] lg:gap-6">
+      <div className="mx-auto grid max-w-6xl items-start gap-4 px-4 py-6 lg:grid-cols-[12.5rem_minmax(0,1fr)] lg:gap-6">
         <div className="min-w-0 lg:sticky lg:top-6">
           <ProjectSidebar projects={projects.data} counts={counts} selected={view} onSelect={(id) => go({ project: id })}
             onCreate={create} />
@@ -114,13 +143,14 @@ export default function App() {
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <div className="min-w-0">
               <h2 className="flex items-center gap-2 text-lg font-semibold">
-                {project ? <Dot color={project.color ?? COLORS[0]} /> : view === NONE ? <Inbox className="size-4" /> : <Layers className="size-4" />}
+                {project ? <Dot color={project.color ?? COLORS[0]} /> : view === NONE ? <Inbox className="size-4" />
+                  : view === QUEUE ? <ListOrdered className="size-4" /> : <Layers className="size-4" />}
                 <span className="truncate">{title}</span>
               </h2>
-              <p className="text-sm text-muted-foreground tabular-nums">
+              {view !== QUEUE && <p className="text-sm text-muted-foreground tabular-nums">
                 {shown.length} việc · {done} xong · {active} đang chạy
                 {project && ` · ${configText(projectConfig(project), env)}`}
-              </p>
+              </p>}
             </div>
             {project && (
               <Button variant="outline" size="sm" className="ml-auto" onClick={() => setSettings(true)}>
@@ -128,20 +158,21 @@ export default function App() {
               </Button>
             )}
           </div>
-          <div className="grid items-start gap-5 xl:grid-cols-[24rem_minmax(0,1fr)]">
-            <div className="xl:sticky xl:top-6">
+          {view === QUEUE ? <QueueView onOpen={select} /> : <div className="grid gap-6">
+            <div>
               <NewJob {...env} project={project} onCreated={(ids) => ids.length === 1 && select(ids[0])} />
               {view === ALL && projects.data.length > 0 && (
                 <p className="mt-2 px-1 text-xs text-muted-foreground">Video thêm ở đây vào Chưa phân loại. Chọn một project bên trái để thêm thẳng vào đó.</p>
               )}
             </div>
             <section className="grid min-w-0 gap-3">
-              <h3 className="text-sm font-medium text-muted-foreground">Việc ({shown.length})</h3>
+              <BulkBar jobs={shown} checked={checked} onChecked={setChecked} projects={projects.data}
+                drivers={drivers.data} view={view} onOpenProject={(id) => go({ project: id })} />
               {jobs.isLoading ? <Loader2 className="animate-spin text-muted-foreground" /> : (
-                <JobList jobs={shown} selected={job} onSelect={select} />
+                <JobList jobs={shown} selected={job} onSelect={select} checked={checked} onCheck={check} />
               )}
             </section>
-          </div>
+          </div>}
         </main>
       </div>
       {project && (
