@@ -56,6 +56,24 @@ def test_same_input_is_cached(store, video):
     assert Path(store.output_of(store.task_by_key(job_id, "asr"), "transcript.src").path).is_relative_to(store.data_dir)
 
 
+
+def test_rerun_fresh_skips_the_cache(store, video):
+    job_id = make_job(store, video, export=False)
+    run_job(store, job_id)
+    asr = store.task_by_key(job_id, "asr")
+    store.rerun(asr["id"], "cascade")
+    run_job(store, job_id)
+    assert store.attempt(store.task_by_key(job_id, "asr")["current_attempt"])["origin"] == "cache"
+    store.rerun(asr["id"], "cascade", fresh=True)
+    assert store.task(asr["id"])["fresh"]
+    before = dict(fake_drivers.RUNS)
+    run_job(store, job_id)
+    asr = store.task(asr["id"])
+    assert store.attempt(asr["current_attempt"])["origin"] == "driver"
+    assert not asr["fresh"]
+    changed = {k for k in fake_drivers.RUNS if fake_drivers.RUNS[k] != before.get(k)}
+    assert any("asr" in str(k) for k in changed) and not any("translate" in str(k) for k in changed)
+
 def test_rerun_only_makes_later_stale_then_refresh(store, video):
     job_id = make_job(store, video, export=False)
     run_job(store, job_id)
@@ -329,3 +347,13 @@ def test_checkpoint_kept_across_attempts_until_done(store, video):
     assert later.checkpoint.resumed == 1
     assert run_job(store, job_id)["status"] == "done"
     assert not (later.dir.parent / "checkpoint").exists()
+
+
+def test_page_title_names_a_job_only_while_it_is_named_after_its_url(store):
+    url = "https://youtu.be/xyz"
+    job_id = store.create_job(url, url, "test", ["vi"], [])
+    store.set_auto_title(job_id, "Tiêu đề trang")
+    assert store.job(job_id)["title"] == "Tiêu đề trang"
+    store.set_title(job_id, "Bài giảng 3")
+    store.set_auto_title(job_id, "Tiêu đề trang")
+    assert store.job(job_id)["title"] == "Bài giảng 3"

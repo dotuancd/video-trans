@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { client } from '@/api/client.gen'
 import {
-  attemptEvents, getConfig, listDrivers, listJobs, listProjects, listTemplates,
+  attemptEvents, attemptRequests, getConfig, listDrivers, listJobs, listProjects, listTemplates,
   type ArtifactInfo, type DriverInfo, type Event, type Job, type Task, type Uploaded,
 } from '@/api'
 
@@ -17,6 +17,7 @@ export const STAGE_LABELS: Record<string, string> = {
   separate: 'Tách nền',
   asr: 'Phụ đề',
   refine: 'Hiệu chỉnh',
+  brief: 'Bối cảnh',
   translate: 'Dịch',
   dub: 'Lồng tiếng',
   mux: 'Ghép video',
@@ -139,6 +140,7 @@ type LiveEvent =
   | { type: 'log'; job_id: string; task_id: string; event: Event }
   | { type: 'deleted'; id: string }
   | { type: 'project'; id: string; deleted: boolean }
+  | { type: 'voice'; id: string; deleted: boolean }
 
 /** Keeps the ['jobs'] cache (and open pipeline logs) in sync with the server's event stream;
  * onJobFinished fires when a job stops running. */
@@ -154,6 +156,7 @@ export function useLiveJobs(onJobFinished?: (job: Job) => void) {
     source.onopen = () => {
       void queryClient.invalidateQueries({ queryKey: ['jobs'] })
       void queryClient.invalidateQueries({ queryKey: ['projects'] })
+      void queryClient.invalidateQueries({ queryKey: ['voice-library'] })
       void queryClient.invalidateQueries({ queryKey: ['events'] })
     }
     source.onmessage = (message) => {
@@ -182,6 +185,10 @@ export function useLiveJobs(onJobFinished?: (job: Job) => void) {
         void queryClient.invalidateQueries({ queryKey: ['projects'] })
         // its jobs are left without a project
         if (event.deleted) void queryClient.invalidateQueries({ queryKey: ['jobs'] })
+        // and its voices become shared
+        if (event.deleted) void queryClient.invalidateQueries({ queryKey: ['voice-library'] })
+      } else if (event.type === 'voice') {
+        void queryClient.invalidateQueries({ queryKey: ['voice-library'] })
       }
     }
     return () => source.close()
@@ -195,6 +202,15 @@ export function useAttemptEvents(attemptId: string | null | undefined) {
     queryFn: async () => (await attemptEvents({ path: { attempt_id: attemptId! } })).data,
     enabled: !!attemptId,
     staleTime: Infinity,
+  })
+}
+
+/** What an LLM translation sent and got back, request by request; polled while the attempt runs. */
+export function useAttemptRequests(attemptId: string, running: boolean) {
+  return useQuery({
+    queryKey: ['requests', attemptId],
+    queryFn: async () => (await attemptRequests({ path: { attempt_id: attemptId } })).data,
+    refetchInterval: running ? 3000 : false,
   })
 }
 
@@ -215,3 +231,6 @@ export function save(key: string, value: unknown) {
     /* storage unavailable: settings just are not remembered */
   }
 }
+
+/** The "skip the cache" switch of a rerun. */
+export const FRESH_HINT = 'Tính lại từ đầu dù đầu vào và thông số không đổi (kể cả câu lồng tiếng đã đọc, phần đã dịch dở)'

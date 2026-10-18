@@ -89,11 +89,13 @@ export function differsFrom(value: RunConfig, base: RunConfig) {
 
 /** Template, target languages, translate engine, voice, preset and advanced options. With `base`, what
  * differs from it is named and can be reset. */
-export function JobConfig({ value, onChange, base, context, ...env }: Env & {
+export function JobConfig({ value, onChange, base, context, project, ...env }: Env & {
   value: RunConfig
   onChange: (value: RunConfig) => void
   base?: RunConfig
   context?: PreviewContext
+  /** a project's defaults: the brief shows its instructions (shared by its videos), not one video's summary */
+  project?: boolean
 }) {
   const { config, templates } = env
   const [advanced, setAdvanced] = useState(false)
@@ -130,6 +132,8 @@ export function JobConfig({ value, onChange, base, context, ...env }: Env & {
   const changed = (value.export ? 0 : 1) + stages.reduce((n, s) => n + changedCount(s), 0)
 
   const translate = stageOf('translate')
+  // the brief only serves an LLM translation (the server turns it off otherwise)
+  const brief = translate?.driver?.reads?.includes('brief') ? stageOf('brief') : undefined
   const dub = stageOf('dub')
   const diff = base ? differences(value, base) : []
 
@@ -195,6 +199,11 @@ export function JobConfig({ value, onChange, base, context, ...env }: Env & {
             </p>
           )}
         </div>
+      )}
+
+      {brief && (
+        <DriverParams driver={brief.driver!} value={brief.params} only={[project ? 'instructions' : 'summary']}
+          onChange={(params) => setParams(brief, params)} />
       )}
 
       {dub && (

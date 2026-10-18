@@ -14,7 +14,7 @@ def stages(*overrides, source="/v/a.mp4", template="default", **change):
 
 def test_default_template_wires_slots():
     specs = by_key(plan(stages(), ["vi"]))
-    assert list(specs) == ["source", "asr", "translate@vi", "dub@vi", "mux@vi"]
+    assert list(specs) == ["source", "asr", "brief", "translate@vi", "dub@vi", "mux@vi"]
     assert specs["asr"].inputs == {"audio": ["source", "audio.original"]}     # no separate stage
     assert specs["dub@vi"].deps == ["source", "translate@vi"]
     assert specs["mux@vi"].inputs["dub"] == ["dub@vi", "audio.dub.vi"]
@@ -25,7 +25,7 @@ def test_default_template_wires_slots():
 def test_refine_slots_into_the_chain():
     specs = by_key(plan(stages(refine={"enabled": True}), ["vi"]))
     assert specs["refine"].inputs == {"transcript": ["asr", "transcript.src"]}
-    assert specs["translate@vi"].inputs == {"transcript": ["refine", "transcript.src"]}
+    assert specs["translate@vi"].inputs == {"transcript": ["refine", "transcript.src"], "brief": ["brief", "brief"]}
     assert specs["mux@vi"].inputs["original_subtitles"] == ["refine", "transcript.src"]
 
 
@@ -47,14 +47,14 @@ def test_subtitle_source_skips_asr_and_media_stages():
 
 def test_original_srt_source_is_translated():
     specs = by_key(plan(stages(source="/v/a.srt", template="subs-only"), ["vi"]))
-    assert specs["asr"].skip and specs["translate@vi"].inputs == {"transcript": ["source", "transcript.src"]}
+    assert specs["asr"].skip and specs["translate@vi"].inputs["transcript"] == ["source", "transcript.src"]
 
 
 def test_adding_a_language_keeps_existing_keys():
     one = by_key(plan(stages(), ["vi"]))
     two = by_key(plan(stages(), ["vi", "fr"]))
     assert set(one) < set(two)
-    assert two["translate@fr"].deps == ["asr"]
+    assert two["translate@fr"].deps == ["asr", "brief"]
     assert two["asr"].inputs == one["asr"].inputs
 
 
@@ -85,3 +85,26 @@ def test_video_with_existing_subtitles_skips_their_stages(tmp_path):
     assert specs["asr"].skip is None and specs["translate@vi"].skip == "Đã có sẵn từ nguồn"
     assert specs["dub@vi"].inputs["transcript"] == ["source", "transcript.vi"]
     assert specs["mux@vi"].skip is None
+
+
+def test_fit_for_dub_off_by_default_and_only_with_a_dub():
+    translate = lambda confs: next(c for c in confs if c.stage == "translate").params["fit_dub"]
+    on = {"driver": "claude", "params": {"fit_dub": True}}
+    assert translate(stages()) is False                       # off by default
+    assert translate(stages(translate=on)) is True
+    assert translate(stages(template="subs-only", translate=on)) is False
+    assert translate(stages(dub={"enabled": False}, translate=on)) is False
+
+
+def test_brief_runs_once_for_every_language_and_follows_the_translation():
+    specs = by_key(plan(stages(), ["vi", "fr"]))
+    assert specs["brief"].lang is None and specs["brief"].params["engine"] == "claude"
+    assert specs["translate@vi"].inputs["brief"] == specs["translate@fr"].inputs["brief"] == ["brief", "brief"]
+
+
+def test_brief_is_off_without_an_llm_translation():
+    local = by_key(plan(resolve(get_template("default"), "/v/a.mp4", {"translate": {"driver": "local"}}), ["vi"]))
+    assert "brief" not in local and "brief" not in local["translate@vi"].inputs
+    chosen = resolve(get_template("default"), "/v/a.mp4",
+                     {"translate": {"driver": "claude"}, "brief": {"params": {"engine": "openai"}}})
+    assert next(c for c in chosen if c.stage == "brief").params["engine"] == "openai"

@@ -4,6 +4,12 @@
   "disableRemoteControl": true,
   "disableWorkflows": true,
   "disabledMcpjsonServers": [],
+  "permissions": {
+    "deny": [
+      "AskUserQuestion",
+      "Artifact"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {

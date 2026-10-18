@@ -5,4 +5,5 @@ stages:
   - {stage: source,    driver: auto}
   - {stage: asr,       driver: needle}
   - {stage: refine,    driver: rules, enabled: false}
+  - {stage: brief,     driver: llm}             # what the video is about, for the translation
   - {stage: translate, driver: env}

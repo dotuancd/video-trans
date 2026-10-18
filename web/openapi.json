@@ -103,7 +103,7 @@
    },
    "patch": {
     "summary": "Update Job",
-    "description": "Moves the job into another project (or out of any).",
+    "description": "Renames the job and/or moves it into another project (or out of any): only the fields sent change.",
     "operationId": "update_job",
     "parameters": [
      {
@@ -747,6 +747,50 @@
     }
    }
   },
+  "/api/attempts/{attempt_id}/requests": {
+   "get": {
+    "summary": "Attempt Requests",
+    "description": "What an LLM translation sent and got back, request by request ([] for other drivers).",
+    "operationId": "attempt_requests",
+    "parameters": [
+     {
+      "name": "attempt_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Attempt Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/LLMRequest"
+         },
+         "title": "Response Attempt Requests"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/tasks/{task_id}/live": {
    "get": {
     "summary": "Get Live",
@@ -1065,6 +1109,93 @@
     }
    }
   },
+  "/api/jobs/{job_id}/brief": {
+   "get": {
+    "summary": "Get Brief",
+    "operationId": "get_brief",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BriefView"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "summary": "Save Brief",
+    "description": "Saves the brief as an edit by hand: the translations after it become stale.",
+    "operationId": "save_brief",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BriefSave"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BriefView"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/config": {
    "get": {
     "summary": "Get Config",
@@ -1329,106 +1460,10 @@
     }
    }
   },
-  "/api/voices": {
-   "get": {
-    "summary": "List Voices",
-    "operationId": "list_voices",
-    "responses": {
-     "200": {
-      "description": "Successful Response",
-      "content": {
-       "application/json": {
-        "schema": {
-         "items": {
-          "$ref": "#/components/schemas/Voice"
-         },
-         "type": "array",
-         "title": "Response List Voices"
-        }
-       }
-      }
-     }
-    }
-   }
-  },
-  "/api/voices/upload": {
-   "post": {
-    "summary": "Upload Voice",
-    "description": "Keep a 3–8s clip to clone a voice from; returns its path for the dub step's ref_audio.",
-    "operationId": "upload_voice",
-    "requestBody": {
-     "content": {
-      "multipart/form-data": {
-       "schema": {
-        "$ref": "#/components/schemas/Body_upload_voice"
-       }
-      }
-     },
-     "required": true
-    },
-    "responses": {
-     "200": {
-      "description": "Successful Response",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/PathBody"
-        }
-       }
-      }
-     },
-     "422": {
-      "description": "Validation Error",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      }
-     }
-    }
-   }
-  },
-  "/api/voices/preview": {
-   "post": {
-    "summary": "Preview Voice",
-    "description": "Reads text (or a sentence of the subtitles) in the voice the dub step would use.\nThe text read is in the X-Preview-Text header, URL-encoded.",
-    "operationId": "preview_voice",
-    "requestBody": {
-     "content": {
-      "application/json": {
-       "schema": {
-        "$ref": "#/components/schemas/Preview"
-       }
-      }
-     },
-     "required": true
-    },
-    "responses": {
-     "200": {
-      "description": "Successful Response",
-      "content": {
-       "audio/wav": {}
-      }
-     },
-     "422": {
-      "description": "Validation Error",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      }
-     }
-    }
-   }
-  },
   "/api/events": {
    "get": {
     "summary": "Events",
-    "description": "{\"type\": \"job\", \"job\"} when a job or one of its tasks changed, {\"type\": \"progress\", \"job_id\", \"task_id\",\n\"done\", \"total\"}, {\"type\": \"log\", \"job_id\", \"task_id\", \"event\"}, {\"type\": \"deleted\", \"id\"},\n{\"type\": \"project\", \"id\", \"deleted\"} when a project was created, changed or deleted.",
+    "description": "{\"type\": \"job\", \"job\"} when a job or one of its tasks changed, {\"type\": \"progress\", \"job_id\", \"task_id\",\n\"done\", \"total\"}, {\"type\": \"log\", \"job_id\", \"task_id\", \"event\"}, {\"type\": \"deleted\", \"id\"},\n{\"type\": \"project\", \"id\", \"deleted\"} when a project was created, changed or deleted, {\"type\": \"voice\", \"id\",\n\"deleted\"} likewise for a library voice.",
     "operationId": "events",
     "responses": {
      "200": {
@@ -1768,6 +1803,359 @@
      }
     }
    }
+  },
+  "/api/voices/presets": {
+   "get": {
+    "summary": "List Preset Voices",
+    "operationId": "list_preset_voices",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Voice"
+         },
+         "type": "array",
+         "title": "Response List Preset Voices"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/voices": {
+   "get": {
+    "summary": "List Voices",
+    "description": "Every voice; with `project`, that project's first, then the shared ones.",
+    "operationId": "list_voices",
+    "parameters": [
+     {
+      "name": "project",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Project"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/LibraryVoice"
+         },
+         "title": "Response List Voices"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "Create Voice",
+    "description": "Cuts start–end (3–8s) of the recording into the library.",
+    "operationId": "create_voice",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/VoiceCreate"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LibraryVoice"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/voices/analyze": {
+   "post": {
+    "summary": "Analyze Voice",
+    "description": "The best 3–8s windows of a recording to clone a voice from, each cut out to listen to.",
+    "operationId": "analyze_voice",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/VoiceAnalyze"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/VoiceAnalysis"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/voices/segment": {
+   "get": {
+    "summary": "Voice Segment",
+    "description": "start–end of a recording as a wav, to hear a window after moving its ends.",
+    "operationId": "voice_segment",
+    "parameters": [
+     {
+      "name": "source",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Source"
+      }
+     },
+     {
+      "name": "start",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "number",
+       "title": "Start"
+      }
+     },
+     {
+      "name": "end",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "number",
+       "title": "End"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "audio/wav": {}
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/voices/{voice_id}": {
+   "patch": {
+    "summary": "Save Voice",
+    "operationId": "save_voice",
+    "parameters": [
+     {
+      "name": "voice_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Voice Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/VoicePatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LibraryVoice"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "summary": "Delete Voice",
+    "description": "Not while a project dubs with it by default (409).",
+    "operationId": "delete_voice",
+    "parameters": [
+     {
+      "name": "voice_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Voice Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/voices/{voice_id}/audio": {
+   "get": {
+    "summary": "Voice Audio",
+    "operationId": "voice_audio",
+    "parameters": [
+     {
+      "name": "voice_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Voice Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "audio/wav": {}
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/voices/preview": {
+   "post": {
+    "summary": "Preview Voice",
+    "description": "Reads text (or a sentence of the subtitles) in the voice the dub step would use.\nThe text read is in the X-Preview-Text header, URL-encoded.",
+    "operationId": "preview_voice",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Preview"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "audio/wav": {}
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -1936,19 +2324,42 @@
     ],
     "title": "Attempt"
    },
-   "Body_upload_voice": {
+   "BriefSave": {
     "properties": {
-     "file": {
+     "text": {
       "type": "string",
-      "contentMediaType": "application/octet-stream",
-      "title": "File"
+      "title": "Text"
      }
     },
     "type": "object",
     "required": [
-     "file"
+     "text"
     ],
-    "title": "Body_upload_voice"
+    "title": "BriefSave"
+   },
+   "BriefView": {
+    "properties": {
+     "task_id": {
+      "type": "string",
+      "title": "Task Id"
+     },
+     "text": {
+      "type": "string",
+      "title": "Text"
+     },
+     "edited": {
+      "type": "boolean",
+      "title": "Edited",
+      "description": "Saved by hand"
+     }
+    },
+    "type": "object",
+    "required": [
+     "task_id",
+     "text",
+     "edited"
+    ],
+    "title": "BriefView"
    },
    "Config": {
     "properties": {
@@ -2040,6 +2451,14 @@
      "lane": {
       "type": "string",
       "title": "Lane"
+     },
+     "reads": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Reads",
+      "description": "Slot patterns it reads (\"a|b\": either)"
      }
     },
     "type": "object",
@@ -2421,6 +2840,19 @@
    },
    "JobPatch": {
     "properties": {
+     "title": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title",
+      "description": "Rename the job (a URL job then keeps this name)"
+     },
      "project_id": {
       "anyOf": [
        {
@@ -2435,9 +2867,6 @@
      }
     },
     "type": "object",
-    "required": [
-     "project_id"
-    ],
     "title": "JobPatch"
    },
    "JobsCreated": {
@@ -2605,6 +3034,12 @@
       "title": "Confirm",
       "description": "Replace edits made by hand",
       "default": false
+     },
+     "fresh": {
+      "type": "boolean",
+      "title": "Fresh",
+      "description": "Compute the step from scratch: no cached result, no resume, no driver cache (TTS sentences)",
+      "default": false
      }
     },
     "type": "object",
@@ -2613,6 +3048,129 @@
      "stage"
     ],
     "title": "JobsRerun"
+   },
+   "LLMRequest": {
+    "properties": {
+     "ts": {
+      "type": "number",
+      "title": "Ts"
+     },
+     "engine": {
+      "type": "string",
+      "title": "Engine"
+     },
+     "model": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Model"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "translate",
+       "fit"
+      ],
+      "title": "Kind"
+     },
+     "batch_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Batch Id"
+     },
+     "system": {
+      "type": "string",
+      "title": "System"
+     },
+     "payload": {
+      "title": "Payload"
+     },
+     "reply": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reply"
+     },
+     "ok": {
+      "type": "boolean",
+      "title": "Ok"
+     },
+     "cues": {
+      "type": "integer",
+      "title": "Cues"
+     },
+     "usage": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "anyOf": [
+          {
+           "type": "number"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Usage"
+     },
+     "seconds": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Seconds"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     }
+    },
+    "type": "object",
+    "required": [
+     "ts",
+     "engine",
+     "kind",
+     "system",
+     "payload",
+     "ok",
+     "cues"
+    ],
+    "title": "LLMRequest",
+    "description": "One request a translation sent to the LLM and its reply (a line of the attempt's requests.jsonl)."
    },
    "Lane": {
     "properties": {
@@ -2688,6 +3246,82 @@
      "name"
     ],
     "title": "Language"
+   },
+   "LibraryVoice": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "project_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Project Id"
+     },
+     "path": {
+      "type": "string",
+      "title": "Path",
+      "description": "The clip; pass it as the dub step's ref_audio"
+     },
+     "origin": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Origin",
+      "description": "The file it was cut from"
+     },
+     "start": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Start"
+     },
+     "end": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "End"
+     },
+     "created_at": {
+      "type": "number",
+      "title": "Created At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "project_id",
+     "path",
+     "created_at"
+    ],
+    "title": "LibraryVoice",
+    "description": "A named clip to clone a dub voice from: shared (project_id null) or a project's own."
    },
    "Listing": {
     "properties": {
@@ -2902,6 +3536,52 @@
        }
       ],
       "title": "Ref Audio"
+     },
+     "voice_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Voice Id",
+      "description": "A library voice (instead of ref_audio)"
+     },
+     "source": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source",
+      "description": "Or clone from start–end of this recording (a window being chosen)"
+     },
+     "start": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Start"
+     },
+     "end": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "End"
      },
      "int8": {
       "type": "boolean",
@@ -3304,6 +3984,12 @@
       "type": "boolean",
       "title": "Confirm",
       "description": "Replace edits made by hand",
+      "default": false
+     },
+     "fresh": {
+      "type": "boolean",
+      "title": "Fresh",
+      "description": "Compute the step from scratch: no cached result, no resume, no driver cache (TTS sentences)",
       "default": false
      }
     },
@@ -3807,6 +4493,166 @@
      "name"
     ],
     "title": "Voice"
+   },
+   "VoiceAnalysis": {
+    "properties": {
+     "source": {
+      "type": "string",
+      "title": "Source"
+     },
+     "duration": {
+      "type": "number",
+      "title": "Duration"
+     },
+     "candidates": {
+      "items": {
+       "$ref": "#/components/schemas/VoiceCandidate"
+      },
+      "type": "array",
+      "title": "Candidates"
+     }
+    },
+    "type": "object",
+    "required": [
+     "source",
+     "duration",
+     "candidates"
+    ],
+    "title": "VoiceAnalysis"
+   },
+   "VoiceAnalyze": {
+    "properties": {
+     "path": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Path",
+      "description": "An audio or video file (e.g. from PUT /uploads)"
+     },
+     "job_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Job Id",
+      "description": "Or a job: its speech track or video, windows from its subtitles"
+     },
+     "lang": {
+      "type": "string",
+      "title": "Lang",
+      "default": "vi"
+     }
+    },
+    "type": "object",
+    "title": "VoiceAnalyze"
+   },
+   "VoiceCandidate": {
+    "properties": {
+     "start": {
+      "type": "number",
+      "title": "Start"
+     },
+     "end": {
+      "type": "number",
+      "title": "End"
+     },
+     "score": {
+      "type": "number",
+      "title": "Score",
+      "description": "0–1: voiced share, steadiness, length, speech band"
+     },
+     "speech": {
+      "type": "number",
+      "title": "Speech",
+      "description": "Share of the energy in the speech band, 0–1"
+     },
+     "clip": {
+      "type": "string",
+      "title": "Clip",
+      "description": "The window cut out: play it, or preview the voice cloned from it"
+     }
+    },
+    "type": "object",
+    "required": [
+     "start",
+     "end",
+     "score",
+     "speech",
+     "clip"
+    ],
+    "title": "VoiceCandidate"
+   },
+   "VoiceCreate": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "project_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Project Id"
+     },
+     "source": {
+      "type": "string",
+      "title": "Source"
+     },
+     "start": {
+      "type": "number",
+      "title": "Start"
+     },
+     "end": {
+      "type": "number",
+      "title": "End"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "source",
+     "start",
+     "end"
+    ],
+    "title": "VoiceCreate"
+   },
+   "VoicePatch": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "project_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Project Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name"
+    ],
+    "title": "VoicePatch"
    },
    "Word": {
     "properties": {

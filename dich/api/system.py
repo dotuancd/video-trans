@@ -1,22 +1,19 @@
-# Config, drivers, templates, files, uploads, voices, the live event stream and the admin trace view.
+# Config, drivers, templates, files, uploads, the live event stream and the admin trace view.
 import asyncio
-import hashlib
 import json
 import subprocess
 import sys
 from pathlib import Path
-from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import PlainTextResponse, StreamingResponse
 
 from dich import drivers, settings
-from dich.api.models import (Config, DriverInfo, Entry, Lane, Language, Listing, PathBody, Preview, QueueItem, QueueView,
-                             TemplateInfo, Uploaded, Voice, Worker, WorkerCount)
+from dich.api.models import (Config, DriverInfo, Entry, Lane, Language, Listing, PathBody, QueueItem, QueueView,
+                             TemplateInfo, Uploaded, Worker, WorkerCount)
 from dich.core.ids import is_id, new_id
 from dich.core.langs import LANGUAGES
 from dich.core.template import load_templates
-from dich.formats.transcript import Transcript, read_srt
 from dich.media import is_media, is_subtitle
 
 POLL = 0.3   # seconds between reads of the events table
@@ -49,7 +46,6 @@ def prune_uploads(store, uploads, days=7):
 def router(ctx):
     api = APIRouter()
     store = ctx.store
-    voices_cache = []
 
     @api.get("/config")
     def get_config() -> Config:
@@ -61,7 +57,8 @@ def router(ctx):
         return [DriverInfo(stage=cls.stage, name=cls.name, title=cls.title or cls.name,
                            params_schema=cls.Params.model_json_schema(), available=cls.available(),
                            langs=sorted(cls.langs) if cls.langs else None, per_lang=cls.per_lang(),
-                           lane=drivers.lane(cls))
+                           lane=drivers.lane(cls),
+                           reads=sorted({p.rstrip("?") for p in cls.consumes.values()}))
                 for cls in drivers.load_all().values() if not cls.__module__.startswith("fake_")]
 
     @api.get("/templates")
@@ -144,70 +141,14 @@ def router(ctx):
         else:
             subprocess.run(["xdg-open", str(path if path.is_dir() else path.parent)], check=False)
 
-    # --- voices: answered by the interactive worker, which keeps the TTS model loaded ---
-
-    async def call(kind, args, timeout=180):
-        call_id = store.call(kind, args)
-        result, error = await asyncio.to_thread(store.wait_call, call_id, timeout)
-        if error:
-            raise HTTPException(503 if error.startswith("Chưa cài") else 400, error)
-        return result
-
-    @api.get("/voices")
-    async def list_voices() -> list[Voice]:
-        if not voices_cache:
-            voices_cache.extend(await call("voices", {}))
-        return voices_cache
-
-    @api.post("/voices/upload")
-    def upload_voice(file: UploadFile) -> PathBody:
-        """Keep a 3–8s clip to clone a voice from; returns its path for the dub step's ref_audio."""
-        data = file.file.read()
-        suffix = Path(file.filename or "clip.wav").suffix.lower() or ".wav"
-        ctx.voices.mkdir(parents=True, exist_ok=True)
-        stem = Path(file.filename or "clip").stem
-        target = ctx.voices / f"{stem}-{hashlib.sha1(data).hexdigest()[:8]}{suffix}"
-        target.write_bytes(data)
-        return PathBody(path=str(target))
-
-    def spans(transcript):
-        return [[c.start, c.end, c.text] for c in transcript.cues] if transcript else []
-
-    def preview_files(body):
-        """(video, cues timing the clip to clone, cues to read) of a job or of a video with its .srt next to it."""
-        if body.job_id:
-            _t, video = store.slot_artifact(body.job_id, "media.video")
-            _t, target = store.slot_artifact(body.job_id, f"transcript.{body.lang}")
-            _t, source = store.slot_artifact(body.job_id, "transcript.src")
-            target = Transcript.load(target["path"]) if target else None
-            source = Transcript.load(source["path"]) if source else None
-            return video["path"] if video else None, spans(target or source), spans(target)
-        if body.path:
-            media = ctx.existing(body.path)
-            stem = media.with_suffix("")
-            near = {lang: Path(f"{stem}{suffix}") for lang, suffix in ((None, ".srt"), (body.lang, f".{body.lang}.srt"))}
-            found = {lang: read_srt(p) for lang, p in near.items() if p.is_file()}
-            target = found.get(body.lang)
-            return str(media), spans(target or found.get(None)), spans(target)
-        return None, [], []
-
-    @api.post("/voices/preview", response_class=FileResponse, responses={200: {"content": {"audio/wav": {}}}})
-    async def preview_voice(body: Preview):
-        """Reads text (or a sentence of the subtitles) in the voice the dub step would use.
-        The text read is in the X-Preview-Text header, URL-encoded."""
-        media, timing, cues = preview_files(body)
-        ref_audio = str(ctx.existing(body.ref_audio, extra=[ctx.voices])) if body.ref_audio else None
-        result = await call("preview", {"voice": body.voice, "ref_audio": ref_audio, "int8": body.int8,
-                                        "text": body.text, "media": media, "timing": timing, "cues": cues})
-        return FileResponse(result["path"], media_type="audio/wav", headers={"X-Preview-Text": quote(result["text"])})
-
     # --- live events ---
 
     @api.get("/events", response_class=StreamingResponse, responses={200: {"content": {"text/event-stream": {}}}})
     async def events(request: Request):
         """{"type": "job", "job"} when a job or one of its tasks changed, {"type": "progress", "job_id", "task_id",
         "done", "total"}, {"type": "log", "job_id", "task_id", "event"}, {"type": "deleted", "id"},
-        {"type": "project", "id", "deleted"} when a project was created, changed or deleted."""
+        {"type": "project", "id", "deleted"} when a project was created, changed or deleted, {"type": "voice", "id",
+        "deleted"} likewise for a library voice."""
 
         async def stream():
             cursor = await asyncio.to_thread(store.last_event_id)
@@ -237,8 +178,8 @@ def router(ctx):
                                     "done": data.get("done"), "total": data.get("total")})
                     elif row["type"] == "log":
                         out.append({"type": "log", "job_id": row["job_id"], "task_id": row["task_id"], "event": row})
-                    elif row["type"] == "project":
-                        out.append({"type": "project", "id": data.get("id"), "deleted": bool(data.get("deleted"))})
+                    elif row["type"] in ("project", "voice"):
+                        out.append({"type": row["type"], "id": data.get("id"), "deleted": bool(data.get("deleted"))})
                 for job_id in changed:
                     job = await asyncio.to_thread(job_with_artifacts, job_id)
                     if job:

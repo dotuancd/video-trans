@@ -5,6 +5,8 @@
 #   skipped         the stage can't or needn't run for this job (unsupported language, input from the source)
 #   waiting_review  a gate: the job waits for the user before this task
 #   stale           done, but an input changed since (rerun "only", or an edit by hand before it)
+# fresh: the next attempt ignores the cached result, the checkpoint and the driver's own caches (rerun
+# with fresh); cleared when that attempt starts, so a retry after a crash goes on from it.
 # A worker claims a queued task atomically and holds a lease it renews; a task whose lease runs out
 # (worker crashed, killed) goes back to queued, at most MAX_RETRIES times.
 import json
@@ -57,6 +59,7 @@ create table if not exists tasks (
     retries integer not null default 0,
     lease_until real,
     cancel_requested integer not null default 0,
+    fresh integer not null default 0,
     current_attempt text,
     exports text not null default '[]',
     updated_at real not null,
@@ -119,6 +122,16 @@ create table if not exists projects (
     export_dir text,
     created_at real not null
 );
+create table if not exists voices (
+    id text primary key,
+    name text not null,
+    project_id text references projects(id) on delete set null,
+    path text not null,
+    origin text,
+    clip_start real,
+    clip_end real,
+    created_at real not null
+);
 create table if not exists calls (
     id text primary key,
     kind text not null,
@@ -156,6 +169,8 @@ class Store:
             self.db.executescript(SCHEMA)
             if not any(c[1] == "project_id" for c in self.db.execute("pragma table_info(jobs)")):
                 self.db.execute("alter table jobs add column project_id text references projects(id) on delete set null")
+            if not any(c[1] == "fresh" for c in self.db.execute("pragma table_info(tasks)")):
+                self.db.execute("alter table tasks add column fresh integer not null default 0")
 
     def _retire_numeric_ids(self):
         """A database from before job_…/task_… ids (integer ids) is set aside as *.old, with its job folders."""
@@ -277,6 +292,12 @@ class Store:
         self.x("update jobs set title = ? where id = ?", title, job_id)
         self.event(job_id, "job", data={"title": title})
 
+    def set_auto_title(self, job_id, title):
+        """A title found by a driver (the page's title): only while the job is still named after its URL,
+        so a title the user gave stays."""
+        if self.x("update jobs set title = ? where id = ? and title = source", title, job_id).rowcount:
+            self.event(job_id, "job", data={"title": title})
+
     def jobs(self):
         rows = self.q("select * from jobs order by rowid desc")
         tasks = {}
@@ -350,6 +371,36 @@ class Store:
             self.x("update jobs set project_id = null where project_id = ?", project_id)
             self.x("delete from projects where id = ?", project_id)
             self.event(None, "project", data={"id": project_id, "deleted": True})
+
+    # --- voices: named clips to clone a dub voice from, of every project (project_id null) or one ---
+
+    def voices(self, project_id=None):
+        """Every voice; with project_id, that project's first, then the shared ones."""
+        if project_id:
+            rows = self.q("select * from voices where project_id = ? or project_id is null"
+                          " order by project_id is null, created_at", project_id)
+        else:
+            rows = self.q("select * from voices order by created_at")
+        return [voice_dict(r) for r in rows]
+
+    def voice(self, voice_id):
+        row = self.one("select * from voices where id = ?", voice_id)
+        return voice_dict(row) if row else None
+
+    def create_voice(self, voice_id, name, path, project_id=None, origin=None, start=None, end=None):
+        self.x("insert into voices (id, name, project_id, path, origin, clip_start, clip_end, created_at)"
+               " values (?, ?, ?, ?, ?, ?, ?, ?)", voice_id, name, project_id, str(path), origin, start, end, time.time())
+        self.event(None, "voice", data={"id": voice_id})
+        return voice_id
+
+    def update_voice(self, voice_id, name, project_id):
+        self.x("update voices set name = ?, project_id = ? where id = ?", name, project_id, voice_id)
+        self.event(None, "voice", data={"id": voice_id})
+
+    def delete_voice(self, voice_id):
+        """The row; the caller removes the file."""
+        self.x("delete from voices where id = ?", voice_id)
+        self.event(None, "voice", data={"id": voice_id, "deleted": True})
 
     # --- tasks ---
 
@@ -442,6 +493,7 @@ class Store:
                 "insert into attempts (id, task_id, n, span_id, origin, status, fingerprint, params, pid, dir, started_at)"
                 " values (?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?)", attempt_id, task["id"], n, new_span_id(), origin, fingerprint,
                 json.dumps(params if params is not None else task["params"]), pid, str(folder), time.time())
+            self.x("update tasks set fresh = 0 where id = ?", task["id"])
         (folder / "outputs").mkdir(parents=True, exist_ok=True)
         return self.attempt(attempt_id)
 
@@ -586,9 +638,11 @@ class Store:
                     keys.append(task["key"])
         return keys
 
-    def rerun(self, task_id, mode="only", params=None, driver=None, confirm=False):
+    def rerun(self, task_id, mode="only", params=None, driver=None, confirm=False, fresh=False):
         """Run a task again (with new params / driver). mode "only": tasks after it that were done become
-        stale; "cascade": they run again too. Raises NeedsConfirm when that replaces edits made by hand."""
+        stale; "cascade": they run again too. fresh: this task computes from scratch, no cache; the tasks
+        after it reuse theirs when their inputs come out the same. Raises NeedsConfirm when that replaces
+        edits made by hand."""
         from dich import drivers
         with self.tx():
             task = self.task(task_id)
@@ -607,8 +661,8 @@ class Store:
             cls = drivers.get(task["stage"], driver)
             base = task["params"] if driver == task["driver"] else {}
             options = cls.Params(**{**base, **(params or {})}).model_dump(mode="json")
-            self.x("update tasks set driver = ?, params = ?, lane = ?, retries = 0 where id = ?",
-                   driver, json.dumps(options), drivers.lane(cls), task_id)
+            self.x("update tasks set driver = ?, params = ?, lane = ?, retries = 0, fresh = ? where id = ?",
+                   driver, json.dumps(options), drivers.lane(cls), int(fresh), task_id)
             self._status(task, "blocked", gate_passed=1, message=None, error=None, done=None, total=None)
             for other in later:
                 if other["status"] == "skipped":
@@ -805,6 +859,7 @@ def task_dict(row):
         "status": row["status"], "message": row["message"], "error": row["error"], "done": row["done"],
         "total": row["total"], "retries": row["retries"], "cancel_requested": bool(row["cancel_requested"]),
         "current_attempt": row["current_attempt"], "exports": loads(row["exports"], []),
+        "fresh": bool(row["fresh"]) if "fresh" in keys else False,
         "updated_at": row["updated_at"], "lease_until": row["lease_until"] if "lease_until" in keys else None,
     }
 
@@ -833,6 +888,11 @@ def project_dict(row, jobs=0):
     return {"id": row["id"], "name": row["name"], "color": row["color"], "template": row["template"],
             "langs": loads(row["langs"], []), "options": loads(row["options"], {}), "preset": row["preset"],
             "export_dir": row["export_dir"], "created_at": row["created_at"], "jobs": jobs}
+
+
+def voice_dict(row):
+    return {"id": row["id"], "name": row["name"], "project_id": row["project_id"], "path": row["path"],
+            "origin": row["origin"], "start": row["clip_start"], "end": row["clip_end"], "created_at": row["created_at"]}
 
 
 def attempt_dict(row):

@@ -105,13 +105,33 @@ export type Attempt = {
 };
 
 /**
- * Body_upload_voice
+ * BriefSave
  */
-export type BodyUploadVoice = {
+export type BriefSave = {
     /**
-     * File
+     * Text
      */
-    file: Blob | File;
+    text: string;
+};
+
+/**
+ * BriefView
+ */
+export type BriefView = {
+    /**
+     * Task Id
+     */
+    task_id: string;
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Edited
+     *
+     * Saved by hand
+     */
+    edited: boolean;
 };
 
 /**
@@ -180,6 +200,12 @@ export type DriverInfo = {
      * Lane
      */
     lane: string;
+    /**
+     * Reads
+     *
+     * Slot patterns it reads ("a|b": either)
+     */
+    reads?: Array<string>;
 };
 
 /**
@@ -403,11 +429,17 @@ export type JobIds = {
  */
 export type JobPatch = {
     /**
+     * Title
+     *
+     * Rename the job (a URL job then keeps this name)
+     */
+    title?: string | null;
+    /**
      * Project Id
      *
      * Move the job into this project; null: no project
      */
-    project_id: string | null;
+    project_id?: string | null;
 };
 
 /**
@@ -516,6 +548,74 @@ export type JobsRerun = {
      * Replace edits made by hand
      */
     confirm?: boolean;
+    /**
+     * Fresh
+     *
+     * Compute the step from scratch: no cached result, no resume, no driver cache (TTS sentences)
+     */
+    fresh?: boolean;
+};
+
+/**
+ * LLMRequest
+ *
+ * One request a translation sent to the LLM and its reply (a line of the attempt's requests.jsonl).
+ */
+export type LlmRequest = {
+    /**
+     * Ts
+     */
+    ts: number;
+    /**
+     * Engine
+     */
+    engine: string;
+    /**
+     * Model
+     */
+    model?: string | null;
+    /**
+     * Kind
+     */
+    kind: 'translate' | 'fit';
+    /**
+     * Batch Id
+     */
+    batch_id?: string | null;
+    /**
+     * System
+     */
+    system: string;
+    /**
+     * Payload
+     */
+    payload: unknown;
+    /**
+     * Reply
+     */
+    reply?: string | null;
+    /**
+     * Ok
+     */
+    ok: boolean;
+    /**
+     * Cues
+     */
+    cues: number;
+    /**
+     * Usage
+     */
+    usage?: {
+        [key: string]: number | null;
+    } | null;
+    /**
+     * Seconds
+     */
+    seconds?: number | null;
+    /**
+     * Error
+     */
+    error?: string | null;
 };
 
 /**
@@ -566,6 +666,50 @@ export type Language = {
      * Name
      */
     name: string;
+};
+
+/**
+ * LibraryVoice
+ *
+ * A named clip to clone a dub voice from: shared (project_id null) or a project's own.
+ */
+export type LibraryVoice = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Project Id
+     */
+    project_id: string | null;
+    /**
+     * Path
+     *
+     * The clip; pass it as the dub step's ref_audio
+     */
+    path: string;
+    /**
+     * Origin
+     *
+     * The file it was cut from
+     */
+    origin?: string | null;
+    /**
+     * Start
+     */
+    start?: number | null;
+    /**
+     * End
+     */
+    end?: number | null;
+    /**
+     * Created At
+     */
+    created_at: number;
 };
 
 /**
@@ -720,6 +864,26 @@ export type Preview = {
      * Ref Audio
      */
     ref_audio?: string | null;
+    /**
+     * Voice Id
+     *
+     * A library voice (instead of ref_audio)
+     */
+    voice_id?: string | null;
+    /**
+     * Source
+     *
+     * Or clone from start–end of this recording (a window being chosen)
+     */
+    source?: string | null;
+    /**
+     * Start
+     */
+    start?: number | null;
+    /**
+     * End
+     */
+    end?: number | null;
     /**
      * Int8
      */
@@ -970,6 +1134,12 @@ export type Rerun = {
      * Replace edits made by hand
      */
     confirm?: boolean;
+    /**
+     * Fresh
+     *
+     * Compute the step from scratch: no cached result, no resume, no driver cache (TTS sentences)
+     */
+    fresh?: boolean;
 };
 
 /**
@@ -1268,6 +1438,118 @@ export type Voice = {
      * Name
      */
     name: string;
+};
+
+/**
+ * VoiceAnalysis
+ */
+export type VoiceAnalysis = {
+    /**
+     * Source
+     */
+    source: string;
+    /**
+     * Duration
+     */
+    duration: number;
+    /**
+     * Candidates
+     */
+    candidates: Array<VoiceCandidate>;
+};
+
+/**
+ * VoiceAnalyze
+ */
+export type VoiceAnalyze = {
+    /**
+     * Path
+     *
+     * An audio or video file (e.g. from PUT /uploads)
+     */
+    path?: string | null;
+    /**
+     * Job Id
+     *
+     * Or a job: its speech track or video, windows from its subtitles
+     */
+    job_id?: string | null;
+    /**
+     * Lang
+     */
+    lang?: string;
+};
+
+/**
+ * VoiceCandidate
+ */
+export type VoiceCandidate = {
+    /**
+     * Start
+     */
+    start: number;
+    /**
+     * End
+     */
+    end: number;
+    /**
+     * Score
+     *
+     * 0–1: voiced share, steadiness, length, speech band
+     */
+    score: number;
+    /**
+     * Speech
+     *
+     * Share of the energy in the speech band, 0–1
+     */
+    speech: number;
+    /**
+     * Clip
+     *
+     * The window cut out: play it, or preview the voice cloned from it
+     */
+    clip: string;
+};
+
+/**
+ * VoiceCreate
+ */
+export type VoiceCreate = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Project Id
+     */
+    project_id?: string | null;
+    /**
+     * Source
+     */
+    source: string;
+    /**
+     * Start
+     */
+    start: number;
+    /**
+     * End
+     */
+    end: number;
+};
+
+/**
+ * VoicePatch
+ */
+export type VoicePatch = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Project Id
+     */
+    project_id?: string | null;
 };
 
 /**
@@ -1838,6 +2120,38 @@ export type AttemptEventsResponses = {
 
 export type AttemptEventsResponse = AttemptEventsResponses[keyof AttemptEventsResponses];
 
+export type AttemptRequestsData = {
+    body?: never;
+    path: {
+        /**
+         * Attempt Id
+         */
+        attempt_id: string;
+    };
+    query?: never;
+    url: '/api/attempts/{attempt_id}/requests';
+};
+
+export type AttemptRequestsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AttemptRequestsError = AttemptRequestsErrors[keyof AttemptRequestsErrors];
+
+export type AttemptRequestsResponses = {
+    /**
+     * Response Attempt Requests
+     *
+     * Successful Response
+     */
+    200: Array<LlmRequest>;
+};
+
+export type AttemptRequestsResponse = AttemptRequestsResponses[keyof AttemptRequestsResponses];
+
 export type GetLiveData = {
     body?: never;
     path: {
@@ -2066,6 +2380,66 @@ export type SaveTranscriptResponses = {
 
 export type SaveTranscriptResponse = SaveTranscriptResponses[keyof SaveTranscriptResponses];
 
+export type GetBriefData = {
+    body?: never;
+    path: {
+        /**
+         * Job Id
+         */
+        job_id: string;
+    };
+    query?: never;
+    url: '/api/jobs/{job_id}/brief';
+};
+
+export type GetBriefErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetBriefError = GetBriefErrors[keyof GetBriefErrors];
+
+export type GetBriefResponses = {
+    /**
+     * Successful Response
+     */
+    200: BriefView;
+};
+
+export type GetBriefResponse = GetBriefResponses[keyof GetBriefResponses];
+
+export type SaveBriefData = {
+    body: BriefSave;
+    path: {
+        /**
+         * Job Id
+         */
+        job_id: string;
+    };
+    query?: never;
+    url: '/api/jobs/{job_id}/brief';
+};
+
+export type SaveBriefErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SaveBriefError = SaveBriefErrors[keyof SaveBriefErrors];
+
+export type SaveBriefResponses = {
+    /**
+     * Successful Response
+     */
+    200: BriefView;
+};
+
+export type SaveBriefResponse = SaveBriefResponses[keyof SaveBriefResponses];
+
 export type GetConfigData = {
     body?: never;
     path?: never;
@@ -2252,74 +2626,6 @@ export type RevealResponses = {
 };
 
 export type RevealResponse = RevealResponses[keyof RevealResponses];
-
-export type ListVoicesData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/voices';
-};
-
-export type ListVoicesResponses = {
-    /**
-     * Response List Voices
-     *
-     * Successful Response
-     */
-    200: Array<Voice>;
-};
-
-export type ListVoicesResponse = ListVoicesResponses[keyof ListVoicesResponses];
-
-export type UploadVoiceData = {
-    body: BodyUploadVoice;
-    path?: never;
-    query?: never;
-    url: '/api/voices/upload';
-};
-
-export type UploadVoiceErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type UploadVoiceError = UploadVoiceErrors[keyof UploadVoiceErrors];
-
-export type UploadVoiceResponses = {
-    /**
-     * Successful Response
-     */
-    200: PathBody;
-};
-
-export type UploadVoiceResponse = UploadVoiceResponses[keyof UploadVoiceResponses];
-
-export type PreviewVoiceData = {
-    body: Preview;
-    path?: never;
-    query?: never;
-    url: '/api/voices/preview';
-};
-
-export type PreviewVoiceErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type PreviewVoiceError = PreviewVoiceErrors[keyof PreviewVoiceErrors];
-
-export type PreviewVoiceResponses = {
-    /**
-     * Successful Response
-     */
-    200: Blob | File;
-};
-
-export type PreviewVoiceResponse = PreviewVoiceResponses[keyof PreviewVoiceResponses];
 
 export type EventsData = {
     body?: never;
@@ -2580,3 +2886,256 @@ export type SaveProjectResponses = {
 };
 
 export type SaveProjectResponse = SaveProjectResponses[keyof SaveProjectResponses];
+
+export type ListPresetVoicesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/voices/presets';
+};
+
+export type ListPresetVoicesResponses = {
+    /**
+     * Response List Preset Voices
+     *
+     * Successful Response
+     */
+    200: Array<Voice>;
+};
+
+export type ListPresetVoicesResponse = ListPresetVoicesResponses[keyof ListPresetVoicesResponses];
+
+export type ListVoicesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Project
+         */
+        project?: string | null;
+    };
+    url: '/api/voices';
+};
+
+export type ListVoicesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListVoicesError = ListVoicesErrors[keyof ListVoicesErrors];
+
+export type ListVoicesResponses = {
+    /**
+     * Response List Voices
+     *
+     * Successful Response
+     */
+    200: Array<LibraryVoice>;
+};
+
+export type ListVoicesResponse = ListVoicesResponses[keyof ListVoicesResponses];
+
+export type CreateVoiceData = {
+    body: VoiceCreate;
+    path?: never;
+    query?: never;
+    url: '/api/voices';
+};
+
+export type CreateVoiceErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateVoiceError = CreateVoiceErrors[keyof CreateVoiceErrors];
+
+export type CreateVoiceResponses = {
+    /**
+     * Successful Response
+     */
+    200: LibraryVoice;
+};
+
+export type CreateVoiceResponse = CreateVoiceResponses[keyof CreateVoiceResponses];
+
+export type AnalyzeVoiceData = {
+    body: VoiceAnalyze;
+    path?: never;
+    query?: never;
+    url: '/api/voices/analyze';
+};
+
+export type AnalyzeVoiceErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AnalyzeVoiceError = AnalyzeVoiceErrors[keyof AnalyzeVoiceErrors];
+
+export type AnalyzeVoiceResponses = {
+    /**
+     * Successful Response
+     */
+    200: VoiceAnalysis;
+};
+
+export type AnalyzeVoiceResponse = AnalyzeVoiceResponses[keyof AnalyzeVoiceResponses];
+
+export type VoiceSegmentData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Source
+         */
+        source: string;
+        /**
+         * Start
+         */
+        start: number;
+        /**
+         * End
+         */
+        end: number;
+    };
+    url: '/api/voices/segment';
+};
+
+export type VoiceSegmentErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VoiceSegmentError = VoiceSegmentErrors[keyof VoiceSegmentErrors];
+
+export type VoiceSegmentResponses = {
+    /**
+     * Successful Response
+     */
+    200: Blob | File;
+};
+
+export type VoiceSegmentResponse = VoiceSegmentResponses[keyof VoiceSegmentResponses];
+
+export type DeleteVoiceData = {
+    body?: never;
+    path: {
+        /**
+         * Voice Id
+         */
+        voice_id: string;
+    };
+    query?: never;
+    url: '/api/voices/{voice_id}';
+};
+
+export type DeleteVoiceErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteVoiceError = DeleteVoiceErrors[keyof DeleteVoiceErrors];
+
+export type DeleteVoiceResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteVoiceResponse = DeleteVoiceResponses[keyof DeleteVoiceResponses];
+
+export type SaveVoiceData = {
+    body: VoicePatch;
+    path: {
+        /**
+         * Voice Id
+         */
+        voice_id: string;
+    };
+    query?: never;
+    url: '/api/voices/{voice_id}';
+};
+
+export type SaveVoiceErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SaveVoiceError = SaveVoiceErrors[keyof SaveVoiceErrors];
+
+export type SaveVoiceResponses = {
+    /**
+     * Successful Response
+     */
+    200: LibraryVoice;
+};
+
+export type SaveVoiceResponse = SaveVoiceResponses[keyof SaveVoiceResponses];
+
+export type VoiceAudioData = {
+    body?: never;
+    path: {
+        /**
+         * Voice Id
+         */
+        voice_id: string;
+    };
+    query?: never;
+    url: '/api/voices/{voice_id}/audio';
+};
+
+export type VoiceAudioErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VoiceAudioError = VoiceAudioErrors[keyof VoiceAudioErrors];
+
+export type VoiceAudioResponses = {
+    /**
+     * Successful Response
+     */
+    200: Blob | File;
+};
+
+export type VoiceAudioResponse = VoiceAudioResponses[keyof VoiceAudioResponses];
+
+export type PreviewVoiceData = {
+    body: Preview;
+    path?: never;
+    query?: never;
+    url: '/api/voices/preview';
+};
+
+export type PreviewVoiceErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PreviewVoiceError = PreviewVoiceErrors[keyof PreviewVoiceErrors];
+
+export type PreviewVoiceResponses = {
+    /**
+     * Successful Response
+     */
+    200: Blob | File;
+};
+
+export type PreviewVoiceResponse = PreviewVoiceResponses[keyof PreviewVoiceResponses];

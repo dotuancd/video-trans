@@ -6,6 +6,7 @@ stages:
   - {stage: separate,  driver: demucs, enabled: false}
   - {stage: asr,       driver: needle}
   - {stage: refine,    driver: rules, enabled: false}
+  - {stage: brief,     driver: llm}             # what the video is about, for the translation
   - {stage: translate, driver: env}             # $DICH_ENGINE
   - {stage: dub,       driver: vieneu}
   - {stage: mux,       driver: ffmpeg}

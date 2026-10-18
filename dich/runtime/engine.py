@@ -56,10 +56,14 @@ class Engine:
             return "failed"
         lost = [name for name, art in inputs.items() if art is None or not Path(art["path"]).exists()]
         print_fp = fingerprint(cls, params.model_dump(mode="json"), inputs) if not lost else None
-        cached = store.find_cached(print_fp) if print_fp and getattr(cls, "cache", True) else None
+        fresh = task.get("fresh", False)
+        cached = store.find_cached(print_fp) if print_fp and getattr(cls, "cache", True) and not fresh else None
         attempt = store.start_attempt(task, origin="cache" if cached else "driver", fingerprint=print_fp,
                                       pid=os.getpid(), params=params.model_dump(mode="json"))
-        ctx = TaskContext(store, task, attempt, self.echo)
+        ctx = TaskContext(store, task, attempt, self.echo, fresh=fresh)
+        if fresh:
+            ctx.drop_checkpoint()
+            ctx.log.info("Chạy mới hoàn toàn, không dùng cache")
         stop = threading.Event()
         threading.Thread(target=self._heartbeat, args=(task, attempt, stop), daemon=True).start()
         log_path = Path(attempt["dir"]) / "system.log"

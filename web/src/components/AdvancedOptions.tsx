@@ -27,7 +27,7 @@ export type Stage = {
 }
 
 /** Options shown in the new job card itself, not in the sheet (nor counted as advanced). */
-const MAIN: Record<string, string[]> = { translate: ['model'], dub: ['voice', 'ref_audio'] }
+const MAIN: Record<string, string[]> = { translate: ['model'], brief: ['summary'], dub: ['voice', 'ref_audio'] }
 const OPTIONAL = ['separate', 'refine']
 
 type Schema = { properties?: Record<string, { default?: unknown }> }

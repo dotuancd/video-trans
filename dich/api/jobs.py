@@ -7,10 +7,11 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import ValidationError
 
-from dich.api.models import (AddLangs, Attempt, EditCue, Event, Job, JobCreate, JobIds, JobPatch, JobsCreated, JobsDeleted,
-                             JobsDone, JobsMove, JobsRerun, LiveAudio, Rerun, Skipped, TranscriptSave, TranscriptSaved,
+from dich.api.models import (AddLangs, Attempt, BriefSave, BriefView, EditCue, Event, Job, JobCreate, JobIds, JobPatch, JobsCreated, JobsDeleted,
+                             JobsDone, JobsMove, JobsRerun, LiveAudio, LLMRequest, Rerun, Skipped, TranscriptSave, TranscriptSaved,
                              TranscriptView, Word)
 from dich.core import jobs as job_service
+from dich.drivers.translate.llm import read_requests
 from dich.formats.transcript import Cue, Transcript, ensure_ids, to_srt, to_vtt
 from dich.media import is_media, is_subtitle, sha256
 from dich.queue.base import Busy, NeedsConfirm
@@ -115,11 +116,17 @@ def router(ctx):
 
     @api.patch("/jobs/{job_id}")
     def update_job(job_id: str, body: JobPatch) -> Job:
-        """Moves the job into another project (or out of any)."""
+        """Renames the job and/or moves it into another project (or out of any): only the fields sent change."""
         job_or_404(job_id)
+        title = (body.title or "").strip()
+        if "title" in body.model_fields_set and not title:
+            raise HTTPException(400, "Tên không được để trống")
         if body.project_id and not store.project(body.project_id):
             raise HTTPException(404, "Không có project này")
-        store.set_job_project(job_id, body.project_id)
+        if title:
+            store.set_title(job_id, title)
+        if "project_id" in body.model_fields_set:
+            store.set_job_project(job_id, body.project_id)
         return job_or_404(job_id)
 
     @api.post("/jobs/{job_id}/langs")
@@ -202,7 +209,7 @@ def router(ctx):
                 continue
             try:
                 for task in tasks:
-                    store.rerun(task["id"], body.mode, body.params, body.driver, confirm=True)
+                    store.rerun(task["id"], body.mode, body.params, body.driver, confirm=True, fresh=body.fresh)
                 done.append(job["id"])
             except Busy as error:
                 skipped.append(skip(job, str(error)))
@@ -232,7 +239,7 @@ def router(ctx):
     def rerun_task(task_id: str, body: Rerun) -> Job:
         task = task_or_404(task_id)
         try:
-            store.rerun(task_id, body.mode, body.params, body.driver, body.confirm)
+            store.rerun(task_id, body.mode, body.params, body.driver, body.confirm, body.fresh)
         except NeedsConfirm as error:
             raise HTTPException(409, {"message": str(error), "confirm": True, "keys": error.keys})
         except Busy as error:
@@ -270,6 +277,14 @@ def router(ctx):
         if not store.attempt(attempt_id):
             raise HTTPException(404, "Không có lần chạy này")
         return store.attempt_events(attempt_id)
+
+    @api.get("/attempts/{attempt_id}/requests")
+    def attempt_requests(attempt_id: str) -> list[LLMRequest]:
+        """What an LLM translation sent and got back, request by request ([] for other drivers)."""
+        attempt = store.attempt(attempt_id)
+        if not attempt:
+            raise HTTPException(404, "Không có lần chạy này")
+        return read_requests(attempt["dir"])
 
     # --- live audio (a running dub, playable before it is done) ---
 
@@ -424,6 +439,36 @@ def router(ctx):
             save(task, new, slot)
             export_task(store, store.task(task["id"]))
         return TranscriptSaved(texts=texts, sources=sources, source_text_changed=source_changed)
+
+    # --- video brief ---
+
+    def brief_of(job_id):
+        job_or_404(job_id)
+        task, art = store.slot_artifact(job_id, "brief")
+        if not art:
+            raise HTTPException(404, "Chưa có bối cảnh video")
+        return task, art
+
+    @api.get("/jobs/{job_id}/brief")
+    def get_brief(job_id: str) -> BriefView:
+        task, art = brief_of(job_id)
+        return BriefView(task_id=task["id"], text=Path(art["path"]).read_text(encoding="utf-8"), edited=edited(task))
+
+    @api.put("/jobs/{job_id}/brief")
+    def save_brief(job_id: str, body: BriefSave) -> BriefView:
+        """Saves the brief as an edit by hand: the translations after it become stale."""
+        task, art = brief_of(job_id)
+        text = body.text.strip() + "\n"
+        if text == Path(art["path"]).read_text(encoding="utf-8"):
+            return BriefView(task_id=task["id"], text=text, edited=edited(task))
+        path = store.job_dir(job_id) / "edits" / f"brief-{time.time_ns()}.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        try:
+            store.save_human(task["id"], "brief", path, sha256(path), path.stat().st_size)
+        except Busy as error:
+            raise HTTPException(409, str(error))
+        return BriefView(task_id=task["id"], text=text, edited=True)
 
     return api
 

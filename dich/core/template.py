@@ -77,4 +77,25 @@ def resolve(template, source, overrides=None):
             cls = drivers.get(conf.stage, conf.driver)   # KeyError for an unknown driver
             conf.params = cls.Params(**conf.params).model_dump(mode="json")
         stages.append(conf)
+    link_brief(stages)
+    if not any(conf.stage == "dub" and conf.enabled for conf in stages):
+        # without a dub, fitting the translation to the speech time only costs a second LLM pass
+        for conf in stages:
+            if conf.stage == "translate" and "fit_dub" in conf.params:
+                conf.params["fit_dub"] = False
     return stages
+
+
+def link_brief(stages):
+    """The brief only serves an LLM translation: off without one, and its "auto" engine is the translation's."""
+    brief = next((conf for conf in stages if conf.stage == "brief" and conf.enabled), None)
+    if not brief:
+        return
+    readers = [conf for conf in stages if conf.enabled and conf.stage != "brief"
+               and "brief" in {p.rstrip("?") for p in drivers.get(conf.stage, conf.driver).consumes.values()}]
+    if not readers:
+        brief.enabled = False
+        return
+    if brief.params.get("engine") == "auto":
+        from dich.drivers.brief.llm import engine_of
+        brief.params["engine"] = engine_of(readers[0].driver) or "auto"

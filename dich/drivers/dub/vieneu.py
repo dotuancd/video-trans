@@ -1,5 +1,5 @@
 # Vietnamese dubbing with VieNeu-TTS v3 Turbo (local, ONNX on CPU, 48 kHz, preset voices or instant voice
-# cloning from a 3–8s clip).
+# cloning from a 3–8s clip). The CPU beats the Apple GPU for this model (see tts_threads).
 #
 # Cues are joined into sentences (reads more naturally than cue fragments), each sentence is synthesized
 # once and placed at its first cue's start. Vietnamese speech is often longer than the English slot, so a
@@ -7,14 +7,22 @@
 # only as a last resort pushes the next sentence later. A sentence much shorter than the original speech
 # it replaces is slowed down (down to min_speed) to fill it, never into the silence after it.
 #
+# Two sentences never run into each other: the original pause between them is kept, up to MAX_BREATH, by
+# speeding the first up more or starting the second that much later (without it, a long sentence was sped
+# up right to the next one and the dub sounded like one breathless run). Measured on a 110-minute video:
+# 223 boundaries with no pause → 0, sentences started late 141 → 144. The voice model's own silence at
+# both ends of a clip is cut first so these pauses are what is heard.
+#
 # Subtitle timing usually pads speech at both ends, so each sentence's span is trimmed to where its voice
 # actually is (a level-based VAD on audio.speech, else the original): the dub starts with the speaker and
 # is slowed only to fill the real speech, not the padding. Trimming only narrows a span, against the
 # track's own loud end, so under music (everything loud) it changes nothing.
 #
-# The default voice ("source") is cloned from the video itself: a 3–8s run of speech picked from the
-# cue timings is cut out and used as the reference clip.
+# The default voice ("source") is cloned from the video itself: the 3–8s run of speech that scores best
+# on the audio (dich.voices: voiced share, steadiness, speech band) is cut out and used as the reference clip.
 import hashlib
+import subprocess
+import sys
 import threading
 from pathlib import Path
 
@@ -24,30 +32,40 @@ from dich import settings
 from dich.drivers import Driver, UserError, module_missing, register
 from dich.drivers.translate.common import clean, group_sentences
 from dich.formats.transcript import Transcript
-from dich.media import load_audio, loudness
+from dich.voices import REF_MAX_GAP, REF_SECONDS, VAD_HOP, Voiced, candidates, clip_name, cut
 from dich.storage.live import LIVE_DIR, LiveAudio
 
 SAMPLE_RATE = 48000
 DEFAULT_VOICE = settings.VOICE   # preset used when there is nothing to clone from
 SOURCE_VOICE = "source"          # voice= value: clone the speaker of the video
-REF_SECONDS = (3.0, 8.0)         # VieNeu clones from a 3–8s clip
-REF_MAX_GAP = 0.4                # cues further apart than this are not one run of speech
-REF_SAMPLE_RATE = 24000
 # Cloning from the English original: True also feeds the clip's acoustic codes to the model,
 # False the speaker embedding only (less of the English prosody carried over).
 REF_USE_CODES = True
 MAX_SENTENCE_CHARS = 200   # shorter than translation's 400 so long runs keep closer to the video
 MAX_GAP = 1.0              # a pause this long (seconds) also ends a sentence
 FILL_RATIO = 0.9           # a sentence filling less than this of its original speech is slowed down
-VAD_HOP = 0.02             # seconds per level frame
-VAD_FLOOR = -50.0          # dBFS: quieter than this is never speech
-VAD_RANGE = 35.0           # dB below the loud end of the track still counted as speech
-VAD_MIN_SECONDS = 0.3      # a trimmed span shorter than this is not trusted: keep the cue timing
+MAX_BREATH = 0.3           # seconds of the original pause kept between sentences even when running late
 LIVE_FIRST = 8.0           # seconds of dub in the first live chunk (playable soon), then
 LIVE_CHUNK = 30.0          # seconds per live chunk
 CACHE_DIR = settings.CACHE_DIR / "tts"
 REF_DIR = settings.CACHE_DIR / "ref"
 INFER_LOCK = threading.Lock()
+
+
+def tts_threads():
+    """ONNX threads for the voice model: DICH_TTS_THREADS, else the performance cores on Apple Silicon
+    (efficiency cores slow every step down; the engine's own default takes half the cores), else 0
+    (engine default). Measured on an M1 Pro: 6 threads ~15% faster than the default 4; GPU via MPS
+    or CoreML was 6x slower or failed, so the model stays on the CPU."""
+    if settings.TTS_THREADS > 0:
+        return settings.TTS_THREADS
+    # if sys.platform == "darwin":
+    #     try:
+    #         return int(subprocess.run(["sysctl", "-n", "hw.perflevel0.physicalcpu"], capture_output=True,
+    #                                   text=True, timeout=5).stdout.strip() or 0)
+    #     except (OSError, ValueError, subprocess.SubprocessError):
+    #         pass
+    return 0
 
 
 def group_cues(cues):
@@ -58,33 +76,6 @@ def group_cues(cues):
         if text:
             groups.append((cues[group[0]].start, cues[group[-1]].end, text))
     return groups
-
-
-class Voiced:
-    """Which VAD_HOP frames of a speech-only track hold voice, by level against the track's own loud end."""
-
-    def __init__(self, levels):
-        import numpy as np
-
-        levels = np.asarray(levels, dtype=np.float32)
-        threshold = max(VAD_FLOOR, float(np.percentile(levels, 95)) - VAD_RANGE) if len(levels) else 0.0
-        self.frames = levels > threshold
-
-    @classmethod
-    def of(cls, path):
-        return cls(loudness(path, VAD_HOP))
-
-    def trim(self, start, end):
-        """(start, end) narrowed to the first and last voiced frame inside it; unchanged when that leaves
-        less than VAD_MIN_SECONDS (silence, or a blip: the timing is safer than the guess)."""
-        import numpy as np
-
-        first, last = int(start / VAD_HOP), min(len(self.frames), int(np.ceil(end / VAD_HOP)))
-        voiced = np.flatnonzero(self.frames[first:last]) if last > first else []
-        if len(voiced) == 0:
-            return start, end
-        span = (max(start, (first + voiced[0]) * VAD_HOP), min(end, (first + voiced[-1] + 1) * VAD_HOP))
-        return span if span[1] - span[0] >= VAD_MIN_SECONDS else (start, end)
 
 
 def pick_reference(cues, min_seconds=REF_SECONDS[0], max_seconds=REF_SECONDS[1], max_gap=REF_MAX_GAP):
@@ -115,20 +106,16 @@ def pick_reference(cues, min_seconds=REF_SECONDS[0], max_seconds=REF_SECONDS[1],
 def reference_clip(media, cues):
     """(wav path, (start, end)) of the speech in media to clone the voice from, or None.
     Cut once and kept in REF_DIR."""
-    import numpy as np
-    import soundfile as sf
-
-    window = pick_reference(cues)
+    try:
+        best = candidates(media, cues, n=1)
+        window = (best[0]["start"], best[0]["end"]) if best else None
+    except Exception:   # no audio to score: the cue timing alone
+        window = pick_reference(cues)
     if window is None:
         return None
-    media = Path(media)
-    start, end = window
-    key = hashlib.sha1(f"{media.resolve()}\n{media.stat().st_mtime_ns}\n{start:.3f}\n{end:.3f}".encode()).hexdigest()
-    clip = REF_DIR / f"{media.stem[:40]}-{key[:12]}.wav"
+    clip = REF_DIR / clip_name(media, *window)
     if not clip.exists():
-        audio = np.frombuffer(load_audio(media, REF_SAMPLE_RATE, start, end - start), dtype=np.float32)
-        REF_DIR.mkdir(parents=True, exist_ok=True)
-        sf.write(clip, audio, REF_SAMPLE_RATE)
+        cut(media, *window, clip)
     return clip, window
 
 
@@ -141,6 +128,26 @@ def overlapping_text(cues, window):
         if overlap > best_overlap:
             best, best_overlap = text, overlap
     return best
+
+
+TRIM_PAD = 0.02   # seconds of the TTS clip's own silence kept at each end
+
+
+def trim_edges(audio):
+    """audio without the silence the voice model leaves before and after the speech (TRIM_PAD kept),
+    judged like Voiced against the clip's own loud end; unchanged when nothing is loud enough."""
+    import numpy as np
+
+    hop = int(VAD_HOP * SAMPLE_RATE)
+    count = len(audio) // hop
+    if count == 0:
+        return audio
+    blocks = audio[:count * hop].reshape(count, hop)
+    voiced = np.flatnonzero(Voiced(10 * np.log10(np.mean(blocks * blocks, axis=1) + 1e-10)).frames)
+    if len(voiced) == 0:
+        return audio
+    pad = int(TRIM_PAD * SAMPLE_RATE)
+    return audio[max(0, voiced[0] * hop - pad):min(len(audio), (voiced[-1] + 1) * hop + pad)]
 
 
 def change_speed(audio, speed):
@@ -176,9 +183,10 @@ class Dubber:
     def __init__(self, voice=DEFAULT_VOICE, ref_audio=None, precision="fp32", tts=None, use_ref_codes=REF_USE_CODES):
         if tts is None:
             from vieneu import Vieneu
-            tts = Vieneu(precision=precision)
+            tts = Vieneu(precision=precision, threads=tts_threads())
         self.tts = tts
         self.reused = 0   # sentences read from the cache (a stopped dub goes on from there)
+        self.fresh = False   # read every sentence again (still written to the cache)
         self.voice = voice
         self.voice_key = voice
         if ref_audio:
@@ -192,7 +200,7 @@ class Dubber:
 
         key = hashlib.sha1(f"{self.voice_key}\n{text}".encode()).hexdigest()
         cached = CACHE_DIR / f"{key}.wav"
-        if cached.exists():
+        if cached.exists() and not self.fresh:
             audio, _ = sf.read(cached, dtype="float32")
             self.reused += 1
             return audio
@@ -213,8 +221,10 @@ class Dubber:
         self.reused = 0
         if voiced is not None:
             groups = [(*voiced.trim(start, end), text) for start, end, text in groups]
+        pauses = [max(0.0, b[0] - a[1]) for a, b in zip(groups, groups[1:])] + [0.0]   # original, after each
         clips, cursor, placed = [], 0.0, 0   # placed: end of the last clip in samples (exact, unlike cursor)
         sped_up, slowed, late, max_late = 0, 0, 0, 0.0
+        gaps = []   # (dub pause, original pause) at each sentence boundary
         flushed, pending = 0, []   # samples already handed to on_chunk; clips placed after them
 
         def flush(end):
@@ -228,12 +238,15 @@ class Dubber:
 
         for index, (start, end, text) in enumerate(groups):
             audio = self.synthesize(text)
-            begin = max(start, cursor)
+            audio = trim_edges(audio)
+            begin = max(start, cursor + (min(pauses[index - 1], MAX_BREATH) if index else 0.0))
+            if index:
+                gaps.append((begin - cursor, pauses[index - 1]))
             next_start = groups[index + 1][0] if index + 1 < len(groups) else float("inf")
-            available = next_start - begin
+            available = next_start - begin - min(pauses[index], MAX_BREATH)   # leave the next one its breath
             duration = len(audio) / SAMPLE_RATE
-            if duration > available > 0:
-                speed = min(max_speed, duration / available)
+            if duration > available and next_start > begin:
+                speed = min(max_speed, duration / available) if available > 0 else max_speed
                 audio = change_speed(audio, speed)
                 sped_up += 1
             elif min_speed < 1 and begin <= start + 0.05 and duration < (end - begin) * FILL_RATIO:
@@ -259,7 +272,10 @@ class Dubber:
         np.clip(track, -1.0, 1.0, out=track)
         if on_chunk:
             flush(len(track))
-        return track, {"sentences": len(groups), "reused": self.reused, "sped_up": sped_up, "slowed": slowed, "late": late, "max_late": max_late}
+        pause_err = sum(abs(dub - original) for dub, original in gaps) / len(gaps) if gaps else 0.0
+        no_breath = sum(1 for dub, original in gaps if dub < 0.1 and original >= MAX_BREATH)
+        return track, {"sentences": len(groups), "reused": self.reused, "sped_up": sped_up, "slowed": slowed, "late": late,
+                       "max_late": float(max_late), "pause_err": float(pause_err), "no_breath": no_breath}
 
 
 def save_wav(track, path):
@@ -293,7 +309,7 @@ class VieneuDub(Driver):
     produces = {"audio": "audio.dub.{lang}"}
     keep = {"audio": "last"}
     langs = {"vi"}
-    version = "2"   # sentence spans trimmed by VAD
+    version = "3"   # original pauses kept between sentences (up to MAX_BREATH), TTS edge silence trimmed
 
     def __init__(self):
         self.tts = {}        # int8 → Vieneu model, shared by every voice
@@ -343,12 +359,13 @@ class VieneuDub(Driver):
             except Exception as error:
                 ctx.log.warn(f"Bỏ qua VAD, dùng timing phụ đề: {error}")
         dubber = self.dubber(params.voice, ref_audio, params.int8, ctx.log.info)
+        dubber.fresh = ctx.fresh
         live = LiveAudio(ctx.dir / LIVE_DIR, SAMPLE_RATE, transcript.cues[-1].end if transcript.cues else None)
         track, stats = dubber.dub(transcript.cues, max_speed=params.max_speed, min_speed=params.min_speed,
                                   progress=ctx.progress, voiced=voiced, on_chunk=live.add)
         live.finish()
         ctx.log.info(f"{stats['sentences']} câu, {len(track) / SAMPLE_RATE / 60:.1f} phút, {stats['sped_up']} câu tăng tốc, {stats['slowed']} câu giảm tốc, "
-                     f"{stats['late']} câu trễ (tối đa {stats['max_late']:.1f}s)", **stats)
+                     f"{stats['late']} câu trễ (tối đa {stats['max_late']:.1f}s), khoảng ngừng lệch bản gốc TB {stats['pause_err']:.2f}s", **stats)
         if stats["reused"]:
             ctx.log.info(f"Dùng lại {stats['reused']} câu đã đọc ở lần chạy trước")
         if stats["late"]:
@@ -382,7 +399,7 @@ class VieneuDub(Driver):
         tts = next(iter(self.tts.values()), None)
         if tts is None:
             from vieneu import Vieneu
-            tts = self.tts[False] = Vieneu()
+            tts = self.tts[False] = Vieneu(threads=tts_threads())
         return [{"label": label, "name": name} for label, name in tts.list_preset_voices()]
 
 

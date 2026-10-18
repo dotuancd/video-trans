@@ -1,25 +1,27 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Download, ExternalLink, Eye, FolderSearch, Languages, Loader2, Play, Plus, RotateCcw, ScrollText, Square, StepForward, Trash2,
+  ChevronRight, Copy, Download, ExternalLink, Eye, FolderSearch, Languages, Loader2, Pencil, Play, Plus, RotateCcw, ScrollText, Square, StepForward, Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
-  addLangs, cancelJob, deleteJob, listAttempts, pickAttempt, refreshJob, rerunTask, resumeJob, reveal, updateJob,
-  type Config, type DriverInfo, type Job, type LiveAudio, type Project, type Task, type TranscriptSaved,
+  addLangs, cancelJob, deleteJob, getBrief, listAttempts, pickAttempt, refreshJob, rerunTask, resumeJob, reveal, saveBrief, updateJob,
+  type Config, type DriverInfo, type Job, type LiveAudio, type LlmRequest, type Project, type Task, type TranscriptSaved,
 } from '@/api'
 import { STATUS_STYLE, taskLabel } from '@/components/JobList'
 import { DriverParams, DriverSelect, SwitchField } from '@/components/Params'
 import { SubtitleEditor, useSubtitleDraft, type SubtitleDraft } from '@/components/SubtitleEditor'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import {
-  artifactUrl, downloadUrl, driversOf, errorMessage, formatCost, inlineUrl, isActive, needsConfirm, putJob, slotArtifact,
-  STATUS_LABELS, useAttemptEvents, type Params,
+  artifactUrl, downloadUrl, driversOf, errorMessage, formatCost, FRESH_HINT, inlineUrl, isActive, needsConfirm, putJob, slotArtifact,
+  STATUS_LABELS, useAttemptEvents, useAttemptRequests, type Params,
 } from '@/lib/api'
 import { clock, useLiveDub, useLiveIndex } from '@/lib/liveDub'
 
@@ -27,8 +29,10 @@ import { clock, useLiveDub, useLiveIndex } from '@/lib/liveDub'
 const NO_PROJECT = '-'
 const VIDEO = /\.(mp4|mov|m4v|webm|mkv)$/i
 const SYSTEM_ERROR = /mã ([0-9a-f]{8})/
+/** stages that talk to an LLM: their attempts list the requests sent */
+const LLM_STAGES = ['translate', 'brief']
 
-type RerunArgs = { task: Task; mode: 'only' | 'cascade'; params?: Params; driver?: string; confirm?: boolean }
+type RerunArgs = { task: Task; mode: 'only' | 'cascade'; params?: Params; driver?: string; confirm?: boolean; fresh?: boolean }
 
 export function JobDetail({ job, drivers, config, projects, onClose }: {
   job?: Job
@@ -43,6 +47,8 @@ export function JobDetail({ job, drivers, config, projects, onClose }: {
         className="gap-0 overflow-y-auto data-[side=right]:w-full data-[side=right]:sm:max-w-3xl"
         // toasts (e.g. "Cập nhật phía sau" after saving subtitles) live outside the sheet: clicking them must not close it
         onInteractOutside={(e) => (e.target as Element | null)?.closest('[data-sonner-toaster]') && e.preventDefault()}
+        // Esc while renaming cancels the rename, not the sheet
+        onEscapeKeyDown={(e) => (e.target as Element | null)?.closest('[data-renaming]') && e.preventDefault()}
       >
         {job && <JobBody key={job.id} job={job} drivers={drivers} config={config} projects={projects} onClose={onClose} />}
       </SheetContent>
@@ -73,8 +79,8 @@ function JobBody({ job, drivers, config, projects, onClose }: {
   const target = lang && lang !== 'src' ? lang : job.langs[0]
 
   const rerun = useMutation({
-    mutationFn: async ({ task, mode, params, driver, confirm }: RerunArgs) =>
-      (await rerunTask({ path: { task_id: task.id }, body: { mode, params, driver, confirm: !!confirm } })).data,
+    mutationFn: async ({ task, mode, params, driver, confirm, fresh }: RerunArgs) =>
+      (await rerunTask({ path: { task_id: task.id }, body: { mode, params, driver, confirm: !!confirm, fresh: !!fresh } })).data,
     onSuccess: updated,
     onError: (error, args) => (needsConfirm(error) ? setConfirming(args) : onError(error)),
   })
@@ -83,6 +89,11 @@ function JobBody({ job, drivers, config, projects, onClose }: {
   const refresh = useJobAction(job.id, refreshJob)
   const move = useMutation({
     mutationFn: async (project: string | null) => (await updateJob({ path: { job_id: job.id }, body: { project_id: project } })).data,
+    onSuccess: updated,
+    onError,
+  })
+  const rename = useMutation({
+    mutationFn: async (title: string) => (await updateJob({ path: { job_id: job.id }, body: { title } })).data,
     onSuccess: updated,
     onError,
   })
@@ -134,6 +145,7 @@ function JobBody({ job, drivers, config, projects, onClose }: {
     !out && voice && { label: 'Giọng đọc', id: voice.id, artifact: voice.id, path: voice.path },
   ].filter((x) => !!x)
   const exported = job.tasks.flatMap((t) => t.exports)
+  const brief = job.tasks.find((t) => t.stage === 'brief' && t.artifacts?.length)
   const skipped = job.tasks.filter((t) => t.status === 'skipped' && t.message && !t.message.includes('nguồn'))
 
   const seek = (seconds: number) => {
@@ -145,7 +157,9 @@ function JobBody({ job, drivers, config, projects, onClose }: {
   return (
     <>
       <SheetHeader className="border-b">
-        <SheetTitle className="pr-8 break-all">{job.title}</SheetTitle>
+        <SheetTitle className="pr-8 break-all">
+          <TitleEditor title={job.title} onSave={(title) => rename.mutate(title)} />
+        </SheetTitle>
         <SheetDescription className="font-mono text-xs break-all">{job.source}</SheetDescription>
         {formatCost(job.cost_usd) && (
           <p className="text-xs text-muted-foreground" title="Chi phí API (OpenAI…), tính cả các lần chạy lại và lần lỗi">
@@ -201,6 +215,7 @@ function JobBody({ job, drivers, config, projects, onClose }: {
               pending={rerun.isPending} onRerun={(args) => rerun.mutate({ task: t, ...args })} />
           ))}
         </ol>
+        {brief && <BriefPanel task={brief} onSaved={() => refresh.mutate()} />}
         {skipped.length > 0 && (
           <ul className="grid gap-0.5 text-xs text-muted-foreground">
             {skipped.map((t) => <li key={t.id}>Bỏ qua {taskLabel(t)}: {t.message}</li>)}
@@ -246,6 +261,64 @@ function JobBody({ job, drivers, config, projects, onClose }: {
   )
 }
 
+/** What the translation was told the video is about; edited by hand, the translations become stale. */
+function BriefPanel({ task, onSaved }: { task: Task; onSaved: () => void }) {
+  const queryClient = useQueryClient()
+  const key = ['brief', task.job_id, task.current_attempt]
+  const brief = useQuery({ queryKey: key, queryFn: async () => (await getBrief({ path: { job_id: task.job_id } })).data })
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState<string>()
+  const save = useMutation({
+    mutationFn: async (text: string) => (await saveBrief({ path: { job_id: task.job_id }, body: { text } })).data,
+    onSuccess: (saved) => {
+      queryClient.setQueryData(key, saved)
+      setDraft(undefined)
+      toast.success('Đã lưu bối cảnh', {
+        description: 'Bản dịch cần chạy lại theo bối cảnh mới.',
+        action: { label: 'Dịch lại', onClick: onSaved },
+        duration: 10000,
+      })
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  })
+  if (!brief.data) return null
+  const origin = brief.data.edited ? 'Sửa tay'
+    : String(task.params.summary ?? '').trim() ? 'Bạn nhập'
+    : task.params.generate === false ? 'Thông tin video' : 'AI tóm tắt'
+
+  return (
+    <section className="grid gap-2 rounded-lg border p-3">
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium">Bối cảnh video</span>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{origin}</span>
+        <span className="flex-1" />
+        {draft === undefined && (
+          <Button size="sm" variant="ghost" disabled={task.status === 'running'} onClick={() => setDraft(brief.data!.text)}
+            title="Sửa lĩnh vực, tóm tắt, thuật ngữ… rồi dịch lại">
+            <Pencil /> Sửa
+          </Button>
+        )}
+      </div>
+      {draft === undefined ? (
+        <button type="button" onClick={() => setOpen(!open)} title={open ? 'Thu gọn' : 'Xem hết'}
+          className={cn('text-left text-xs whitespace-pre-wrap text-muted-foreground', !open && 'line-clamp-3')}>
+          {brief.data.text.trim() || 'Trống'}
+        </button>
+      ) : (
+        <form className="grid gap-2" onSubmit={(e) => { e.preventDefault(); save.mutate(draft) }}>
+          <Textarea autoFocus rows={12} value={draft} className="text-xs" onChange={(e) => setDraft(e.target.value)} />
+          <div className="flex justify-end gap-2">
+            <Button type="button" size="sm" variant="ghost" onClick={() => setDraft(undefined)}>Huỷ</Button>
+            <Button type="submit" size="sm" disabled={save.isPending}>
+              {save.isPending && <Loader2 className="animate-spin" />} Lưu
+            </Button>
+          </div>
+        </form>
+      )}
+    </section>
+  )
+}
+
 /** POST /jobs/{id}/<action>: the job comes back and replaces the cached one. */
 function useJobAction(jobId: string, action: typeof cancelJob) {
   const queryClient = useQueryClient()
@@ -288,6 +361,33 @@ function AddLanguage({ job, config, onAdded }: { job: Job; config: Config; onAdd
 type Source = { label: string; id: string; artifact: string; path: string; live?: { taskId: string; index: LiveAudio } }
 
 const escapeVtt = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+/** The job's title; click to rename: Enter or leaving the field saves, Esc cancels, an empty name is not saved. */
+function TitleEditor({ title, onSave }: { title: string; onSave: (title: string) => void }) {
+  const [editing, setEditing] = useState<string | null>(null)
+  if (editing === null) {
+    return (
+      <button type="button" onClick={() => setEditing(title)} title="Đổi tên"
+        className="group inline text-left hover:text-foreground/80">
+        {title}
+        <Pencil className="ml-1.5 inline size-3.5 align-baseline text-muted-foreground opacity-0 group-hover:opacity-100" />
+      </button>
+    )
+  }
+  const save = () => {
+    const name = editing.trim()
+    if (name && name !== title) onSave(name)
+    setEditing(null)
+  }
+  return (
+    <Input autoFocus value={editing} maxLength={200} aria-label="Tên việc" onChange={(e) => setEditing(e.target.value)}
+      onFocus={(e) => e.target.select()} onBlur={save}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') save()
+        if (e.key === 'Escape') setEditing(null)
+      }} data-renaming />
+  )
+}
 
 /** Player showing the subtitle draft as it is typed (unsaved edits included), and reporting the cue under the playhead. */
 function Preview({ sources, draft, media, onMedia, onActive }: {
@@ -486,6 +586,7 @@ function LogPanel({ task }: { task: Task }) {
     queryFn: async () => (await listAttempts({ path: { task_id: task.id } })).data,
   })
   const [chosen, setChosen] = useState<string>()
+  const [showRequests, setShowRequests] = useState(false)
   const attempt = attempts.data?.find((a) => a.id === chosen) ?? attempts.data?.[0]
   const events = useAttemptEvents(attempt?.id)
   const ref = useRef<HTMLDivElement>(null)
@@ -507,7 +608,14 @@ function LogPanel({ task }: { task: Task }) {
             Lần {a.n}{ORIGIN[a.origin]}{a.id === task.current_attempt && ' · đang dùng'}
           </Button>
         ))}
-        <a className="ml-auto inline-flex items-center gap-0.5 text-xs text-muted-foreground underline hover:text-foreground"
+        {LLM_STAGES.includes(task.stage) && attempt.origin === 'driver' && (
+          <Button size="sm" variant={showRequests ? 'secondary' : 'ghost'} className="ml-auto h-6 px-2 text-xs"
+            title="Những gì đã gửi sang LLM và nhận về" onClick={() => setShowRequests(!showRequests)}>
+            Requests
+          </Button>
+        )}
+        <a className={cn('inline-flex items-center gap-0.5 text-xs text-muted-foreground underline hover:text-foreground',
+          !(LLM_STAGES.includes(task.stage) && attempt.origin === 'driver') && 'ml-auto')}
           href={`/api/attempts/${attempt.id}/system`} target="_blank" rel="noreferrer">
           Log hệ thống <ExternalLink className="size-3" />
         </a>
@@ -533,6 +641,9 @@ function LogPanel({ task }: { task: Task }) {
           )}
         </div>
       )}
+      {showRequests && LLM_STAGES.includes(task.stage) && attempt.origin === 'driver' && (
+        <RequestsPanel attemptId={attempt.id} running={attempt.status === 'running'} />
+      )}
       <div ref={ref}
         onScroll={(e) => {
           const el = e.currentTarget
@@ -549,6 +660,91 @@ function LogPanel({ task }: { task: Task }) {
   )
 }
 
+/** The requests an LLM translation sent (see requests.jsonl in the attempt folder): one row each, opened to
+ * show the payload, the reply and the system prompt. */
+function RequestsPanel({ attemptId, running }: { attemptId: string; running: boolean }) {
+  const requests = useAttemptRequests(attemptId, running)
+  const [open, setOpen] = useState<number | null>(null)
+  if (requests.isLoading) return <Loader2 className="size-4 animate-spin text-muted-foreground" />
+  const rows = requests.data ?? []
+  if (!rows.length) return <p className="text-xs text-muted-foreground">Chưa có request nào (bản dịch lấy từ cache hoặc driver không dùng LLM).</p>
+  const failed = rows.filter((r) => !r.ok).length
+  const cost = rows.reduce((sum, r) => sum + (r.usage?.cost_usd ?? 0), 0)
+  return (
+    <div className="grid gap-1">
+      <p className="text-xs text-muted-foreground">
+        {rows.length} request{failed > 0 && <span className="text-red-700 dark:text-red-300"> · {failed} lỗi / sai id</span>}
+        {formatCost(cost) && ` · ${formatCost(cost)}`} · {rows[0].engine}{rows[0].model && ` (${rows[0].model})`}
+      </p>
+      <div className="max-h-[28rem] overflow-auto rounded-md border">
+        {rows.map((r, n) => (
+          <div key={n} className="border-b last:border-b-0">
+            <button className="flex w-full items-center gap-2 px-2 py-1 text-left font-mono text-[11px] hover:bg-muted"
+              onClick={() => setOpen(open === n ? null : n)}>
+              <ChevronRight className={cn('size-3 shrink-0 transition-transform', open === n && 'rotate-90')} />
+              <span className="text-muted-foreground">{time(r.ts)}</span>
+              <span className={r.kind === 'fit' ? 'text-violet-600 dark:text-violet-300' : ''}>{r.kind === 'fit' ? 'chỉnh độ dài' : 'dịch'}</span>
+              <span>{r.cues} cue</span>
+              {r.seconds != null && <span className="text-muted-foreground">{r.seconds}s</span>}
+              {r.usage && <span className="text-muted-foreground">{r.usage.input ?? 0}→{r.usage.output ?? 0} tok</span>}
+              {formatCost(r.usage?.cost_usd) && <span className="text-muted-foreground">{formatCost(r.usage?.cost_usd)}</span>}
+              {!r.ok && (
+                <span className="ml-auto truncate text-red-700 dark:text-red-300" title={r.error ?? undefined}>
+                  {r.error ?? 'sai id'}
+                </span>
+              )}
+            </button>
+            {open === n && <RequestDetail request={r} />}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const pretty = (text?: string | null) => {
+  if (text == null) return ''
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2)
+  } catch {
+    return text
+  }
+}
+
+function RequestDetail({ request }: { request: LlmRequest }) {
+  const [system, setSystem] = useState(false)
+  return (
+    <div className="grid gap-2 px-2 pb-2">
+      {request.error && <p className="text-xs break-words text-red-700 dark:text-red-300">{request.error}</p>}
+      <div className="grid gap-2 md:grid-cols-2">
+        <CodeBlock title="Gửi" text={JSON.stringify(request.payload, null, 2)} />
+        <CodeBlock title="Nhận" text={pretty(request.reply) || '(không có)'} />
+      </div>
+      <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground" onClick={() => setSystem(!system)}>
+        <ChevronRight className={cn('size-3 transition-transform', system && 'rotate-90')} /> System prompt
+      </button>
+      {system && <CodeBlock text={request.system} />}
+    </div>
+  )
+}
+
+function CodeBlock({ title, text }: { title?: string; text: string }) {
+  return (
+    <div className="grid min-w-0 gap-0.5">
+      <div className="flex items-center text-xs text-muted-foreground">
+        {title}
+        <button className="ml-auto inline-flex items-center gap-0.5 hover:text-foreground" title="Copy"
+          onClick={() => navigator.clipboard.writeText(text).then(() => toast.success('Đã copy'))}>
+          <Copy className="size-3" />
+        </button>
+      </div>
+      <pre className="max-h-80 overflow-auto rounded-md bg-zinc-950 p-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-words text-zinc-200">
+        {text}
+      </pre>
+    </div>
+  )
+}
+
 function RerunPopover({ task, drivers, pending, onRun }: {
   task: Task
   drivers: DriverInfo[]
@@ -559,8 +755,9 @@ function RerunPopover({ task, drivers, pending, onRun }: {
   const [driverName, setDriverName] = useState(task.driver)
   const [params, setParams] = useState<Params>(task.params)
   const [cascade, setCascade] = useState(true)
+  const [fresh, setFresh] = useState(false)
   const driver = drivers.find((d) => d.name === driverName)
-  const reset = () => { setDriverName(task.driver); setParams(task.params) }
+  const reset = () => { setDriverName(task.driver); setParams(task.params); setFresh(false) }
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) reset() }}>
       <PopoverTrigger asChild>
@@ -580,8 +777,9 @@ function RerunPopover({ task, drivers, pending, onRun }: {
           <SwitchField label="Chạy lại các bước sau" hint="Tắt để xem kết quả bước này trước; các bước sau thành 'Cần chạy lại'"
             checked={cascade} onChange={setCascade} />
         )}
+        <SwitchField label="Bỏ qua cache" hint={FRESH_HINT} checked={fresh} onChange={setFresh} />
         <Button disabled={pending || !!driver?.available} onClick={() => {
-          onRun({ mode: cascade ? 'cascade' : 'only', params, driver: driverName !== task.driver ? driverName : undefined })
+          onRun({ mode: cascade ? 'cascade' : 'only', params, driver: driverName !== task.driver ? driverName : undefined, fresh })
           setOpen(false)
         }}>
           {pending ? <Loader2 className="animate-spin" /> : <Play />} Chạy

@@ -1,7 +1,11 @@
 # A video from a URL (YouTube and the ~1800 sites yt-dlp knows), downloaded into the attempt.
+import json
+
 from pydantic import BaseModel, Field
 
 from dich.drivers import Driver, UserError, module_missing, register
+
+META_DESCRIPTION = 3000   # characters of the description kept
 
 
 class Params(BaseModel):
@@ -16,7 +20,8 @@ class UrlSource(Driver):
     title = "Tải từ URL (yt-dlp)"
     Params = Params
     resources = {"net"}
-    produces = {"video": "media.video", "audio": "audio.original"}
+    produces = {"video": "media.video", "audio": "audio.original", "meta": "media.meta"}
+    version = "2"   # writes the page's metadata (title, description, chapters…) for the brief
 
     @classmethod
     def available(cls):
@@ -52,4 +57,18 @@ class UrlSource(Driver):
         ctx.log.info(f"Đã tải: {info.get('title')}")
         if info.get("title"):
             ctx.set_job_title(info["title"])
-        return {"video": path, "audio": path}
+        return {"video": path, "audio": path, "meta": write_meta(info, ctx.output("meta.json"))}
+
+
+def write_meta(info, path):
+    """What the page says about the video, free context for the brief: no request beyond the download."""
+    meta = {
+        "title": info.get("title"),
+        "channel": info.get("channel") or info.get("uploader"),
+        "description": (info.get("description") or "")[:META_DESCRIPTION],
+        "chapters": [c.get("title") for c in info.get("chapters") or [] if c.get("title")],
+        "tags": (info.get("tags") or [])[:30],
+        "categories": info.get("categories") or [],
+    }
+    path.write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+    return path

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { FolderOpen, Inbox, Layers, ListOrdered, Plus, Trash2 } from 'lucide-react'
+import { FolderOpen, Inbox, Layers, ListOrdered, Mic, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { deleteProject, saveProject, type Config, type DriverInfo, type Project, type TemplateInfo } from '@/api'
 import { FileBrowser } from '@/components/FileBrowser'
@@ -18,6 +18,8 @@ export const ALL = 'all'
 export const NONE = 'none'
 /** Not a project: the workers' queue */
 export const QUEUE = 'queue'
+/** Not a project: the voice library */
+export const VOICES = 'voices'
 
 export const Dot = ({ color }: { color: string }) =>
   <span className="inline-block size-2 shrink-0 rounded-full" style={{ background: color }} />
@@ -52,6 +54,7 @@ export function ProjectSidebar({ projects, counts, selected, onSelect, onCreate 
       {item(ALL, 'Tất cả', <Layers className="size-4 shrink-0 text-muted-foreground" />)}
       {item(NONE, 'Chưa phân loại', <Inbox className="size-4 shrink-0 text-muted-foreground" />)}
       {item(QUEUE, 'Hàng đợi', <ListOrdered className="size-4 shrink-0 text-muted-foreground" />)}
+      {item(VOICES, 'Giọng đọc', <Mic className="size-4 shrink-0 text-muted-foreground" />)}
       <div className="mx-2 my-1 hidden h-px bg-border lg:block" />
       {projects.map((p) => item(p.id, p.name, <Dot color={p.color ?? COLORS[0]} />))}
       {naming ? (
@@ -131,7 +134,8 @@ export function ProjectSettings({ project, open, onOpenChange, onDeleted, ...env
               ))}
             </div>
           </Field>
-          <JobConfig {...env} value={projectConfig(draft)} onChange={(c) => update(projectFields(c))} />
+          <JobConfig {...env} project value={projectConfig(draft)} onChange={(c) => update(projectFields(c))}
+            context={{ project_id: project.id }} />
           <Field label="Lưu kết quả vào" hint="Để trống: cạnh file gốc">
             <div className="flex gap-2">
               <Input value={draft.export_dir ?? ''} placeholder="Cạnh file gốc" className="font-mono text-xs"

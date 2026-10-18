@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Inbox, Languages, Layers, ListOrdered, Loader2, Settings } from 'lucide-react'
+import { Inbox, Languages, Layers, ListOrdered, Loader2, Mic, Settings } from 'lucide-react'
 import { toast } from 'sonner'
 import { createProject, type Project } from '@/api'
 import { configText, projectConfig, projectFields, type RunConfig } from '@/components/JobConfig'
@@ -8,7 +8,8 @@ import { JobDetail } from '@/components/JobDetail'
 import { BulkBar } from '@/components/BulkBar'
 import { JobList } from '@/components/JobList'
 import { NewJob } from '@/components/NewJob'
-import { ALL, COLORS, Dot, NONE, ProjectSettings, ProjectSidebar, QUEUE } from '@/components/Projects'
+import { ALL, COLORS, Dot, NONE, ProjectSettings, ProjectSidebar, QUEUE, VOICES } from '@/components/Projects'
+import { useVoiceLibrary, VoiceLibrary } from '@/components/Voices'
 import { QueueView } from '@/components/QueueView'
 import { Button } from '@/components/ui/button'
 import {
@@ -44,6 +45,7 @@ export default function App() {
   const templates = useTemplates()
   const jobs = useJobs()
   const projects = useProjects()
+  const voices = useVoiceLibrary()
   const [{ project: selected, job }, go] = useUrlState()
   const [settings, setSettings] = useState(false)
   const [checked, setChecked] = useState<Set<string>>(new Set())
@@ -83,10 +85,11 @@ export default function App() {
 
   const all = jobs.data ?? []
   const project = projects.data.find((p) => p.id === selected)
-  const view = project ? project.id : selected === NONE || selected === QUEUE ? selected : ALL
+  const view = project ? project.id : [NONE, QUEUE, VOICES].includes(selected) ? selected : ALL
   const shown = all.filter((j) => view === ALL || (view === NONE ? !j.project_id : j.project_id === view))
   const counts: Record<string, number> = { [ALL]: all.length }
   for (const j of all) counts[j.project_id ?? NONE] = (counts[j.project_id ?? NONE] ?? 0) + 1
+  counts[VOICES] = voices.data?.length ?? 0
   counts[QUEUE] = all.reduce((n, j) => n + j.tasks.filter((t) => t.status === 'running' || t.status === 'queued').length, 0)
 
   const create = async (name: string) => {
@@ -117,7 +120,7 @@ export default function App() {
 
   const done = shown.filter((j) => j.status === 'done').length
   const active = shown.filter((j) => isActive(j.status)).length
-  const title = project ? project.name : view === NONE ? 'Chưa phân loại' : view === QUEUE ? 'Hàng đợi' : 'Tất cả'
+  const title = project ? project.name : view === NONE ? 'Chưa phân loại' : view === QUEUE ? 'Hàng đợi' : view === VOICES ? 'Giọng đọc' : 'Tất cả'
 
   return (
     <div className="min-h-svh bg-background">
@@ -144,10 +147,10 @@ export default function App() {
             <div className="min-w-0">
               <h2 className="flex items-center gap-2 text-lg font-semibold">
                 {project ? <Dot color={project.color ?? COLORS[0]} /> : view === NONE ? <Inbox className="size-4" />
-                  : view === QUEUE ? <ListOrdered className="size-4" /> : <Layers className="size-4" />}
+                  : view === QUEUE ? <ListOrdered className="size-4" /> : view === VOICES ? <Mic className="size-4" /> : <Layers className="size-4" />}
                 <span className="truncate">{title}</span>
               </h2>
-              {view !== QUEUE && <p className="text-sm text-muted-foreground tabular-nums">
+              {view !== QUEUE && view !== VOICES && <p className="text-sm text-muted-foreground tabular-nums">
                 {shown.length} việc · {done} xong · {active} đang chạy
                 {project && ` · ${configText(projectConfig(project), env)}`}
               </p>}
@@ -158,7 +161,7 @@ export default function App() {
               </Button>
             )}
           </div>
-          {view === QUEUE ? <QueueView onOpen={select} /> : <div className="grid gap-6">
+          {view === QUEUE ? <QueueView onOpen={select} /> : view === VOICES ? <VoiceLibrary projects={projects.data} /> : <div className="grid gap-6">
             <div>
               <NewJob {...env} project={project} onCreated={(ids) => ids.length === 1 && select(ids[0])} />
               {view === ALL && projects.data.length > 0 && (

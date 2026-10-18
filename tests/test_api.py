@@ -180,6 +180,8 @@ def test_system_error_has_trace(app):
     [attempt] = client.get(f"/api/tasks/{asr['id']}/attempts").json()
     events = client.get(f"/api/attempts/{attempt['id']}/events").json()
     assert events[-1]["message"] == asr["message"]
+    assert client.get(f"/api/attempts/{attempt['id']}/requests").json() == []
+    assert client.get("/api/attempts/nope/requests").status_code == 404
 
 
 def test_upload_and_url_job(app):
@@ -254,6 +256,12 @@ def test_projects(app):
 
     assert client.patch(f"/api/jobs/{job_id}", json={"project_id": "prj_nope"}).status_code == 404
     assert client.patch(f"/api/jobs/{job_id}", json={"project_id": None}).json()["project_id"] is None
+    assert client.patch(f"/api/jobs/{job_id}", json={"project_id": project["id"]}).json()["project_id"] == project["id"]
+    renamed = client.patch(f"/api/jobs/{job_id}", json={"title": "  Bài giảng 3 "}).json()
+    assert renamed["title"] == "Bài giảng 3" and renamed["project_id"] == project["id"]
+    assert client.patch(f"/api/jobs/{job_id}", json={"project_id": None}).json()["title"] == "Bài giảng 3"
+    assert client.patch(f"/api/jobs/{job_id}", json={"title": "  "}).status_code == 400
+    assert client.patch(f"/api/jobs/{job_id}", json={"title": "x" * 201}).status_code == 422
     assert client.patch(f"/api/jobs/{job_id}", json={"project_id": project["id"]}).json()["project_id"] == project["id"]
 
     assert client.delete(f"/api/projects/{project['id']}").status_code == 204
@@ -339,3 +347,67 @@ def test_live_dub_chunks(app):
     assert chunk.status_code == 200 and chunk.content[:4] == b"RIFF"
     assert client.get(f"/api/tasks/{dub['id']}/live/1").status_code == 404
     assert client.get(f"/api/tasks/{dub['id']}/live/0", params={"attempt": "att_nope"}).status_code == 404
+
+
+def test_edit_brief_makes_the_translation_stale(app, monkeypatch):
+    import fake_drivers
+    client, ctx = app
+    monkeypatch.setattr(fake_drivers.FakeTranslate, "consumes", {"transcript": "transcript.src", "brief": "brief?"})
+    [job_id] = create(client, ctx, langs=["vi"],
+                      overrides={**FAKE, "brief": {"params": {"summary": "Video về nấu ăn"}}})
+    run_job(ctx.store, job_id)
+    brief = client.get(f"/api/jobs/{job_id}/brief").json()
+    assert "Video về nấu ăn" in brief["text"] and not brief["edited"]
+    saved = client.put(f"/api/jobs/{job_id}/brief", json={"text": "Video về làm bánh"}).json()
+    assert saved["edited"] and saved["text"] == "Video về làm bánh\n"
+    tasks = {t["key"]: t for t in client.get(f"/api/jobs/{job_id}").json()["tasks"]}
+    assert tasks["translate@vi"]["status"] == "stale"
+    assert client.get(f"/api/jobs/{job_id}/brief").json()["edited"]
+
+
+def test_voice_library(app):
+    import numpy as np
+    import soundfile as sf
+    client, ctx = app
+    rate = 16000
+    t = np.arange(rate * 20) / rate
+    audio = np.where((t > 5) & (t < 11), 0.3 * np.sin(2 * np.pi * 440 * t), 0.0).astype(np.float32)
+    sf.write(ctx.root / "talk.wav", audio, rate)
+
+    analysis = client.post("/api/voices/analyze", json={"path": str(ctx.root / "talk.wav")}).json()
+    assert analysis["duration"] == pytest.approx(20, abs=0.1)
+    best = analysis["candidates"][0]
+    assert best["start"] == pytest.approx(5, abs=0.1) and best["end"] == pytest.approx(11, abs=0.1)
+    assert client.get("/api/voices/segment", params={"source": analysis["source"], "start": 5, "end": 9}).status_code == 200
+    assert client.post("/api/voices/analyze", json={}).status_code == 400
+
+    project = client.post("/api/projects", json={"name": "P"}).json()["id"]
+    body = {"name": "Thầy giáo", "project_id": project, "source": analysis["source"], "start": 5, "end": 11}
+    assert client.post("/api/voices", json={**body, "end": 20}).status_code == 400
+    assert client.post("/api/voices", json={**body, "project_id": "nope"}).status_code == 404
+    voice = client.post("/api/voices", json=body).json()
+    assert voice["id"].startswith("voc_") and voice["project_id"] == project and voice["origin"] == "talk.wav"
+    shared = client.post("/api/voices", json={**body, "name": "Chung", "project_id": None}).json()
+    other = client.post("/api/projects", json={"name": "Q"}).json()["id"]
+    assert [v["name"] for v in client.get("/api/voices", params={"project": project}).json()] == ["Thầy giáo", "Chung"]
+    assert [v["name"] for v in client.get("/api/voices", params={"project": other}).json()] == ["Chung"]
+    assert client.get(f"/api/voices/{voice['id']}/audio").status_code == 200
+
+    renamed = client.patch(f"/api/voices/{voice['id']}", json={"name": "Cô giáo", "project_id": None}).json()
+    assert renamed["name"] == "Cô giáo" and renamed["project_id"] is None
+
+    options = {"stages": {"dub": {"params": {"vieneu": {"ref_audio": shared["path"]}}}}}
+    client.put(f"/api/projects/{project}", json={"name": "P", "options": options})
+    assert client.delete(f"/api/voices/{shared['id']}").status_code == 409
+    assert client.delete(f"/api/voices/{voice['id']}").status_code == 204
+    assert client.get(f"/api/voices/{voice['id']}/audio").status_code == 404
+    assert not (ctx.voices / f"{voice['id']}.wav").exists()
+
+
+def test_voice_library_survives_its_project(app):
+    client, ctx = app
+    project = client.post("/api/projects", json={"name": "P"}).json()["id"]
+    path = ctx.voices / "x.wav"
+    ctx.store.create_voice("voc_x", "X", path, project)
+    client.delete(f"/api/projects/{project}")
+    assert ctx.store.voice("voc_x")["project_id"] is None

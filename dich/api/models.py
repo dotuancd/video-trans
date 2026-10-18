@@ -64,7 +64,8 @@ class JobIds(BaseModel):
 
 
 class JobPatch(BaseModel):
-    project_id: str | None = Field(description="Move the job into this project; null: no project")
+    title: str | None = Field(None, max_length=200, description="Rename the job (a URL job then keeps this name)")
+    project_id: str | None = Field(None, description="Move the job into this project; null: no project")
 
 
 class JobsMove(JobIds):
@@ -142,6 +143,8 @@ class Rerun(BaseModel):
     params: dict[str, Any] | None = None
     driver: str | None = None
     confirm: bool = Field(False, description="Replace edits made by hand")
+    fresh: bool = Field(False, description="Compute the step from scratch: no cached result, no resume, "
+                                           "no driver cache (TTS sentences)")
 
 
 class JobsDone(BaseModel):
@@ -162,6 +165,8 @@ class JobsRerun(JobIds):
                                                              "(unless the driver changes)")
     driver: str | None = None
     confirm: bool = Field(False, description="Replace edits made by hand")
+    fresh: bool = Field(False, description="Compute the step from scratch: no cached result, no resume, "
+                                           "no driver cache (TTS sentences)")
 
 
 class Attempt(BaseModel):
@@ -191,6 +196,23 @@ class Event(BaseModel):
     data: Any | None
 
 
+class LLMRequest(BaseModel):
+    """One request a translation sent to the LLM and its reply (a line of the attempt's requests.jsonl)."""
+    ts: float
+    engine: str
+    model: str | None = None
+    kind: Literal["translate", "fit"]
+    batch_id: str | None = None
+    system: str
+    payload: Any
+    reply: str | None = None
+    ok: bool
+    cues: int
+    usage: dict[str, float | None] | None = None
+    seconds: float | None = None
+    error: str | None = None
+
+
 class DriverInfo(BaseModel):
     stage: str
     name: str
@@ -200,6 +222,7 @@ class DriverInfo(BaseModel):
     langs: list[str] | None
     per_lang: bool
     lane: str
+    reads: list[str] = Field(default_factory=list, description="Slot patterns it reads (\"a|b\": either)")
 
 
 class TemplateInfo(BaseModel):
@@ -316,6 +339,16 @@ class TranscriptSaved(BaseModel):
     source_text_changed: bool
 
 
+class BriefView(BaseModel):
+    task_id: str
+    text: str
+    edited: bool = Field(description="Saved by hand")
+
+
+class BriefSave(BaseModel):
+    text: str
+
+
 class Entry(BaseModel):
     name: str
     path: str
@@ -344,9 +377,58 @@ class Voice(BaseModel):
     name: str
 
 
+class LibraryVoice(BaseModel):
+    """A named clip to clone a dub voice from: shared (project_id null) or a project's own."""
+    id: str
+    name: str
+    project_id: str | None
+    path: str = Field(description="The clip; pass it as the dub step's ref_audio")
+    origin: str | None = Field(None, description="The file it was cut from")
+    start: float | None = None
+    end: float | None = None
+    created_at: float
+
+
+class VoiceAnalyze(BaseModel):
+    path: str | None = Field(None, description="An audio or video file (e.g. from PUT /uploads)")
+    job_id: str | None = Field(None, description="Or a job: its speech track or video, windows from its subtitles")
+    lang: str = "vi"
+
+
+class VoiceCandidate(BaseModel):
+    start: float
+    end: float
+    score: float = Field(description="0–1: voiced share, steadiness, length, speech band")
+    speech: float = Field(description="Share of the energy in the speech band, 0–1")
+    clip: str = Field(description="The window cut out: play it, or preview the voice cloned from it")
+
+
+class VoiceAnalysis(BaseModel):
+    source: str
+    duration: float
+    candidates: list[VoiceCandidate]
+
+
+class VoiceCreate(BaseModel):
+    name: str
+    project_id: str | None = None
+    source: str
+    start: float
+    end: float
+
+
+class VoicePatch(BaseModel):
+    name: str
+    project_id: str | None = None
+
+
 class Preview(BaseModel):
     voice: str = "source"
     ref_audio: str | None = None
+    voice_id: str | None = Field(None, description="A library voice (instead of ref_audio)")
+    source: str | None = Field(None, description="Or clone from start–end of this recording (a window being chosen)")
+    start: float | None = None
+    end: float | None = None
     int8: bool = False
     text: str | None = None
     job_id: str | None = Field(None, description="Clone from / read this job's video and subtitles")

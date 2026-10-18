@@ -1,6 +1,6 @@
 # Artifacts: the files a task produced. Each attempt writes into its own folder
 #   <data>/jobs/<job id>/<task key>/<attempt n>/outputs/
-# next to its events.jsonl and system.log. A task is skipped when an earlier attempt (of any job) had the
+# next to its events.jsonl and system.log (and requests.jsonl for an LLM translation). A task is skipped when an earlier attempt (of any job) had the
 # same fingerprint: its outputs are hard-linked into the new attempt instead of computed again.
 import hashlib
 import os

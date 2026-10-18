@@ -38,6 +38,10 @@ CLAUDE_MODEL = env("DICH_CLAUDE_MODEL", "sonnet")     # sonnet | haiku | opus
 
 # dubbing
 VOICE = env("DICH_VOICE", "Phạm Tuyên")
+TTS_THREADS = int(env("DICH_TTS_THREADS", "0"))   # 0 = performance cores (Apple Silicon), else the engine default
+# Vietnamese syllables per second the voice reads at speed 1.0: the LLM translation fits each sentence to
+# its time. Measured on VieNeu Turbo: median 4.09 over 7,198 dubbed sentences (p10 2.7, p90 5.4).
+SPEECH_RATE = float(env("DICH_SPEECH_RATE", "4.0"))
 
 # web UI
 UI_ROOT = env_path("DICH_UI_ROOT", "~")

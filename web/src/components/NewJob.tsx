@@ -65,7 +65,8 @@ export function NewJob({ config, templates, drivers, project, onCreated }: {
 
   const path = form.path.trim()
   const context: PreviewContext | undefined =
-    form.from === 'server' && MEDIA.test(path) ? { path, lang: run.langs[0] ?? 'vi' } : undefined
+    form.from === 'server' && MEDIA.test(path) ? { path, lang: run.langs[0] ?? 'vi', project_id: project?.id }
+      : project ? { project_id: project.id } : undefined
 
   const create = useMutation({
     mutationFn: async (keep: boolean) => {

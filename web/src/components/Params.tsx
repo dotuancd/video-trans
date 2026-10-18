@@ -1,28 +1,32 @@
-import { useRef, useState, type ReactNode } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
-import { Loader2, Play, Upload, X } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Loader2, Play, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { listVoices, uploadVoice, type DriverInfo } from '@/api'
+import { listPresetVoices, type DriverInfo, type Job, type LibraryVoice } from '@/api'
+import { useVoiceLibrary, VoiceCreator } from '@/components/Voices'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { errorMessage, fileName, type Params } from '@/lib/api'
+import { errorMessage, fileName, useProjects, type Params } from '@/lib/api'
 
 /** voice value: clone the speaker of the video (the dub driver's default) */
 const SOURCE_VOICE = 'source'
+/** select value prefix of a library voice */
+const LIBRARY = 'lib:'
 
 /** What the voice preview clones from and reads: a job (its video and subtitles of `lang`), or a video
  * on the server (with <name>.srt / <name>.vi.srt next to it). */
-export type PreviewContext = { job_id?: string; lang?: string; path?: string }
+export type PreviewContext = { job_id?: string; lang?: string; path?: string; project_id?: string | null }
 
 type Prop = {
   type?: string
   title?: string
   description?: string
+  format?: string
   default?: unknown
   enum?: string[]
   anyOf?: Prop[]
@@ -102,6 +106,13 @@ function PropField({ name, prop, value, onChange }: {
   if (base.type === 'object') {
     return <MapField label={label} hint={hint} value={(current as Record<string, string>) ?? {}} onChange={onChange} />
   }
+  if (prop.format === 'textarea') {
+    return (
+      <Field label={label} hint={hint}>
+        <Textarea rows={4} value={(current as string) ?? ''} onChange={(e) => onChange(e.target.value)} />
+      </Field>
+    )
+  }
   return (
     <Field label={label} hint={hint}>
       <Input value={(current as string) ?? ''} onChange={(e) => onChange(e.target.value === '' && nullable ? null : e.target.value)} />
@@ -133,31 +144,41 @@ export function VoicePicker({ value, onChange, context }: {
   onChange: (v: Params) => void
   context?: PreviewContext
 }) {
-  const voices = useQuery({
-    queryKey: ['voices'],
-    queryFn: async () => (await listVoices()).data,
+  const queryClient = useQueryClient()
+  const presets = useQuery({
+    queryKey: ['voices', 'presets'],
+    queryFn: async () => (await listPresetVoices()).data,
     staleTime: Infinity,
     retry: false,
   })
-  const fileInput = useRef<HTMLInputElement>(null)
+  const library = useVoiceLibrary()
+  const projects = useProjects()
+  const [creating, setCreating] = useState(false)
   const [heard, setHeard] = useState<{ url: string; text: string }>()
+  const { project_id: contextProject, ...previewContext } = context ?? {}
+  // the project whose voices come first: given, or the job's
+  const projectId = contextProject ?? queryClient.getQueryData<Job[]>(['jobs'])?.find((j) => j.id === context?.job_id)?.project_id
   const refAudio = (value.ref_audio as string | null | undefined) ?? null
   const voice = (value.voice as string | undefined) ?? SOURCE_VOICE
+  const own = library.data?.find((v) => v.path === refAudio)
   const fromSource = !refAudio && voice === SOURCE_VOICE
-  const canPreview = fromSource ? !!(context?.job_id || context?.path) : true
+  const canPreview = fromSource ? !!(previewContext.job_id || previewContext.path) : true
+  const mine = (library.data ?? []).filter((v) => projectId && v.project_id === projectId)
+  const shared = (library.data ?? []).filter((v) => !v.project_id)
+  const others = (library.data ?? []).filter((v) => v.project_id && v.project_id !== projectId)
+  const projectName = (id: string) => projects.data?.find((p) => p.id === id)?.name
 
-  const upload = useMutation({
-    mutationFn: async (file: File) => (await uploadVoice({ body: { file } })).data,
-    onSuccess: (data) => onChange({ ...value, ref_audio: data.path }),
-    onError: (error) => toast.error(errorMessage(error)),
-  })
+  const pick = (selected: string) => {
+    const voice = library.data?.find((v) => `${LIBRARY}${v.id}` === selected)
+    onChange(voice ? { ...value, voice: SOURCE_VOICE, ref_audio: voice.path } : { ...value, voice: selected, ref_audio: null })
+  }
   const preview = useMutation({
     mutationFn: async () => {
       const response = await fetch('/api/voices/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // no text: the server reads a sentence of the subtitles (the moment the voice was cloned from)
-        body: JSON.stringify({ voice, ref_audio: refAudio, int8: !!value.int8, ...context }),
+        body: JSON.stringify({ voice, ref_audio: refAudio, int8: !!value.int8, ...previewContext }),
       })
       if (!response.ok) throw await response.json().catch(() => new Error(response.statusText))
       const text = decodeURIComponent(response.headers.get('X-Preview-Text') ?? '')
@@ -170,12 +191,15 @@ export function VoicePicker({ value, onChange, context }: {
     onError: (error) => toast.error(errorMessage(error)),
   })
 
-  const placeholder = voices.isLoading ? 'Đang tải giọng…' : voices.isError ? errorMessage(voices.error) : 'Giọng mặc định'
+  const placeholder = presets.isLoading ? 'Đang tải giọng…' : presets.isError ? errorMessage(presets.error) : 'Giọng mặc định'
+  const item = (v: LibraryVoice, suffix?: string) => (
+    <SelectItem key={v.id} value={`${LIBRARY}${v.id}`}>{v.name}{suffix ? ` · ${suffix}` : ''}</SelectItem>
+  )
   return (
     <div className="grid gap-2">
       <Label>Giọng đọc</Label>
       <div className="flex gap-2">
-        {refAudio ? (
+        {refAudio && !own ? (
           <div className="flex h-9 w-0 min-w-0 flex-1 items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm">
             <span className="truncate">Clone: {fileName(refAudio)}</span>
             <button type="button" className="ml-auto text-muted-foreground hover:text-foreground"
@@ -184,35 +208,39 @@ export function VoicePicker({ value, onChange, context }: {
             </button>
           </div>
         ) : (
-          <Select value={voice} onValueChange={(v) => onChange({ ...value, voice: v })}>
+          <Select value={own ? `${LIBRARY}${own.id}` : voice} onValueChange={pick}>
             <SelectTrigger className="w-0 min-w-0 flex-1 overflow-hidden *:data-[slot=select-value]:block *:data-[slot=select-value]:truncate">
               <SelectValue placeholder={placeholder} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={SOURCE_VOICE}>Giọng gốc (clone từ video)</SelectItem>
-              {voices.data?.map((v) => <SelectItem key={v.name} value={v.name}>{v.label}</SelectItem>)}
+              <SelectItem value={SOURCE_VOICE}>Giọng gốc (tự clone từ video)</SelectItem>
+              {mine.length > 0 && <SelectGroup><SelectLabel>Của project</SelectLabel>{mine.map((v) => item(v))}</SelectGroup>}
+              {shared.length > 0 && <SelectGroup><SelectLabel>Dùng chung</SelectLabel>{shared.map((v) => item(v))}</SelectGroup>}
+              {others.length > 0 && (
+                <SelectGroup><SelectLabel>Project khác</SelectLabel>{others.map((v) => item(v, projectName(v.project_id!)))}</SelectGroup>
+              )}
+              {!!presets.data?.length && (
+                <SelectGroup>
+                  <SelectLabel>Giọng mẫu</SelectLabel>
+                  {presets.data.map((v) => <SelectItem key={v.name} value={v.name}>{v.label}</SelectItem>)}
+                </SelectGroup>
+              )}
             </SelectContent>
           </Select>
         )}
-        <Button type="button" variant="outline" size="icon" title="Clone giọng từ clip 3–8 giây"
-          onClick={() => fileInput.current?.click()} disabled={upload.isPending}>
-          {upload.isPending ? <Loader2 className="animate-spin" /> : <Upload />}
+        <Button type="button" variant="outline" size="icon" title="Tạo giọng từ file có người nói"
+          onClick={() => setCreating(true)}>
+          <Plus />
         </Button>
         <Button type="button" variant="outline" size="icon" onClick={() => preview.mutate()}
           title={canPreview ? 'Nghe thử một câu của phụ đề' : 'Chọn một video trên máy để nghe thử giọng gốc'}
           disabled={preview.isPending || !canPreview}>
           {preview.isPending ? <Loader2 className="animate-spin" /> : <Play />}
         </Button>
-        <input ref={fileInput} type="file" accept="audio/*" hidden
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            if (file) upload.mutate(file)
-            e.target.value = ''
-          }} />
       </div>
       {fromSource && (
         <p className="text-xs text-muted-foreground">
-          Lấy 3–8 giây người nói trong video làm mẫu. Không có video thì dùng giọng mặc định.
+          Tự chọn 3–8 giây người nói rõ nhất trong video. Giọng chưa ưng: bấm + để tự chọn đoạn và lưu lại dùng tiếp.
         </p>
       )}
       {heard && (
@@ -221,6 +249,9 @@ export function VoicePicker({ value, onChange, context }: {
           {heard.text && <p className="text-xs text-muted-foreground italic">“{heard.text}”</p>}
         </>
       )}
+      {creating && <VoiceCreator open={creating} onOpenChange={setCreating} projects={projects.data ?? []} projectId={projectId}
+        jobId={previewContext.job_id} lang={previewContext.lang}
+        onCreated={(v) => onChange({ ...value, voice: SOURCE_VOICE, ref_audio: v.path })} />}
     </div>
   )
 }

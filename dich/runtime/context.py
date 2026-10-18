@@ -1,4 +1,5 @@
 # What a driver gets besides its inputs: where to write, the pipeline log, progress.
+import json
 import shutil
 import time
 from pathlib import Path
@@ -11,7 +12,7 @@ CHECKPOINT_DIR = "checkpoint"   # in the task folder, shared by its attempts
 
 
 class TaskContext:
-    def __init__(self, store, task, attempt, echo=None):
+    def __init__(self, store, task, attempt, echo=None, fresh=False):
         self.store = store
         self.task = task
         self.attempt = attempt
@@ -24,6 +25,7 @@ class TaskContext:
         self._checkpoint = None
         self._last_progress = 0.0
         self.echo = echo
+        self.fresh = fresh   # drivers skip their own caches too (TTS sentences…)
 
         def emit(level, type_, message, data):
             store.event(task["job_id"], type_, message, data, level, task["id"], attempt["id"])
@@ -62,8 +64,13 @@ class TaskContext:
         if self.echo:
             self.echo(self.task, "progress", f"{done}/{total}")
 
+    def job_info(self):
+        """The job's title and target languages: context for a driver that writes about the whole video."""
+        row = self.store.job_row(self.job_id)
+        return {"title": row["title"], "langs": json.loads(row["langs"])} if row else {"title": None, "langs": []}
+
     def set_job_title(self, title):
-        self.store.set_title(self.job_id, title)
+        self.store.set_auto_title(self.job_id, title)
 
     def cleanup(self):
         if self._tmpdir:

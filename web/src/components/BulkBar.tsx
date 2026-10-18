@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { same } from '@/components/JobConfig'
-import { driversOf, errorMessage, putJob, stageLabel, type Params } from '@/lib/api'
+import { driversOf, errorMessage, FRESH_HINT, putJob, stageLabel, type Params } from '@/lib/api'
 
 /** The list's header: tick every job, and what can be done with the jobs ticked (or with all of them). */
 export function BulkBar({ jobs, checked, onChecked, projects, drivers, view, onOpenProject }: {
@@ -158,6 +158,7 @@ function RerunDialog({ jobs, drivers }: { jobs: Job[]; drivers: DriverInfo[] }) 
   const [driverName, setDriverName] = useState('')
   const [params, setParams] = useState<Params>({})
   const [cascade, setCascade] = useState(true)
+  const [fresh, setFresh] = useState(false)
   /** jobs that would lose edits by hand: asked about before running them */
   const [confirm, setConfirm] = useState<string[]>([])
 
@@ -181,7 +182,7 @@ function RerunDialog({ jobs, drivers }: { jobs: Job[]; drivers: DriverInfo[] }) 
     mutationFn: async ({ ids, confirm }: { ids: string[]; confirm?: boolean }) => (await rerunJobs({
       body: {
         ids, stage, mode: cascade ? 'cascade' : 'only', params: changes,
-        driver: changedDriver ? driverName : undefined, confirm: !!confirm,
+        driver: changedDriver ? driverName : undefined, confirm: !!confirm, fresh,
       },
     })).data,
     onSuccess: (result: JobsDone) => {
@@ -201,7 +202,7 @@ function RerunDialog({ jobs, drivers }: { jobs: Job[]; drivers: DriverInfo[] }) 
   return (
     <>
       <Button size="sm" variant="outline" disabled={!stages.length}
-        onClick={() => { pick(stages.includes('translate') ? 'translate' : stages[0]); setConfirm([]); setOpen(true) }}>
+        onClick={() => { pick(stages.includes('translate') ? 'translate' : stages[0]); setConfirm([]); setFresh(false); setOpen(true) }}>
         <SlidersHorizontal /> Chạy lại…
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
@@ -253,6 +254,7 @@ function RerunDialog({ jobs, drivers }: { jobs: Job[]; drivers: DriverInfo[] }) 
                   <SwitchField label="Chạy lại các bước sau" hint="Tắt để xem kết quả bước này trước; các bước sau thành 'Cần chạy lại'"
                     checked={cascade} onChange={setCascade} />
                 )}
+                <SwitchField label="Bỏ qua cache" hint={FRESH_HINT} checked={fresh} onChange={setFresh} />
               </div>
               <DialogFooter>
                 <span className="mr-auto self-center text-xs text-muted-foreground">

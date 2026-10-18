@@ -173,3 +173,46 @@ def test_dub_live_chunks_survive_rounding_at_the_cursor(tmp_path, monkeypatch):
         on_chunk=lambda start, audio: chunks.append(audio))
     assert len(chunks) > 1
     assert np.array_equal(np.concatenate(chunks), track)
+
+
+def test_tts_threads_setting_wins(monkeypatch):
+    monkeypatch.setattr(vieneu.settings, "TTS_THREADS", 3)
+    assert vieneu.tts_threads() == 3
+
+
+def test_tts_threads_default_off_mac(monkeypatch):
+    monkeypatch.setattr(vieneu.settings, "TTS_THREADS", 0)
+    monkeypatch.setattr(vieneu.sys, "platform", "linux")
+    assert vieneu.tts_threads() == 0
+
+
+def test_trim_edges_cuts_the_voice_models_silence():
+    rate = vieneu.SAMPLE_RATE
+    tone = np.sin(np.arange(rate, dtype=np.float32) / 10)
+    audio = np.concatenate([np.zeros(rate // 5, dtype=np.float32), tone, np.zeros(rate // 5, dtype=np.float32)])
+    trimmed = vieneu.trim_edges(audio)
+    assert len(trimmed) / rate == pytest.approx(1 + 2 * vieneu.TRIM_PAD, abs=vieneu.VAD_HOP)
+    assert np.array_equal(vieneu.trim_edges(np.zeros(rate, dtype=np.float32)), np.zeros(rate, dtype=np.float32))
+
+
+def dub_starts(tmp_path, monkeypatch, spans, **kwargs):
+    """(start seconds of every sentence in the dub, stats): where each run of tone begins."""
+    monkeypatch.setattr(vieneu, "CACHE_DIR", tmp_path / "tts")
+    track, stats = vieneu.Dubber(tts=FakeTTS()).dub(cues(*spans), **kwargs)
+    loud = np.flatnonzero(np.abs(track) > 1e-3)
+    breaks = np.flatnonzero(np.diff(loud) > vieneu.SAMPLE_RATE // 100)
+    return [loud[0] / vieneu.SAMPLE_RATE] + [loud[b + 1] / vieneu.SAMPLE_RATE for b in breaks], stats
+
+
+def test_dub_keeps_a_breath_between_sentences_running_late(tmp_path, monkeypatch):
+    # 1s of speech into a 0.5s slot, then a 0.6s pause in the original: the second sentence still waits
+    # MAX_BREATH after the first instead of following it straight away
+    starts, stats = dub_starts(tmp_path, monkeypatch, [(0, 0.5), (1.1, 2.1)], max_speed=1.0, min_speed=1.0)
+    assert starts[1] == pytest.approx(1.0 + vieneu.MAX_BREATH, abs=0.01)
+    assert stats["no_breath"] == 0
+
+
+def test_dub_on_time_sentences_keep_their_start(tmp_path, monkeypatch):
+    starts, stats = dub_starts(tmp_path, monkeypatch, [(0, 1), (2, 3)], max_speed=1.0, min_speed=1.0)
+    assert starts == pytest.approx([0, 2], abs=0.01) and stats["late"] == 0
+    assert stats["pause_err"] == pytest.approx(0, abs=0.01)
