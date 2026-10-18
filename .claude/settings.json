@@ -1,12 +1,25 @@
 {
-    "disableBundledSkills": true,
-    "disableClaudeAiConnectors": true,
-    "disableWorkflows": true,
-    "disableRemoteControl": true,
-    "disabledMcpjsonServers": [],
-    "prependPlugins": [
-        "figma",
-        "expo",
-        "skill-creator"
+  "disableBundledSkills": true,
+  "disableClaudeAiConnectors": true,
+  "disableRemoteControl": true,
+  "disableWorkflows": true,
+  "disabledMcpjsonServers": [],
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "bd prime --hook-json",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
     ]
+  },
+  "prependPlugins": [
+    "figma",
+    "expo",
+    "skill-creator"
+  ]
 }

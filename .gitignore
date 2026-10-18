@@ -8,3 +8,10 @@ macos-arm64/
 *.mp4
 *.mkv
 .env
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*

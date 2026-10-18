@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "dich_video",
+  "project_id": "74ed9dc9-53f2-4e7d-ba8e-77a62a2f8aa1"
+}
