@@ -8,18 +8,130 @@
   "/api/jobs": {
    "get": {
     "summary": "List Jobs",
+    "description": "The jobs that match, a page at a time: pass next_cursor back as cursor for the next page.",
     "operationId": "list_jobs",
+    "parameters": [
+     {
+      "name": "project",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "A project id, \"none\" (no project), or empty: every job",
+       "title": "Project"
+      },
+      "description": "A project id, \"none\" (no project), or empty: every job"
+     },
+     {
+      "name": "status",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "enum": [
+          "attention",
+          "active",
+          "stopped",
+          "done"
+         ],
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Status"
+      }
+     },
+     {
+      "name": "q",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Part of the title or the source, without marks and case: \"tap 2\" finds \"Tập 2\"",
+       "title": "Q"
+      },
+      "description": "Part of the title or the source, without marks and case: \"tap 2\" finds \"Tập 2\""
+     },
+     {
+      "name": "sort",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "enum": [
+        "created_desc",
+        "created_asc",
+        "title",
+        "updated_desc",
+        "cost_desc"
+       ],
+       "type": "string",
+       "default": "created_desc",
+       "title": "Sort"
+      }
+     },
+     {
+      "name": "cursor",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Cursor"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 200,
+       "minimum": 1,
+       "default": 50,
+       "title": "Limit"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "description": "Successful Response",
       "content": {
        "application/json": {
         "schema": {
-         "items": {
-          "$ref": "#/components/schemas/Job"
-         },
-         "type": "array",
-         "title": "Response List Jobs"
+         "$ref": "#/components/schemas/JobPage"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
         }
        }
       }
@@ -30,14 +142,14 @@
     "summary": "Create Jobs",
     "operationId": "create_jobs",
     "requestBody": {
+     "required": true,
      "content": {
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/JobCreate"
        }
       }
-     },
-     "required": true
+     }
     },
     "responses": {
      "200": {
@@ -46,6 +158,190 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/JobsCreated"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/jobs/counts": {
+   "get": {
+    "summary": "Count Jobs",
+    "description": "Numbers for the header, the sidebar, the queue and the filter chips.",
+    "operationId": "count_jobs",
+    "parameters": [
+     {
+      "name": "project",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "A project id, \"none\" (no project), or empty: every job",
+       "title": "Project"
+      },
+      "description": "A project id, \"none\" (no project), or empty: every job"
+     },
+     {
+      "name": "q",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Part of the title or the source, without marks and case: \"tap 2\" finds \"Tập 2\"",
+       "title": "Q"
+      },
+      "description": "Part of the title or the source, without marks and case: \"tap 2\" finds \"Tập 2\""
+     },
+     {
+      "name": "status",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "enum": [
+          "attention",
+          "active",
+          "stopped",
+          "done"
+         ],
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Only for pausable / resumable",
+       "title": "Status"
+      },
+      "description": "Only for pausable / resumable"
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/JobCounts"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/jobs/ids": {
+   "get": {
+    "summary": "Job Ids",
+    "description": "Every job that matches, newest first: to act on all of them.",
+    "operationId": "job_ids",
+    "parameters": [
+     {
+      "name": "project",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "A project id, \"none\" (no project), or empty: every job",
+       "title": "Project"
+      },
+      "description": "A project id, \"none\" (no project), or empty: every job"
+     },
+     {
+      "name": "status",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "enum": [
+          "attention",
+          "active",
+          "stopped",
+          "done"
+         ],
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Status"
+      }
+     },
+     {
+      "name": "q",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Part of the title or the source, without marks and case: \"tap 2\" finds \"Tập 2\"",
+       "title": "Q"
+      },
+      "description": "Part of the title or the source, without marks and case: \"tap 2\" finds \"Tập 2\""
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         },
+         "title": "Response Job Ids"
         }
        }
       }
@@ -2696,6 +2992,11 @@
       "type": "number",
       "title": "Created At"
      },
+     "updated_at": {
+      "type": "number",
+      "title": "Updated At",
+      "description": "Last change: an attempt started or ended, renamed, moved, edited, run again"
+     },
      "project_id": {
       "anyOf": [
        {
@@ -2751,10 +3052,87 @@
      "export_dir",
      "trace_id",
      "created_at",
+     "updated_at",
      "status",
      "tasks"
     ],
     "title": "Job"
+   },
+   "JobCounts": {
+    "properties": {
+     "total": {
+      "type": "integer",
+      "title": "Total",
+      "description": "Jobs matching project and q"
+     },
+     "status": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "propertyNames": {
+       "enum": [
+        "attention",
+        "active",
+        "stopped",
+        "done"
+       ]
+      },
+      "type": "object",
+      "title": "Status",
+      "description": "Of those, how many in each status group"
+     },
+     "pausable": {
+      "type": "integer",
+      "title": "Pausable",
+      "description": "Jobs matching project, q and status that can be paused"
+     },
+     "resumable": {
+      "type": "integer",
+      "title": "Resumable",
+      "description": "… that can be continued"
+     },
+     "all": {
+      "type": "integer",
+      "title": "All",
+      "description": "Every job"
+     },
+     "active": {
+      "type": "integer",
+      "title": "Active",
+      "description": "Every job running, queued or blocked"
+     },
+     "projects": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "type": "object",
+      "title": "Projects",
+      "description": "Every job by project id; \"none\": no project"
+     },
+     "queue": {
+      "type": "integer",
+      "title": "Queue",
+      "description": "Tasks running or waiting for a worker"
+     },
+     "has_cost": {
+      "type": "boolean",
+      "title": "Has Cost",
+      "description": "Some job paid for an API"
+     }
+    },
+    "type": "object",
+    "required": [
+     "total",
+     "status",
+     "pausable",
+     "resumable",
+     "all",
+     "active",
+     "projects",
+     "queue",
+     "has_cost"
+    ],
+    "title": "JobCounts"
    },
    "JobCreate": {
     "properties": {
@@ -2837,6 +3215,35 @@
      "ids"
     ],
     "title": "JobIds"
+   },
+   "JobPage": {
+    "properties": {
+     "jobs": {
+      "items": {
+       "$ref": "#/components/schemas/Job"
+      },
+      "type": "array",
+      "title": "Jobs"
+     },
+     "next_cursor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Cursor",
+      "description": "Pass as cursor for the next page; null: no more"
+     }
+    },
+    "type": "object",
+    "required": [
+     "jobs",
+     "next_cursor"
+    ],
+    "title": "JobPage"
    },
    "JobPatch": {
     "properties": {

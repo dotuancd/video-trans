@@ -345,6 +345,12 @@ export type Job = {
      */
     created_at: number;
     /**
+     * Updated At
+     *
+     * Last change: an attempt started or ended, renamed, moved, edited, run again
+     */
+    updated_at: number;
+    /**
      * Project Id
      */
     project_id?: string | null;
@@ -362,6 +368,70 @@ export type Job = {
      * USD paid to paid APIs (OpenAI…) over all attempts
      */
     cost_usd?: number | null;
+};
+
+/**
+ * JobCounts
+ */
+export type JobCounts = {
+    /**
+     * Total
+     *
+     * Jobs matching project and q
+     */
+    total: number;
+    /**
+     * Status
+     *
+     * Of those, how many in each status group
+     */
+    status: {
+        [key: string]: number;
+    };
+    /**
+     * Pausable
+     *
+     * Jobs matching project, q and status that can be paused
+     */
+    pausable: number;
+    /**
+     * Resumable
+     *
+     * … that can be continued
+     */
+    resumable: number;
+    /**
+     * All
+     *
+     * Every job
+     */
+    all: number;
+    /**
+     * Active
+     *
+     * Every job running, queued or blocked
+     */
+    active: number;
+    /**
+     * Projects
+     *
+     * Every job by project id; "none": no project
+     */
+    projects: {
+        [key: string]: number;
+    };
+    /**
+     * Queue
+     *
+     * Tasks running or waiting for a worker
+     */
+    queue: number;
+    /**
+     * Has Cost
+     *
+     * Some job paid for an API
+     */
+    has_cost: boolean;
 };
 
 /**
@@ -422,6 +492,22 @@ export type JobIds = {
      * Jobs to act on; unknown ids are ignored
      */
     ids: Array<string>;
+};
+
+/**
+ * JobPage
+ */
+export type JobPage = {
+    /**
+     * Jobs
+     */
+    jobs: Array<Job>;
+    /**
+     * Next Cursor
+     *
+     * Pass as cursor for the next page; null: no more
+     */
+    next_cursor: string | null;
 };
 
 /**
@@ -1603,17 +1689,53 @@ export type WorkerCount = {
 export type ListJobsData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * Project
+         *
+         * A project id, "none" (no project), or empty: every job
+         */
+        project?: string | null;
+        /**
+         * Status
+         */
+        status?: 'attention' | 'active' | 'stopped' | 'done' | null;
+        /**
+         * Q
+         *
+         * Part of the title or the source, without marks and case: "tap 2" finds "Tập 2"
+         */
+        q?: string | null;
+        /**
+         * Sort
+         */
+        sort?: 'created_desc' | 'created_asc' | 'title' | 'updated_desc' | 'cost_desc';
+        /**
+         * Cursor
+         */
+        cursor?: string | null;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
     url: '/api/jobs';
 };
 
+export type ListJobsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListJobsError = ListJobsErrors[keyof ListJobsErrors];
+
 export type ListJobsResponses = {
     /**
-     * Response List Jobs
-     *
      * Successful Response
      */
-    200: Array<Job>;
+    200: JobPage;
 };
 
 export type ListJobsResponse = ListJobsResponses[keyof ListJobsResponses];
@@ -1642,6 +1764,94 @@ export type CreateJobsResponses = {
 };
 
 export type CreateJobsResponse = CreateJobsResponses[keyof CreateJobsResponses];
+
+export type CountJobsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Project
+         *
+         * A project id, "none" (no project), or empty: every job
+         */
+        project?: string | null;
+        /**
+         * Q
+         *
+         * Part of the title or the source, without marks and case: "tap 2" finds "Tập 2"
+         */
+        q?: string | null;
+        /**
+         * Status
+         *
+         * Only for pausable / resumable
+         */
+        status?: 'attention' | 'active' | 'stopped' | 'done' | null;
+    };
+    url: '/api/jobs/counts';
+};
+
+export type CountJobsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CountJobsError = CountJobsErrors[keyof CountJobsErrors];
+
+export type CountJobsResponses = {
+    /**
+     * Successful Response
+     */
+    200: JobCounts;
+};
+
+export type CountJobsResponse = CountJobsResponses[keyof CountJobsResponses];
+
+export type JobIdsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Project
+         *
+         * A project id, "none" (no project), or empty: every job
+         */
+        project?: string | null;
+        /**
+         * Status
+         */
+        status?: 'attention' | 'active' | 'stopped' | 'done' | null;
+        /**
+         * Q
+         *
+         * Part of the title or the source, without marks and case: "tap 2" finds "Tập 2"
+         */
+        q?: string | null;
+    };
+    url: '/api/jobs/ids';
+};
+
+export type JobIdsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type JobIdsError = JobIdsErrors[keyof JobIdsErrors];
+
+export type JobIdsResponses = {
+    /**
+     * Response Job Ids
+     *
+     * Successful Response
+     */
+    200: Array<string>;
+};
+
+export type JobIdsResponse = JobIdsResponses[keyof JobIdsResponses];
 
 export type DeleteJobData = {
     body?: never;

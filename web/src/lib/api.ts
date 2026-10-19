@@ -1,9 +1,8 @@
-import { useEffect, useRef } from 'react'
-import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { client } from '@/api/client.gen'
 import {
-  attemptEvents, attemptRequests, getConfig, listDrivers, listJobs, listProjects, listTemplates,
-  type ArtifactInfo, type DriverInfo, type Event, type Job, type Task, type Uploaded,
+  attemptEvents, attemptRequests, getConfig, listDrivers, listProjects, listTemplates,
+  type ArtifactInfo, type DriverInfo, type Job, type Task, type Uploaded,
 } from '@/api'
 
 client.setConfig({ baseUrl: '', throwOnError: true })
@@ -120,82 +119,7 @@ export function driversOf(drivers: DriverInfo[] | undefined, stage: string) {
   return drivers?.filter((d) => d.stage === stage) ?? []
 }
 
-export function useJobs() {
-  return useQuery({ queryKey: ['jobs'], queryFn: async () => (await listJobs()).data })
-}
-
-export function putJob(queryClient: QueryClient, job: Job) {
-  queryClient.setQueryData<Job[]>(['jobs'], (jobs = []) => {
-    const index = jobs.findIndex((j) => j.id === job.id)
-    if (index < 0) return [job, ...jobs]
-    const next = jobs.slice()
-    next[index] = job
-    return next
-  })
-}
-
-type LiveEvent =
-  | { type: 'job'; job: Job }
-  | { type: 'progress'; job_id: string; task_id: string; done: number; total: number }
-  | { type: 'log'; job_id: string; task_id: string; event: Event }
-  | { type: 'deleted'; id: string }
-  | { type: 'project'; id: string; deleted: boolean }
-  | { type: 'voice'; id: string; deleted: boolean }
-
-/** Keeps the ['jobs'] cache (and open pipeline logs) in sync with the server's event stream;
- * onJobFinished fires when a job stops running. */
-export function useLiveJobs(onJobFinished?: (job: Job) => void) {
-  const queryClient = useQueryClient()
-  const finished = useRef(onJobFinished)
-  useEffect(() => {
-    finished.current = onJobFinished
-  })
-  useEffect(() => {
-    const source = new EventSource('/api/events')
-    // after a reconnect we may have missed events: reload the list and open logs
-    source.onopen = () => {
-      void queryClient.invalidateQueries({ queryKey: ['jobs'] })
-      void queryClient.invalidateQueries({ queryKey: ['projects'] })
-      void queryClient.invalidateQueries({ queryKey: ['voice-library'] })
-      void queryClient.invalidateQueries({ queryKey: ['events'] })
-    }
-    source.onmessage = (message) => {
-      const event = JSON.parse(message.data) as LiveEvent
-      if (event.type === 'job') {
-        const before = queryClient.getQueryData<Job[]>(['jobs'])?.find((j) => j.id === event.job.id)
-        putJob(queryClient, event.job)
-        if (before && isActive(before.status) && !isActive(event.job.status)) finished.current?.(event.job)
-        void queryClient.invalidateQueries({ queryKey: ['transcript', event.job.id] })
-      } else if (event.type === 'progress') {
-        queryClient.setQueryData<Job[]>(['jobs'], (jobs = []) =>
-          jobs.map((job) => job.id !== event.job_id ? job : {
-            ...job,
-            tasks: job.tasks.map((t) => (t.id === event.task_id ? { ...t, done: event.done, total: event.total } : t)),
-          }),
-        )
-      } else if (event.type === 'log') {
-        const attempt = event.event.attempt_id
-        if (attempt) {
-          queryClient.setQueryData<Event[]>(['events', attempt], (events) =>
-            events && !events.some((e) => e.id === event.event.id) ? [...events, event.event] : events)
-        }
-      } else if (event.type === 'deleted') {
-        queryClient.setQueryData<Job[]>(['jobs'], (jobs = []) => jobs.filter((j) => j.id !== event.id))
-      } else if (event.type === 'project') {
-        void queryClient.invalidateQueries({ queryKey: ['projects'] })
-        // its jobs are left without a project
-        if (event.deleted) void queryClient.invalidateQueries({ queryKey: ['jobs'] })
-        // and its voices become shared
-        if (event.deleted) void queryClient.invalidateQueries({ queryKey: ['voice-library'] })
-      } else if (event.type === 'voice') {
-        void queryClient.invalidateQueries({ queryKey: ['voice-library'] })
-      }
-    }
-    return () => source.close()
-  }, [queryClient])
-}
-
-/** The pipeline log of an attempt, kept current by useLiveJobs. */
+/** The pipeline log of an attempt, kept current by useLiveJobs (lib/jobs). */
 export function useAttemptEvents(attemptId: string | null | undefined) {
   return useQuery({
     queryKey: ['events', attemptId],

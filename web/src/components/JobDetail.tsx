@@ -20,9 +20,10 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import {
-  artifactUrl, downloadUrl, driversOf, errorMessage, formatCost, FRESH_HINT, inlineUrl, isActive, needsConfirm, putJob, slotArtifact,
+  artifactUrl, downloadUrl, driversOf, errorMessage, formatCost, FRESH_HINT, inlineUrl, isActive, needsConfirm, slotArtifact,
   STATUS_LABELS, useAttemptEvents, useAttemptRequests, type Params,
 } from '@/lib/api'
+import { dropJobs, putJob } from '@/lib/jobs'
 import { clock, useLiveDub, useLiveIndex } from '@/lib/liveDub'
 
 /** Select value of "no project" */
@@ -100,7 +101,7 @@ function JobBody({ job, drivers, config, projects, onClose }: {
   const remove = useMutation({
     mutationFn: async () => deleteJob({ path: { job_id: job.id } }),
     onSuccess: () => {
-      queryClient.setQueryData<Job[]>(['jobs'], (jobs = []) => jobs.filter((j) => j.id !== job.id))
+      dropJobs(queryClient, [job.id])
       onClose()
     },
     onError,

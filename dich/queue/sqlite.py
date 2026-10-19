@@ -9,6 +9,7 @@
 # with fresh); cleared when that attempt starts, so a retry after a crash goes on from it.
 # A worker claims a queued task atomically and holds a lease it renews; a task whose lease runs out
 # (worker crashed, killed) goes back to queued, at most MAX_RETRIES times.
+import base64
 import json
 import shutil
 import sqlite3
@@ -19,6 +20,7 @@ from pathlib import Path
 
 from dich import settings
 from dich.core.ids import new_id
+from dich.core.text import fold, natural_key
 from dich.logging.trace import new_span_id, new_trace_id
 from dich.queue.base import Busy, NeedsConfirm
 from dich.storage.artifacts import Artifact
@@ -146,6 +148,25 @@ MAX_RETRIES = 2
 LEASE = 30.0
 ACTIVE = ("queued", "running")
 JOB_STATUS_ORDER = ("running", "failed", "waiting_review", "queued", "blocked", "cancelled", "stale")
+# A job's status is not stored: it is the first of JOB_STATUS_ORDER among its tasks' (else done). In SQL, its
+# rank: the index in JOB_STATUS_ORDER, len(JOB_STATUS_ORDER) for done.
+JOB_RANK = ("coalesce((select min(case t.status " + " ".join(f"when '{s}' then {i}" for i, s in enumerate(JOB_STATUS_ORDER))
+            + f" end) from tasks t where t.job_id = j.id), {len(JOB_STATUS_ORDER)})")
+# The groups the job list is filtered by
+STATUS_GROUPS = {"attention": ("failed", "waiting_review", "stale"), "active": ("running", "queued", "blocked"),
+                 "stopped": ("cancelled",), "done": ("done",)}
+GROUP_RANKS = {group: [(JOB_STATUS_ORDER + ("done",)).index(s) for s in statuses]
+               for group, statuses in STATUS_GROUPS.items()}
+BILLED = "type = 'log' and data like '%cost_usd%' and json_extract(data, '$.billed') is not 0"   # events
+JOB_COSTS = f"select job_id, sum(json_extract(data, '$.cost_usd')) as cost from events where {BILLED}"
+# sort → (key, direction); ties are broken by id in the same direction, so the order is total
+JOB_SORTS = {"created_desc": ("j.created_at", "desc"), "created_asc": ("j.created_at", "asc"),
+             "title": ("natural_key(j.title)", "asc"), "updated_desc": ("j.updated_at", "desc"),
+             "cost_desc": ("coalesce(c.cost, -1)", "desc")}
+PAUSABLE = ("exists (select 1 from tasks t where t.job_id = j.id and (t.status in ('queued', 'blocked')"
+            " or (t.status = 'running' and t.cancel_requested = 0)))")
+RESUMABLE = ("exists (select 1 from tasks t where t.job_id = j.id and (t.status = 'cancelled'"
+             " or (t.status = 'running' and t.cancel_requested = 1)))")
 
 
 def loads(value, default=None):
@@ -161,6 +182,8 @@ class Store:
         self._retire_numeric_ids()
         self.db = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None, timeout=30)
         self.db.row_factory = sqlite3.Row
+        self.db.create_function("fold", 1, fold, deterministic=True)
+        self.db.create_function("natural_key", 1, natural_key, deterministic=True)
         self.lock = threading.RLock()
         with self.lock:
             self.db.execute("pragma journal_mode=wal")
@@ -171,6 +194,12 @@ class Store:
                 self.db.execute("alter table jobs add column project_id text references projects(id) on delete set null")
             if not any(c[1] == "fresh" for c in self.db.execute("pragma table_info(tasks)")):
                 self.db.execute("alter table tasks add column fresh integer not null default 0")
+            if not any(c[1] == "updated_at" for c in self.db.execute("pragma table_info(jobs)")):
+                self.db.execute("alter table jobs add column updated_at real")
+                self.db.execute(
+                    "update jobs set updated_at = max(created_at, coalesce((select max(max(a.started_at,"
+                    " coalesce(a.finished_at, 0))) from attempts a join tasks t on a.task_id = t.id"
+                    " where t.job_id = jobs.id), 0))")
 
     def _retire_numeric_ids(self):
         """A database from before job_…/task_… ids (integer ids) is set aside as *.old, with its job folders."""
@@ -254,10 +283,11 @@ class Store:
     def create_job(self, title, source, template, langs, specs, overrides=None, export_dir=None, project_id=None):
         with self.tx():
             job_id = new_id("job")
+            now = time.time()
             self.x("insert into jobs (id, title, source, template, langs, overrides, export_dir, trace_id, created_at,"
-                   " project_id) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", job_id, title, str(source), template,
-                   json.dumps(langs), json.dumps(overrides or {}), str(export_dir) if export_dir else None,
-                   new_trace_id(), time.time(), project_id)
+                   " project_id, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", job_id, title, str(source),
+                   template, json.dumps(langs), json.dumps(overrides or {}), str(export_dir) if export_dir else None,
+                   new_trace_id(), now, project_id, now)
             self._insert_tasks(job_id, specs)
             self.event(job_id, "job", data={"created": True})
             self.advance(job_id)
@@ -283,28 +313,109 @@ class Store:
                 self.x("update tasks set position = ? where job_id = ? and key = ?", positions[spec.key], job_id, spec.key)
             for key, position in positions.items():
                 self.x("update tasks set position = ? where job_id = ? and key = ?", position, job_id, key)
-            self.x("update jobs set langs = ? where id = ?", json.dumps(langs), job_id)
+            self.x("update jobs set langs = ?, updated_at = ? where id = ?", json.dumps(langs), time.time(), job_id)
             self.event(job_id, "job", data={"langs": langs})
             self.advance(job_id)
         return [s.key for s in new]
 
+    def touch(self, job_id):
+        """The job changed (an attempt started or ended, it was renamed, moved, edited, run again)."""
+        self.x("update jobs set updated_at = ? where id = ?", time.time(), job_id)
+
     def set_title(self, job_id, title):
-        self.x("update jobs set title = ? where id = ?", title, job_id)
+        self.x("update jobs set title = ?, updated_at = ? where id = ?", title, time.time(), job_id)
         self.event(job_id, "job", data={"title": title})
 
     def set_auto_title(self, job_id, title):
         """A title found by a driver (the page's title): only while the job is still named after its URL,
         so a title the user gave stays."""
-        if self.x("update jobs set title = ? where id = ? and title = source", title, job_id).rowcount:
+        if self.x("update jobs set title = ?, updated_at = ? where id = ? and title = source", title, time.time(),
+                  job_id).rowcount:
             self.event(job_id, "job", data={"title": title})
 
     def jobs(self):
-        rows = self.q("select * from jobs order by rowid desc")
+        return self._with_tasks(self.q("select * from jobs order by rowid desc"))
+
+    def _with_tasks(self, rows):
+        """Job dicts of job rows, with their tasks and costs."""
+        if not rows:
+            return []
+        ids = [r["id"] for r in rows]
+        marks = ",".join("?" * len(ids))
         tasks = {}
-        for t in self.q("select * from tasks order by job_id, position"):
+        for t in self.q(f"select * from tasks where job_id in ({marks}) order by job_id, position", *ids):
             tasks.setdefault(t["job_id"], []).append(task_dict(t))
-        costs = self.job_costs()
+        costs = {r["job_id"]: r["cost"] for r in self.q(f"{JOB_COSTS} and job_id in ({marks}) group by job_id", *ids)
+                 if r["cost"] is not None}
         return [job_dict(r, tasks.get(r["id"], []), costs.get(r["id"])) for r in rows]
+
+    @staticmethod
+    def _job_filter(project=None, status=None, q=None):
+        """SQL conditions (on jobs j) and their args. project: an id, "none" (no project) or None (any);
+        status: a key of STATUS_GROUPS; q: in the title or the source, without marks and case."""
+        where, args = [], []
+        if project == "none":
+            where.append("j.project_id is null")
+        elif project:
+            where.append("j.project_id = ?")
+            args.append(project)
+        if status:
+            where.append(f"{JOB_RANK} in ({','.join(map(str, GROUP_RANKS[status]))})")
+        needle = fold(" ".join((q or "").split()))
+        if needle:
+            where.append("(instr(fold(j.title), ?) > 0 or instr(fold(j.source), ?) > 0)")
+            args += [needle, needle]
+        return where, args
+
+    def jobs_page(self, project=None, status=None, q=None, sort="created_desc", cursor=None, limit=50):
+        """(jobs, next cursor or None): one page of the jobs that match, in `sort` order. The cursor is the
+        sort key and id of the last job given (keyset), so jobs added meanwhile shift nothing.
+        Raises ValueError for a cursor that is not one this gave for `sort`."""
+        key, direction = JOB_SORTS[sort]
+        where, args = self._job_filter(project, status, q)
+        if cursor:
+            after_key, after_id = decode_cursor(cursor, sort)
+            op = "<" if direction == "desc" else ">"
+            where.append(f"({key} {op} ? or ({key} = ? and j.id {op} ?))")
+            args += [after_key, after_key, after_id]
+        costs = f" left join ({JOB_COSTS} group by job_id) c on c.job_id = j.id" if "c.cost" in key else ""
+        rows = self.q(f"select j.*, {key} as sort_key from jobs j{costs}"
+                      + (f" where {' and '.join(where)}" if where else "")
+                      + f" order by sort_key {direction}, j.id {direction} limit ?", *args, limit + 1)
+        more = len(rows) > limit
+        rows = rows[:limit]
+        next_cursor = encode_cursor(sort, rows[-1]["sort_key"], rows[-1]["id"]) if more else None
+        return self._with_tasks(rows), next_cursor
+
+    def job_ids(self, project=None, status=None, q=None):
+        """Every job that matches, newest first."""
+        where, args = self._job_filter(project, status, q)
+        return [r["id"] for r in self.q("select j.id from jobs j" + (f" where {' and '.join(where)}" if where else "")
+                                        + " order by j.created_at desc, j.id desc", *args)]
+
+    def job_counts(self, project=None, q=None, status=None):
+        """Numbers about the jobs: of those matching project and q, how many there are and in each status
+        group, and (also matching status) how many can be paused or continued; of every job, how many are
+        active and in each project ("none": no project), how many tasks the workers run or wait for, and
+        whether any job paid for an API."""
+        where, args = self._job_filter(project, None, q)
+        cond = f" where {' and '.join(where)}" if where else ""
+        ranks = {r["rank"]: r["n"] for r in self.q(f"select {JOB_RANK} as rank, count(*) as n from jobs j{cond}"
+                                                   " group by rank", *args)}
+        groups = {group: sum(ranks.get(r, 0) for r in found) for group, found in GROUP_RANKS.items()}
+        where, args = self._job_filter(project, status, q)
+        cond = f" where {' and '.join(where)}" if where else ""
+        actions = self.one(f"select coalesce(sum({PAUSABLE}), 0) as pausable, coalesce(sum({RESUMABLE}), 0) as resumable"
+                           f" from jobs j{cond}", *args)
+        projects = {r["project_id"] or "none": r["n"]
+                    for r in self.q("select project_id, count(*) as n from jobs group by project_id")}
+        active = self.one(f"select count(*) as n from jobs j where {JOB_RANK} in"
+                          f" ({','.join(map(str, GROUP_RANKS['active']))})")["n"]
+        return {"total": sum(ranks.values()), "status": groups, "pausable": actions["pausable"],
+                "resumable": actions["resumable"], "all": sum(projects.values()), "active": active,
+                "projects": projects,
+                "queue": self.one("select count(*) as n from tasks where status in ('running', 'queued')")["n"],
+                "has_cost": bool(self.one(f"select 1 from events where {BILLED} and json_extract(data, '$.cost_usd') > 0 limit 1"))}
 
     def job(self, job_id):
         row = self.one("select * from jobs where id = ?", job_id)
@@ -316,10 +427,7 @@ class Store:
     def job_costs(self, job_id=None):
         """job id → USD paid for paid APIs, over every attempt (failed ones and reruns too): the sum of
         the cost_usd that drivers log with their usage summary."""
-        rows = self.q("select job_id, sum(json_extract(data, '$.cost_usd')) as cost from events"
-                      " where type = 'log' and data like '%cost_usd%'"
-                      " and json_extract(data, '$.billed') is not 0"
-                      + (" and job_id = ?" if job_id else "") + " group by job_id", *([job_id] if job_id else []))
+        rows = self.q(JOB_COSTS + (" and job_id = ?" if job_id else "") + " group by job_id", *([job_id] if job_id else []))
         return {r["job_id"]: r["cost"] for r in rows if r["cost"] is not None}
 
     def job_row(self, job_id):
@@ -335,7 +443,7 @@ class Store:
         shutil.rmtree(self.job_dir(job_id), ignore_errors=True)
 
     def set_job_project(self, job_id, project_id):
-        self.x("update jobs set project_id = ? where id = ?", project_id, job_id)
+        self.x("update jobs set project_id = ?, updated_at = ? where id = ?", project_id, time.time(), job_id)
         self.event(job_id, "job", data={"project_id": project_id})
 
     def job_dir(self, job_id):
@@ -494,6 +602,7 @@ class Store:
                 " values (?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?)", attempt_id, task["id"], n, new_span_id(), origin, fingerprint,
                 json.dumps(params if params is not None else task["params"]), pid, str(folder), time.time())
             self.x("update tasks set fresh = 0 where id = ?", task["id"])
+            self.touch(task["job_id"])
         (folder / "outputs").mkdir(parents=True, exist_ok=True)
         return self.attempt(attempt_id)
 
@@ -505,8 +614,11 @@ class Store:
         return [attempt_dict(r) for r in self.q("select * from attempts where task_id = ? order by n desc", task_id)]
 
     def _finish_attempt(self, attempt_id, status, message=None, error=None):
+        now = time.time()
         self.x("update attempts set status = ?, message = ?, error = ?, finished_at = ? where id = ?",
-               status, message, error, time.time(), attempt_id)
+               status, message, error, now, attempt_id)
+        self.x("update jobs set updated_at = ? where id = (select t.job_id from attempts a join tasks t"
+               " on a.task_id = t.id where a.id = ?)", now, attempt_id)
 
     def complete(self, task_id, attempt_id, outputs, message=None, exports=None):
         """outputs: [{"name", "slot", "path", "sha256", "size", "keep", "external"}]."""
@@ -627,6 +739,7 @@ class Store:
             for task in self.tasks_of(job_id):
                 if task["status"] == "stale":
                     self._status(task, "blocked", message=None)
+            self.touch(job_id)
             self.advance(job_id)
 
     def human_conflicts(self, tasks):
@@ -671,6 +784,7 @@ class Store:
                     self._status(other, "blocked", message=None, error=None)
                 elif other["status"] == "done":
                     self._status(other, "stale", message="Đầu vào đã đổi")
+            self.touch(task["job_id"])
             self.advance(task["job_id"])
 
     def save_human(self, task_id, name, path, sha256=None, size=None):
@@ -716,12 +830,13 @@ class Store:
         return [artifact_dict(r) for r in self.q("select * from artifacts where attempt_id = ? and deleted = 0",
                                                  attempt_id)]
 
-    def current_artifacts(self, job_id=None):
-        """task id → artifacts of its current attempt, for every task (of job_id)."""
+    def current_artifacts(self, job_ids=None):
+        """task id → artifacts of its current attempt, for every task (of the jobs job_ids)."""
+        job_ids = list(job_ids) if job_ids is not None else None
         sql = ("select a.* from artifacts a join tasks t on a.attempt_id = t.current_attempt where a.deleted = 0"
-               + (" and t.job_id = ?" if job_id is not None else ""))
+               + (f" and t.job_id in ({','.join('?' * len(job_ids))})" if job_ids is not None else ""))
         found = {}
-        for row in self.q(sql, *([job_id] if job_id is not None else [])):
+        for row in self.q(sql, *(job_ids or [])):
             found.setdefault(row["task_id"], []).append(artifact_dict(row))
         return found
 
@@ -875,8 +990,23 @@ def job_status(tasks):
 def job_dict(row, tasks, cost_usd=None):
     return {"id": row["id"], "title": row["title"], "source": row["source"], "template": row["template"],
             "langs": loads(row["langs"], []), "export_dir": row["export_dir"], "trace_id": row["trace_id"],
-            "created_at": row["created_at"], "project_id": row["project_id"], "status": job_status(tasks),
-            "tasks": tasks, "cost_usd": cost_usd}
+            "created_at": row["created_at"], "updated_at": row["updated_at"], "project_id": row["project_id"],
+            "status": job_status(tasks), "tasks": tasks, "cost_usd": cost_usd}
+
+
+def encode_cursor(sort, key, job_id):
+    return base64.urlsafe_b64encode(json.dumps([sort, key, job_id]).encode()).decode().rstrip("=")
+
+
+def decode_cursor(cursor, sort):
+    """(sort key, job id) of a cursor from encode_cursor for this sort; ValueError otherwise."""
+    try:
+        found, key, job_id = json.loads(base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)))
+    except (ValueError, TypeError) as error:
+        raise ValueError("Cursor không hợp lệ") from error
+    if found != sort or not isinstance(job_id, str) or not isinstance(key, (int, float, str)):
+        raise ValueError("Cursor không hợp lệ")
+    return key, job_id
 
 
 def project_row(fields):

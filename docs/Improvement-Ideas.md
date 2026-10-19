@@ -68,3 +68,6 @@ Sắp xếp theo giá trị với người dùng (cao → thấp). Mục đã l�
 - Báo upstream `needle.Whistle` cắt JSON ở `buffer_size` mà không báo lỗi.
 
 - **Đổi tên job hàng loạt / trong danh sách**: hiện chỉ đổi tên inline trong JobDetail. Nếu hay phải dọn tên yt-dlp dài, cân nhắc thêm "Đổi tên" trong menu dòng hoặc quy tắc tự cắt tên (bỏ `[id]`, hashtag…) khi tải.
+- **Danh sách việc (sau vt-i26):** lọc theo ngôn ngữ/template; sắp theo thời lượng video (cần lưu `duration` khi probe nguồn); endpoint hàng loạt nhận bộ lọc thay cho `ids` khi số việc rất lớn; test frontend (vitest) nếu UI tiếp tục phình.
+- **Chi phí job lưu thành cột** (sau vt-i26): sắp theo chi phí và cờ `has_cost` đang quét bảng `events` (`data like '%cost_usd%'`); bảng events lớn dần (progress, log) sẽ chậm. Cộng dồn `cost_usd` vào `jobs` khi driver log usage.
+- **Bỏ chọn một việc sau "Chọn tất cả N việc khớp bộ lọc"**: số Tạm dừng/Tiếp tục khi đó chỉ đếm việc đã tải (vẫn gửi đủ id). Có thể giữ chế độ "tất cả trừ các id đã bỏ" để đếm chính xác.

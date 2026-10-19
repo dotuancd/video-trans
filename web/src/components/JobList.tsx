@@ -1,10 +1,12 @@
+import { useEffect, useRef } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, Check, Circle, CircleDashed, CirclePause, Loader2, Minus, Pause, Play, RotateCcw, Square } from 'lucide-react'
+import { AlertCircle, Check, Circle, CircleDashed, CirclePause, Loader2, Minus, Pause, Play, RotateCcw, SearchX, Square } from 'lucide-react'
 import { toast } from 'sonner'
 import { pauseJobs, unpauseJobs, type Job, type Task } from '@/api'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { STATUS_LABELS, errorMessage, formatCost, putJob, stageLabel, type Status } from '@/lib/api'
+import { STATUS_LABELS, errorMessage, formatCost, stageLabel, type Status } from '@/lib/api'
+import { putJob } from '@/lib/jobs'
 
 export const STATUS_STYLE: Record<Status, { icon: typeof Check; className: string }> = {
   blocked: { icon: CircleDashed, className: 'text-muted-foreground border-border' },
@@ -36,7 +38,8 @@ export function TaskChip({ task }: { task: Task }) {
   )
 }
 
-export function JobList({ jobs, selected, onSelect, checked, onCheck }: {
+export function JobList({ jobs, selected, onSelect, checked, onCheck, filtered, onClearFilter, more, loadingMore, onMore }: {
+  /** the jobs loaded */
   jobs: Job[]
   selected?: string
   onSelect: (id: string) => void
@@ -44,7 +47,36 @@ export function JobList({ jobs, selected, onSelect, checked, onCheck }: {
   checked: Set<string>
   /** shift: tick every job from the last one ticked */
   onCheck: (id: string, range: boolean) => void
+  /** a status or a search narrows the list */
+  filtered: boolean
+  onClearFilter: () => void
+  /** more jobs to load: loaded when the end of the list comes near, or with the button */
+  more: boolean
+  loadingMore: boolean
+  onMore: () => void
 }) {
+  const end = useRef<HTMLDivElement>(null)
+  const loadMore = useRef(onMore)
+  useEffect(() => {
+    loadMore.current = onMore
+  })
+  useEffect(() => {
+    if (!more || loadingMore || !end.current) return
+    const observer = new IntersectionObserver((entries) => entries[0]?.isIntersecting && loadMore.current(),
+      { rootMargin: '600px' })
+    observer.observe(end.current)
+    return () => observer.disconnect()
+  }, [more, loadingMore, jobs.length])
+
+  if (!jobs.length && filtered) {
+    return (
+      <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-12 text-center text-muted-foreground">
+        <SearchX className="size-8" />
+        <p className="font-medium text-foreground">Không có việc nào khớp</p>
+        <Button size="sm" variant="outline" className="mt-1" onClick={onClearFilter}>Xoá bộ lọc</Button>
+      </div>
+    )
+  }
   if (!jobs.length) {
     return (
       <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-12 text-center text-muted-foreground">
@@ -91,43 +123,57 @@ export function JobList({ jobs, selected, onSelect, checked, onCheck }: {
           </li>
         )
       })}
+      {more && (
+        <div ref={end} className="flex justify-center py-2">
+          <Button size="sm" variant="ghost" disabled={loadingMore} onClick={onMore}>
+            {loadingMore && <Loader2 className="animate-spin" />} Tải thêm
+          </Button>
+        </div>
+      )}
     </ul>
   )
 }
 
-const pausable = (job: Job) =>
+export const pausable = (job: Job) =>
   job.tasks.some((t) => t.status === 'queued' || t.status === 'blocked' || (t.status === 'running' && !t.cancel_requested))
-const paused = (job: Job) =>
+export const paused = (job: Job) =>
   job.tasks.some((t) => t.status === 'cancelled' || (t.status === 'running' && t.cancel_requested))
 
-/** Pause / continue the jobs given (those ticked, or every job shown). Jobs waiting for review and failed
- * steps are left to each job. */
-export function BulkActions({ jobs, className }: { jobs: Job[]; className?: string }) {
+/** Pause / continue jobs (those ticked, or every job matching the filter): toPause / toResume of them can be.
+ * ids: the jobs, or how to get them (fetched when acted on); the server leaves alone those it can't pause or
+ * continue. Jobs waiting for review and failed steps are left to each job. */
+export function BulkActions({ toPause, toResume, ids, className }: {
+  toPause: number
+  toResume: number
+  ids: string[] | (() => Promise<string[]>)
+  className?: string
+}) {
   const queryClient = useQueryClient()
-  const toPause = jobs.filter(pausable).map((j) => j.id)
-  const toResume = jobs.filter(paused).map((j) => j.id)
   const act = useMutation({
-    mutationFn: async (pause: boolean) =>
-      (await (pause ? pauseJobs : unpauseJobs)({ body: { ids: pause ? toPause : toResume } })).data,
+    mutationFn: async (pause: boolean) => {
+      const body = { ids: typeof ids === 'function' ? await ids() : ids }
+      return (await (pause ? pauseJobs : unpauseJobs)({ body })).data
+    },
     onSuccess: (changed, pause) => {
       for (const job of changed) putJob(queryClient, job)
+      void queryClient.invalidateQueries({ queryKey: ['job-counts'] })
       toast.success(`${pause ? 'Đã tạm dừng' : 'Tiếp tục'} ${changed.length} việc`)
     },
     onError: (error) => toast.error(errorMessage(error)),
   })
-  if (!toPause.length && !toResume.length) return null
+  if (!toPause && !toResume) return null
   return (
     <div className={cn('flex gap-2', className)}>
-      {toPause.length > 0 && (
+      {toPause > 0 && (
         <Button size="sm" variant="outline" disabled={act.isPending} onClick={() => act.mutate(true)}
           title="Dừng các việc đang chạy và đang chờ; bước đang chạy dở sẽ chạy lại từ đầu khi tiếp tục">
-          <Pause /> Tạm dừng {toPause.length}
+          <Pause /> Tạm dừng {toPause}
         </Button>
       )}
-      {toResume.length > 0 && (
+      {toResume > 0 && (
         <Button size="sm" variant="outline" disabled={act.isPending} onClick={() => act.mutate(false)}
           title="Chạy tiếp các việc đã dừng; bước chờ duyệt và bước lỗi vẫn để bạn xử lý từng việc">
-          <Play /> Tiếp tục {toResume.length}
+          <Play /> Tiếp tục {toResume}
         </Button>
       )}
     </div>

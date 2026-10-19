@@ -411,3 +411,134 @@ def test_voice_library_survives_its_project(app):
     ctx.store.create_voice("voc_x", "X", path, project)
     client.delete(f"/api/projects/{project}")
     assert ctx.store.voice("voc_x")["project_id"] is None
+
+
+def make_jobs(client, ctx, names, **body):
+    """One job per file name (created under the root), in that order."""
+    ids = []
+    for name in names:
+        (ctx.root / name).write_bytes(b"video")
+        ids += create(client, ctx, sources=[str(ctx.root / name)], **body)
+    return ids
+
+
+def listed(client, **params):
+    """Every job of the list, page by page."""
+    jobs, cursor = [], None
+    while True:
+        page = client.get("/api/jobs", params={**params, **({"cursor": cursor} if cursor else {})})
+        assert page.status_code == 200, page.text
+        jobs += page.json()["jobs"]
+        cursor = page.json()["next_cursor"]
+        if not cursor:
+            return [j["id"] for j in jobs]
+
+
+def test_list_filters_by_status_group_and_counts_match(app):
+    client, ctx = app
+    project = client.post("/api/projects", json={"name": "P"}).json()["id"]
+    done, failed, stopped, queued, stale = make_jobs(client, ctx, ["d.mp4", "f.mp4", "s.mp4", "q.mp4", "st.mp4"])
+    run_job(ctx.store, done)
+    ctx.store.x("update tasks set params = json_set(params, '$.fail', 'user') where job_id = ? and stage = 'asr'", failed)
+    run_job(ctx.store, failed)
+    client.post(f"/api/jobs/{stopped}/cancel")
+    run_job(ctx.store, stale)
+    cues = client.get(f"/api/jobs/{stale}/transcript").json()["cues"]
+    cues[0]["text"] = "sửa"
+    client.put(f"/api/jobs/{stale}/transcript", json={"cues": cues})
+    client.post("/api/jobs/move", json={"ids": [done, failed], "project_id": project})
+    statuses = {j["id"]: j["status"] for j in client.get("/api/jobs").json()["jobs"]}
+    assert statuses == {done: "done", failed: "failed", stopped: "cancelled", queued: "queued", stale: "stale"}
+
+    groups = {"attention": {failed, stale}, "active": {queued}, "stopped": {stopped}, "done": {done}}
+    for group, ids in groups.items():
+        assert set(listed(client, status=group, limit=1)) == ids
+        assert set(client.get("/api/jobs/ids", params={"status": group}).json()) == ids
+    assert set(listed(client, project=project)) == {done, failed}
+    assert set(listed(client, project="none", status="attention")) == {stale}
+    assert client.get("/api/jobs", params={"status": "nope"}).status_code == 422
+
+    counts = client.get("/api/jobs/counts").json()
+    assert counts["status"] == {g: len(ids) for g, ids in groups.items()} and counts["total"] == counts["all"] == 5
+    assert counts["projects"] == {project: 2, "none": 3} and counts["active"] == 1
+    assert counts["queue"] == len([t for t in ctx.store.tasks_of(queued) if t["status"] == "queued"])
+    # the failed job still has steps waiting after the failed one
+    assert counts["pausable"] == 2 and counts["resumable"] == 1 and not counts["has_cost"]
+    mine = client.get("/api/jobs/counts", params={"project": project}).json()
+    assert mine["total"] == 2 and mine["status"] == {"attention": 1, "active": 0, "stopped": 0, "done": 1}
+    assert mine["all"] == 5   # the sidebar's numbers are of every job
+    assert client.get("/api/jobs/counts", params={"status": "stopped"}).json()["pausable"] == 0
+
+
+def test_search_without_marks_on_title_and_source(app):
+    client, ctx = app
+    tap2, tap10, other = make_jobs(client, ctx, ["Tập 2.mp4", "Tập 10.mp4", "Đà Lạt.mp4"])
+    assert set(listed(client, q="tap")) == {tap2, tap10}
+    assert listed(client, q="  TAP   2") == [tap2]
+    assert listed(client, q="da lat") == [other]
+    client.patch(f"/api/jobs/{other}", json={"title": "Phố núi"})
+    assert listed(client, q="đà lạt") == [other]   # by its source, once renamed
+    assert listed(client, q="pho nui") == [other]
+    run_job(ctx.store, tap2)
+    assert listed(client, q="tap", status="done") == [tap2]
+    assert client.get("/api/jobs/counts", params={"q": "tap"}).json()["status"]["done"] == 1
+    assert client.get("/api/jobs/ids", params={"q": "tap"}).json() == [tap10, tap2]
+
+
+def test_sorts_and_their_pages(app):
+    client, ctx = app
+    ids = make_jobs(client, ctx, ["Tập 10.mp4", "anh.mp4", "Tập 2.mp4", "Ánh.mp4", "Bé.mp4"])
+    t10, anh, t2, anh2, be = ids
+    ctx.store.x("insert into events (job_id, ts, level, type, data) values (?, 0, 'info', 'log', ?)", t2,
+                '{"cost_usd": 0.5}')
+    ctx.store.x("insert into events (job_id, ts, level, type, data) values (?, 0, 'info', 'log', ?)", be,
+                '{"cost_usd": 0.1}')
+    assert listed(client) == ids[::-1]
+    assert listed(client, sort="created_asc", limit=2) == ids
+    by_title = listed(client, sort="title", limit=2)
+    assert by_title[-3:] == [be, t2, t10] and set(by_title[:2]) == {anh, anh2}
+    cost = listed(client, sort="cost_desc", limit=2)
+    assert cost[:2] == [t2, be] and set(cost[2:]) == {t10, anh, anh2}
+    assert client.get("/api/jobs/counts").json()["has_cost"]
+    assert client.get("/api/jobs", params={"sort": "nope"}).status_code == 422
+
+
+def test_pages_neither_repeat_nor_miss_when_jobs_are_added(app):
+    client, ctx = app
+    ids = make_jobs(client, ctx, [f"v{i}.mp4" for i in range(5)])
+    first = client.get("/api/jobs", params={"limit": 2}).json()
+    assert [j["id"] for j in first["jobs"]] == ids[:2:-1][:2] and first["next_cursor"]
+    make_jobs(client, ctx, ["new.mp4"])
+    rest = listed(client, cursor=first["next_cursor"], limit=2)
+    assert [j["id"] for j in first["jobs"]] + rest == ids[::-1]
+    assert client.get("/api/jobs", params={"limit": 5}).json()["next_cursor"]
+    assert client.get("/api/jobs", params={"cursor": "garbage"}).status_code == 400
+    other_sort = client.get("/api/jobs", params={"limit": 2, "sort": "title"}).json()["next_cursor"]
+    assert client.get("/api/jobs", params={"cursor": other_sort}).status_code == 400
+    assert client.get("/api/jobs", params={"limit": 1000}).status_code == 422
+
+
+def test_updated_at_follows_changes(app):
+    client, ctx = app
+    [job_id] = create(client, ctx)
+    job = client.get(f"/api/jobs/{job_id}").json()
+    assert job["updated_at"] == job["created_at"]
+
+    def bumped(before):
+        now = client.get(f"/api/jobs/{job_id}").json()["updated_at"]
+        assert now > before
+        return now
+
+    run_job(ctx.store, job_id)
+    stamp = bumped(job["updated_at"])
+    client.patch(f"/api/jobs/{job_id}", json={"title": "Đổi tên"})
+    stamp = bumped(stamp)
+    cues = client.get(f"/api/jobs/{job_id}/transcript").json()["cues"]
+    cues[0]["text"] = "sửa"
+    client.put(f"/api/jobs/{job_id}/transcript", json={"cues": cues})
+    stamp = bumped(stamp)
+    [other] = make_jobs(client, ctx, ["b.mp4"])
+    assert listed(client, sort="updated_desc") == [other, job_id]
+    client.post(f"/api/jobs/{job_id}/langs", json={"langs": ["fr"]})
+    bumped(stamp)
+    assert listed(client, sort="updated_desc", limit=1) == [job_id, other]

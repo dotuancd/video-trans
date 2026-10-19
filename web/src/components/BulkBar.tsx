@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { FolderInput, Inbox, Loader2, Play, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { deleteJobs, moveJobs, rerunJobs, type DriverInfo, type Job, type JobsDone, type Project } from '@/api'
-import { BulkActions } from '@/components/JobList'
+import { deleteJobs, moveJobs, rerunJobs, type DriverInfo, type Job, type JobCounts, type JobsDone, type Project } from '@/api'
+import { BulkActions, pausable, paused } from '@/components/JobList'
 import { DriverParams, DriverSelect, Field, SwitchField } from '@/components/Params'
 import { COLORS, Dot, NONE } from '@/components/Projects'
 import { Button } from '@/components/ui/button'
@@ -13,14 +13,23 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { same } from '@/components/JobConfig'
-import { driversOf, errorMessage, FRESH_HINT, putJob, stageLabel, type Params } from '@/lib/api'
+import { driversOf, errorMessage, FRESH_HINT, stageLabel, type Params } from '@/lib/api'
+import { dropJobs, matchingIds, putJob, type JobFilter } from '@/lib/jobs'
 
-/** The list's header: tick every job, and what can be done with the jobs ticked (or with all of them). */
-export function BulkBar({ jobs, checked, onChecked, projects, drivers, view, onOpenProject }: {
-  /** the jobs shown */
+/** The list's header: tick every job (those loaded, then every one matching the filter, as in Gmail), and
+ * what can be done with the jobs ticked (or with all of them). */
+export function BulkBar({ jobs, total, counts, filter, checked, everything, onChecked, projects, drivers, view, onOpenProject }: {
+  /** the jobs loaded */
   jobs: Job[]
+  /** how many jobs match the filter, loaded or not */
+  total: number
+  counts?: Pick<JobCounts, 'pausable' | 'resumable'>
+  filter: JobFilter
+  /** may hold jobs not loaded */
   checked: Set<string>
-  onChecked: (ids: Set<string>) => void
+  /** checked is every job matching the filter */
+  everything: boolean
+  onChecked: (ids: Set<string>, everything?: boolean) => void
   projects: Project[]
   drivers: DriverInfo[]
   /** the project shown (ALL, NONE or its id) */
@@ -28,35 +37,54 @@ export function BulkBar({ jobs, checked, onChecked, projects, drivers, view, onO
   onOpenProject: (id: string) => void
 }) {
   const picked = jobs.filter((j) => checked.has(j.id))
+  const ids = [...checked]
   const all = jobs.length > 0 && picked.length === jobs.length
   const master = useRef<HTMLInputElement>(null)
   useEffect(() => {
     if (master.current) master.current.indeterminate = picked.length > 0 && !all
   })
+  const [fetching, setFetching] = useState(false)
+  const pickEverything = async () => {
+    setFetching(true)
+    try {
+      onChecked(new Set(await matchingIds(filter)), true)
+    } catch (e) {
+      toast.error(errorMessage(e))
+    } finally {
+      setFetching(false)
+    }
+  }
 
   return (
     <div className="flex min-h-8 flex-wrap items-center gap-2">
       {jobs.length > 0 && (
         <input ref={master} type="checkbox" className="ml-4 size-4 cursor-pointer accent-sky-600" checked={all}
-          aria-label="Chọn tất cả" title={all ? 'Bỏ chọn tất cả' : 'Chọn tất cả việc đang xem'}
+          aria-label="Chọn tất cả" title={all ? 'Bỏ chọn tất cả' : 'Chọn tất cả việc đã tải'}
           onChange={() => onChecked(new Set(all ? [] : jobs.map((j) => j.id)))} />
       )}
-      {picked.length === 0 ? (
+      {checked.size === 0 ? (
         <>
-          <h3 className="text-sm font-medium text-muted-foreground">Việc ({jobs.length})</h3>
-          <BulkActions jobs={jobs} className="ml-auto" />
+          <h3 className="text-sm font-medium text-muted-foreground">Việc ({total})</h3>
+          <BulkActions toPause={counts?.pausable ?? 0} toResume={counts?.resumable ?? 0} ids={() => matchingIds(filter)}
+            className="ml-auto" />
         </>
       ) : (
         <>
-          <span className="text-sm font-medium">Đã chọn {picked.length}</span>
+          <span className="text-sm font-medium">{everything ? `Đã chọn tất cả ${checked.size} việc khớp bộ lọc` : `Đã chọn ${checked.size}`}</span>
+          {all && !everything && total > checked.size && (
+            <Button size="sm" variant="link" className="px-1" disabled={fetching} onClick={() => void pickEverything()}>
+              {fetching && <Loader2 className="animate-spin" />} Chọn tất cả {total} việc khớp bộ lọc
+            </Button>
+          )}
           <Button size="sm" variant="ghost" onClick={() => onChecked(new Set())} title="Bỏ chọn (Esc)">
             <X /> Bỏ chọn
           </Button>
           <div className="ml-auto flex flex-wrap gap-2">
-            <BulkActions jobs={picked} />
-            <MoveMenu jobs={picked} projects={projects} view={view} onOpenProject={onOpenProject} />
-            <RerunDialog jobs={picked} drivers={drivers} />
-            <DeleteDialog jobs={picked} onDeleted={(ids) => onChecked(new Set([...checked].filter((id) => !ids.includes(id))))} />
+            {everything ? <BulkActions toPause={counts?.pausable ?? 0} toResume={counts?.resumable ?? 0} ids={ids} />
+              : <BulkActions toPause={picked.filter(pausable).length} toResume={picked.filter(paused).length} ids={ids} />}
+            <MoveMenu ids={ids} projects={projects} view={view} onOpenProject={onOpenProject} />
+            <RerunDialog jobs={picked} ids={ids} drivers={drivers} />
+            <DeleteDialog jobs={picked} ids={ids} onDeleted={(gone) => onChecked(new Set(ids.filter((id) => !gone.includes(id))), everything)} />
           </div>
         </>
       )}
@@ -64,19 +92,19 @@ export function BulkBar({ jobs, checked, onChecked, projects, drivers, view, onO
   )
 }
 
-function MoveMenu({ jobs, projects, view, onOpenProject }: {
-  jobs: Job[]
+function MoveMenu({ ids, projects, view, onOpenProject }: {
+  ids: string[]
   projects: Project[]
   view: string
   onOpenProject: (id: string) => void
 }) {
   const queryClient = useQueryClient()
   const move = useMutation({
-    mutationFn: async (project: string | null) =>
-      (await moveJobs({ body: { ids: jobs.map((j) => j.id), project_id: project } })).data,
+    mutationFn: async (project: string | null) => (await moveJobs({ body: { ids, project_id: project } })).data,
     onSuccess: (moved, project) => {
       for (const job of moved) putJob(queryClient, job)
       void queryClient.invalidateQueries({ queryKey: ['projects'] })
+      void queryClient.invalidateQueries({ queryKey: ['job-counts'] })
       const name = projects.find((p) => p.id === project)?.name ?? 'Chưa phân loại'
       toast.success(`Đã chuyển ${moved.length} việc vào ${name}`, {
         action: { label: 'Xem', onClick: () => onOpenProject(project ?? NONE) },
@@ -104,15 +132,17 @@ function MoveMenu({ jobs, projects, view, onOpenProject }: {
   )
 }
 
-function DeleteDialog({ jobs, onDeleted }: { jobs: Job[]; onDeleted: (ids: string[]) => void }) {
+/** jobs: those of ids that are loaded (to tell how many run). */
+function DeleteDialog({ jobs, ids, onDeleted }: { jobs: Job[]; ids: string[]; onDeleted: (ids: string[]) => void }) {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const running = jobs.filter((j) => j.tasks.some((t) => t.status === 'running')).length
   const remove = useMutation({
-    mutationFn: async () => (await deleteJobs({ body: { ids: jobs.map((j) => j.id) } })).data,
+    mutationFn: async () => (await deleteJobs({ body: { ids } })).data,
     onSuccess: ({ deleted, skipped }) => {
-      queryClient.setQueryData<Job[]>(['jobs'], (list = []) => list.filter((j) => !deleted.includes(j.id)))
+      dropJobs(queryClient, deleted)
       void queryClient.invalidateQueries({ queryKey: ['projects'] })
+      void queryClient.invalidateQueries({ queryKey: ['job-counts'] })
       onDeleted(deleted)
       setOpen(false)
       toast.success(`Đã xoá ${deleted.length} việc`, skipped.length
@@ -129,16 +159,17 @@ function DeleteDialog({ jobs, onDeleted }: { jobs: Job[]; onDeleted: (ids: strin
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Xoá {jobs.length} việc?</DialogTitle>
+            <DialogTitle>Xoá {ids.length} việc?</DialogTitle>
             <DialogDescription>
               Xoá việc và các file trung gian; file đã xuất cạnh video được giữ.
-              {running > 0 && ` ${running} việc đang chạy sẽ được bỏ qua.`}
+              {running > 0 ? ` ${running} việc đang chạy sẽ được bỏ qua.`
+                : ids.length > jobs.length && ' Việc đang chạy sẽ được bỏ qua.'}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setOpen(false)}>Huỷ</Button>
             <Button variant="destructive" disabled={remove.isPending} onClick={() => remove.mutate()}>
-              {remove.isPending ? <Loader2 className="animate-spin" /> : <Trash2 />} Xoá {jobs.length - running} việc
+              {remove.isPending ? <Loader2 className="animate-spin" /> : <Trash2 />} Xoá {ids.length - running} việc
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -148,8 +179,9 @@ function DeleteDialog({ jobs, onDeleted }: { jobs: Job[]; onDeleted: (ids: strin
 }
 
 /** Run one stage again in every job ticked, with another driver or params. Only the params changed are sent:
- * each job keeps the others it has. */
-function RerunDialog({ jobs, drivers }: { jobs: Job[]; drivers: DriverInfo[] }) {
+ * each job keeps the others it has. jobs: those of ids that are loaded, which the stages are offered from; a job
+ * without the stage is skipped by the server. */
+function RerunDialog({ jobs, ids, drivers }: { jobs: Job[]; ids: string[]; drivers: DriverInfo[] }) {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const tasks = jobs.flatMap((j) => j.tasks).filter((t) => t.stage !== 'source' && t.status !== 'skipped')
@@ -164,7 +196,8 @@ function RerunDialog({ jobs, drivers }: { jobs: Job[]; drivers: DriverInfo[] }) 
 
   const ofStage = tasks.filter((t) => t.stage === stage)
   const first = ofStage[0]
-  const count = new Set(ofStage.map((t) => t.job_id)).size
+  // jobs not loaded: not known whether they have the stage
+  const count = new Set(ofStage.map((t) => t.job_id)).size + ids.length - jobs.length
   const driver = drivers.find((d) => d.name === driverName)
   const choices = driversOf(drivers, stage)
   const pick = (name: string) => {
@@ -187,6 +220,7 @@ function RerunDialog({ jobs, drivers }: { jobs: Job[]; drivers: DriverInfo[] }) 
     })).data,
     onSuccess: (result: JobsDone) => {
       for (const job of result.jobs) putJob(queryClient, job)
+      void queryClient.invalidateQueries({ queryKey: ['job-counts'] })
       if (result.jobs.length) toast.success(`Chạy lại ${stageLabel(stage)} cho ${result.jobs.length} việc`)
       if (result.skipped.length) {
         toast.warning(`${result.skipped.length} việc bỏ qua`, {
@@ -226,13 +260,13 @@ function RerunDialog({ jobs, drivers }: { jobs: Job[]; drivers: DriverInfo[] }) 
           ) : (
             <>
               <DialogHeader>
-                <DialogTitle>Chạy lại {jobs.length} việc</DialogTitle>
+                <DialogTitle>Chạy lại {ids.length} việc</DialogTitle>
                 <DialogDescription>
                   Chỉ thông số bạn đổi được áp dụng; mỗi việc giữ các thông số khác của nó.
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4">
-                <Field label="Bước" hint={count < jobs.length ? `${count}/${jobs.length} việc có bước này; việc còn lại bỏ qua` : undefined}>
+                <Field label="Bước" hint={count < ids.length ? `${count}/${ids.length} việc có bước này; việc còn lại bỏ qua` : undefined}>
                   <Select value={stage} onValueChange={pick}>
                     <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -263,7 +297,7 @@ function RerunDialog({ jobs, drivers }: { jobs: Job[]; drivers: DriverInfo[] }) 
                 </span>
                 <Button variant="ghost" onClick={() => setOpen(false)}>Huỷ</Button>
                 <Button disabled={run.isPending || !count || !!driver?.available}
-                  onClick={() => run.mutate({ ids: jobs.map((j) => j.id) })}>
+                  onClick={() => run.mutate({ ids })}>
                   {run.isPending ? <Loader2 className="animate-spin" /> : <Play />} Chạy lại {count} việc
                 </Button>
               </DialogFooter>

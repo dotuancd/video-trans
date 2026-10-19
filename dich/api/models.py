@@ -53,10 +53,33 @@ class Job(BaseModel):
     export_dir: str | None
     trace_id: str
     created_at: float
+    updated_at: float = Field(description="Last change: an attempt started or ended, renamed, moved, edited, run again")
     project_id: str | None = None
     status: Literal["blocked", "queued", "running", "done", "failed", "cancelled", "waiting_review", "stale"]
     tasks: list[Task]
     cost_usd: float | None = Field(None, description="USD paid to paid APIs (OpenAI…) over all attempts")
+
+
+StatusGroup = Literal["attention", "active", "stopped", "done"]
+"""attention: failed, waiting_review, stale · active: running, queued, blocked · stopped: cancelled · done"""
+JobSort = Literal["created_desc", "created_asc", "title", "updated_desc", "cost_desc"]
+
+
+class JobPage(BaseModel):
+    jobs: list[Job]
+    next_cursor: str | None = Field(description="Pass as cursor for the next page; null: no more")
+
+
+class JobCounts(BaseModel):
+    total: int = Field(description="Jobs matching project and q")
+    status: dict[StatusGroup, int] = Field(description="Of those, how many in each status group")
+    pausable: int = Field(description="Jobs matching project, q and status that can be paused")
+    resumable: int = Field(description="… that can be continued")
+    all: int = Field(description="Every job")
+    active: int = Field(description="Every job running, queued or blocked")
+    projects: dict[str, int] = Field(description="Every job by project id; \"none\": no project")
+    queue: int = Field(description="Tasks running or waiting for a worker")
+    has_cost: bool = Field(description="Some job paid for an API")
 
 
 class JobIds(BaseModel):

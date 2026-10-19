@@ -1,4 +1,4 @@
-# Kiến trúc pipeline (greenfield)
+# Kiến trúc pipeline
 
 > **Trạng thái:** bước 1–5 của §10 đã triển khai trong package `dich/` (thay `dich.py`, `dich_server/`). Khác bản thiết kế: nguồn
 > upload/browse gộp thành driver `source/file` (kèm tuỳ chọn dùng phụ đề có sẵn cạnh video); templates ở `dich/templates/`
@@ -174,24 +174,6 @@ data/
 - Sửa phụ đề trong editor = tạo artifact mới `origin=human` cho slot đó (một attempt "thủ công") → phía sau thành `stale`, có nút "Cập nhật phía sau". Không bao giờ ghi đè bản sửa tay khi chạy lại task trước nó mà không hỏi.
 - **Gate** (`gate: review`): job dừng ở `waiting_review` trước stage đó (VD trước `dub` để duyệt bản dịch / nghe thử giọng), một nút "Tiếp tục".
 - Thêm ngôn ngữ, đổi driver một stage, bật `separate` cho job cũ: đều là thêm/thay task trong DAG rồi resolve lại — cache giữ phần không đổi.
-
-## 9. Cấu trúc mã
-
-```
-dich/
-  core/       models.py (Job, Task, Attempt, Artifact), dag.py (resolve slot), template.py
-  queue/      base.py (Queue), sqlite.py
-  runtime/    supervisor.py, worker.py, context.py (TaskContext: log, progress, cancel, tmpdir)
-  logging/    events.py, system.py, trace.py
-  storage/    artifacts.py, export.py
-  formats/    transcript.py (JSON ↔ SRT/VTT/ASS)
-  drivers/    source/ separate/ asr/ refine/ translate/ dub/ mux/
-  api/        FastAPI routers: jobs, tasks, artifacts, drivers, events(SSE), admin
-  cli.py      dich serve | dich run <file> (chạy đồng bộ, cùng engine) | dich worker
-templates/    default.yaml, subs-only.yaml (không dub), dub-only.yaml
-```
-
-CLI và API dùng chung engine: `dich run video.mp4 --to vi,ja` = tạo job + chạy worker trong process, in log pipeline ra terminal.
 
 ## 10. Lộ trình từ mã hiện tại
 

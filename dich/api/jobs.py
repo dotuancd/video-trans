@@ -3,13 +3,13 @@ import re
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import ValidationError
 
-from dich.api.models import (AddLangs, Attempt, BriefSave, BriefView, EditCue, Event, Job, JobCreate, JobIds, JobPatch, JobsCreated, JobsDeleted,
-                             JobsDone, JobsMove, JobsRerun, LiveAudio, LLMRequest, Rerun, Skipped, TranscriptSave, TranscriptSaved,
-                             TranscriptView, Word)
+from dich.api.models import (AddLangs, Attempt, BriefSave, BriefView, EditCue, Event, Job, JobCounts, JobCreate, JobIds, JobPage,
+                             JobPatch, JobsCreated, JobsDeleted, JobsDone, JobsMove, JobSort, JobsRerun, LiveAudio, LLMRequest,
+                             Rerun, Skipped, StatusGroup, TranscriptSave, TranscriptSaved, TranscriptView, Word)
 from dich.core import jobs as job_service
 from dich.drivers.translate.llm import read_requests
 from dich.formats.transcript import Cue, Transcript, ensure_ids, to_srt, to_vtt
@@ -33,7 +33,7 @@ def download_name(source, art):
 
 def attach_artifacts(store, jobs):
     """Each task gets the artifacts of its current attempt, named as they are downloaded."""
-    artifacts = store.current_artifacts(jobs[0]["id"] if len(jobs) == 1 else None)
+    artifacts = store.current_artifacts(job["id"] for job in jobs)
     for job in jobs:
         for task in job["tasks"]:
             task["artifacts"] = artifacts.get(task["id"], [])
@@ -64,10 +64,31 @@ def router(ctx):
 
     # --- jobs ---
 
+    project_query = Query(None, description="A project id, \"none\" (no project), or empty: every job")
+    q_query = Query(None, description="Part of the title or the source, without marks and case: \"tap 2\" finds \"Tập 2\"")
+
     @api.get("/jobs")
-    def list_jobs() -> list[Job]:
-        jobs = store.jobs()
-        return attach_artifacts(store, jobs) if jobs else []
+    def list_jobs(project: str | None = project_query, status: StatusGroup | None = None, q: str | None = q_query,
+                  sort: JobSort = "created_desc", cursor: str | None = None,
+                  limit: int = Query(50, ge=1, le=200)) -> JobPage:
+        """The jobs that match, a page at a time: pass next_cursor back as cursor for the next page."""
+        try:
+            jobs, next_cursor = store.jobs_page(project, status, q, sort, cursor, limit)
+        except ValueError as error:
+            raise HTTPException(400, str(error))
+        return JobPage(jobs=attach_artifacts(store, jobs) if jobs else [], next_cursor=next_cursor)
+
+    @api.get("/jobs/counts")
+    def count_jobs(project: str | None = project_query, q: str | None = q_query,
+                   status: StatusGroup | None = Query(None, description="Only for pausable / resumable")) -> JobCounts:
+        """Numbers for the header, the sidebar, the queue and the filter chips."""
+        return store.job_counts(project, q, status)
+
+    @api.get("/jobs/ids")
+    def job_ids(project: str | None = project_query, status: StatusGroup | None = None,
+                q: str | None = q_query) -> list[str]:
+        """Every job that matches, newest first: to act on all of them."""
+        return store.job_ids(project, status, q)
 
     @api.get("/jobs/{job_id}")
     def get_job(job_id: str) -> Job:

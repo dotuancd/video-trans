@@ -1,26 +1,33 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Inbox, Languages, Layers, ListOrdered, Loader2, Mic, Settings } from 'lucide-react'
+import { Inbox, Languages, Layers, ListOrdered, Loader2, Mic, RefreshCw, Settings } from 'lucide-react'
 import { toast } from 'sonner'
 import { createProject, type Project } from '@/api'
 import { configText, projectConfig, projectFields, type RunConfig } from '@/components/JobConfig'
 import { JobDetail } from '@/components/JobDetail'
 import { BulkBar } from '@/components/BulkBar'
 import { JobList } from '@/components/JobList'
+import { JobToolbar } from '@/components/JobToolbar'
 import { NewJob } from '@/components/NewJob'
 import { ALL, COLORS, Dot, NONE, ProjectSettings, ProjectSidebar, QUEUE, VOICES } from '@/components/Projects'
 import { useVoiceLibrary, VoiceLibrary } from '@/components/Voices'
 import { QueueView } from '@/components/QueueView'
 import { Button } from '@/components/ui/button'
+import { errorMessage, loadSaved, save, STATUS_LABELS, useConfig, useDrivers, useProjects, useTemplates } from '@/lib/api'
 import {
-  errorMessage, isActive, loadSaved, STATUS_LABELS, useConfig, useDrivers, useJobs, useLiveJobs, useProjects, useTemplates,
-} from '@/lib/api'
+  addCreated, listKey, SORTS, STATUS_GROUPS, useJob, useJobCounts, useJobList, useLiveJobs, type JobFilter, type JobSort,
+  type StatusGroup,
+} from '@/lib/jobs'
 
-/** ?project=…&job=… : the project shown (all, none or its id) and the job open, kept in history. */
+type UrlState = { project: string; job?: string; status?: StatusGroup; q?: string }
+
+/** ?project=…&status=…&q=…&job=… : the project shown (all, none or its id), the list's status group and search,
+ * and the job open, kept in history. */
 function useUrlState() {
-  const read = (): { project: string; job?: string } => {
+  const read = (): UrlState => {
     const query = new URLSearchParams(location.search)
-    return { project: query.get('project') || ALL, job: query.get('job') || undefined }
+    const status = STATUS_GROUPS.find((g) => g.id === query.get('status'))?.id
+    return { project: query.get('project') || ALL, job: query.get('job') || undefined, status, q: query.get('q') || undefined }
   }
   const [state, setState] = useState(read)
   useEffect(() => {
@@ -28,14 +35,30 @@ function useUrlState() {
     addEventListener('popstate', onPop)
     return () => removeEventListener('popstate', onPop)
   }, [])
-  const go = (next: { project: string; job?: string }) => {
+  /** replace: no new history entry (each search typed) */
+  const go = (next: UrlState, replace = false) => {
     const query = new URLSearchParams()
     if (next.project !== ALL) query.set('project', next.project)
+    if (next.status) query.set('status', next.status)
+    if (next.q) query.set('q', next.q)
     if (next.job) query.set('job', next.job)
-    history.pushState(null, '', query.size ? `?${query}` : location.pathname)
+    history[replace ? 'replaceState' : 'pushState'](null, '', query.size ? `?${query}` : location.pathname)
     setState(next)
   }
   return [state, go] as const
+}
+
+/** The list's order, the same for every project. */
+function useSort() {
+  const [sort, setSort] = useState<JobSort>(() => {
+    const saved = loadSaved<{ sort: JobSort }>('job-list', { sort: 'created_desc' }).sort
+    return SORTS.some((s) => s.id === saved) ? saved : 'created_desc'
+  })
+  const change = (next: JobSort) => {
+    setSort(next)
+    save('job-list', { sort: next })
+  }
+  return [sort, change] as const
 }
 
 export default function App() {
@@ -43,35 +66,62 @@ export default function App() {
   const config = useConfig()
   const drivers = useDrivers()
   const templates = useTemplates()
-  const jobs = useJobs()
   const projects = useProjects()
   const voices = useVoiceLibrary()
-  const [{ project: selected, job }, go] = useUrlState()
+  const [url, go] = useUrlState()
+  const { project: selected, job, status, q = '' } = url
+  const [sort, setSort] = useSort()
   const [settings, setSettings] = useState(false)
+
+  const isList = ![QUEUE, VOICES].includes(selected)
+  // a project not found (deleted) shows every job
+  const listProject = selected === NONE ? NONE : projects.data?.some((p) => p.id === selected) ? selected : undefined
+  const filter: JobFilter = { project: listProject, status, q: q || undefined, sort }
+  const list = useJobList(filter, isList && !!projects.data)
+  const counts = useJobCounts({ project: listProject, q, status })
+  const detail = useJob(job)
+  const filterKey = JSON.stringify(listKey(filter))
+  const [changed, setChanged] = useState(false) // the list loaded is no longer what the server would give
+  const [changedIn, setChangedIn] = useState(filterKey)
+  if (changedIn !== filterKey) {
+    setChangedIn(filterKey)
+    setChanged(false)
+  }
+
   const [checked, setChecked] = useState<Set<string>>(new Set())
+  const [everything, setEverything] = useState(false) // checked: every job matching the filter, loaded or not
+  const pick = (ids: Set<string>, all = false) => {
+    setChecked(ids)
+    setEverything(all)
+  }
   const anchor = useRef<string>(undefined) // the job last ticked: Shift ticks the jobs between it and another
-  const [checkedIn, setCheckedIn] = useState(selected) // another project shown: nothing ticked
-  if (checkedIn !== selected) {
-    setCheckedIn(selected)
-    setChecked(new Set())
+  const selection = JSON.stringify([selected, status, q])
+  const [checkedIn, setCheckedIn] = useState(selection) // another project, status or search: nothing ticked
+  if (checkedIn !== selection) {
+    setCheckedIn(selection)
+    pick(new Set())
   }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !job && !document.querySelector('[role=dialog]')) setChecked(new Set())
+      if (e.key === 'Escape' && !job && !document.querySelector('[role=dialog]')) pick(new Set())
     }
     addEventListener('keydown', onKey)
     return () => removeEventListener('keydown', onKey)
   }, [job])
-  const select = (id?: string) => go({ project: selected, job: id })
-  useLiveJobs((job) => {
-    const message = `${job.title}: ${STATUS_LABELS[job.status as keyof typeof STATUS_LABELS] ?? job.status}`
-    const open = { action: { label: 'Xem', onClick: () => select(job.id) } }
-    if (job.status === 'done') toast.success(message)
-    else if (job.status === 'failed') toast.error(message, open)
-    else if (job.status === 'waiting_review') toast.info(`${job.title}: chờ bạn duyệt trước khi lồng tiếng`, open)
+  const select = (id?: string) => go({ ...url, job: id })
+  useLiveJobs({
+    filter,
+    onListChanged: () => setChanged(true),
+    onJobFinished: (job) => {
+      const message = `${job.title}: ${STATUS_LABELS[job.status as keyof typeof STATUS_LABELS] ?? job.status}`
+      const open = { action: { label: 'Xem', onClick: () => select(job.id) } }
+      if (job.status === 'done') toast.success(message)
+      else if (job.status === 'failed') toast.error(message, open)
+      else if (job.status === 'waiting_review') toast.info(`${job.title}: chờ bạn duyệt trước khi lồng tiếng`, open)
+    },
   })
 
-  const running = jobs.data?.filter((j) => isActive(j.status)).length ?? 0
+  const running = counts.data?.active ?? 0
   useEffect(() => {
     document.title = running ? `(${running}) Dịch video` : 'Dịch video'
   }, [running])
@@ -83,14 +133,19 @@ export default function App() {
   }
   const env = { config: config.data, templates: templates.data, drivers: drivers.data }
 
-  const all = jobs.data ?? []
   const project = projects.data.find((p) => p.id === selected)
   const view = project ? project.id : [NONE, QUEUE, VOICES].includes(selected) ? selected : ALL
-  const shown = all.filter((j) => view === ALL || (view === NONE ? !j.project_id : j.project_id === view))
-  const counts: Record<string, number> = { [ALL]: all.length }
-  for (const j of all) counts[j.project_id ?? NONE] = (counts[j.project_id ?? NONE] ?? 0) + 1
-  counts[VOICES] = voices.data?.length ?? 0
-  counts[QUEUE] = all.reduce((n, j) => n + j.tasks.filter((t) => t.status === 'running' || t.status === 'queued').length, 0)
+  const shown = list.data?.pages.flatMap((p) => p.jobs) ?? []
+  const numbers = counts.data
+  // NONE is the key of the jobs of no project
+  const sidebar: Record<string, number> = {
+    ...numbers?.projects, [ALL]: numbers?.all ?? 0, [QUEUE]: numbers?.queue ?? 0, [VOICES]: voices.data?.length ?? 0,
+  }
+  const total = (status ? numbers?.status[status] : numbers?.total) ?? shown.length
+  const refresh = () => {
+    setChanged(false)
+    void queryClient.resetQueries({ queryKey: listKey(filter), exact: true })
+  }
 
   const create = async (name: string) => {
     try {
@@ -115,11 +170,9 @@ export default function App() {
     const ids = range && from >= 0 ? shown.slice(Math.min(from, to), Math.max(from, to) + 1).map((j) => j.id) : [id]
     for (const x of ids) if (on) next.add(x); else next.delete(x)
     anchor.current = id
-    setChecked(next)
+    pick(next)
   }
 
-  const done = shown.filter((j) => j.status === 'done').length
-  const active = shown.filter((j) => isActive(j.status)).length
   const title = project ? project.name : view === NONE ? 'Chưa phân loại' : view === QUEUE ? 'Hàng đợi' : view === VOICES ? 'Giọng đọc' : 'Tất cả'
 
   return (
@@ -139,7 +192,7 @@ export default function App() {
       </header>
       <div className="mx-auto grid max-w-6xl items-start gap-4 px-4 py-6 lg:grid-cols-[12.5rem_minmax(0,1fr)] lg:gap-6">
         <div className="min-w-0 lg:sticky lg:top-6">
-          <ProjectSidebar projects={projects.data} counts={counts} selected={view} onSelect={(id) => go({ project: id })}
+          <ProjectSidebar projects={projects.data} counts={sidebar} selected={view} onSelect={(id) => go({ project: id })}
             onCreate={create} />
         </div>
         <main className="grid min-w-0 gap-5">
@@ -150,10 +203,7 @@ export default function App() {
                   : view === QUEUE ? <ListOrdered className="size-4" /> : view === VOICES ? <Mic className="size-4" /> : <Layers className="size-4" />}
                 <span className="truncate">{title}</span>
               </h2>
-              {view !== QUEUE && view !== VOICES && <p className="text-sm text-muted-foreground tabular-nums">
-                {shown.length} việc · {done} xong · {active} đang chạy
-                {project && ` · ${configText(projectConfig(project), env)}`}
-              </p>}
+              {project && <p className="text-sm text-muted-foreground">{configText(projectConfig(project), env)}</p>}
             </div>
             {project && (
               <Button variant="outline" size="sm" className="ml-auto" onClick={() => setSettings(true)}>
@@ -163,17 +213,33 @@ export default function App() {
           </div>
           {view === QUEUE ? <QueueView onOpen={select} /> : view === VOICES ? <VoiceLibrary projects={projects.data} /> : <div className="grid gap-6">
             <div>
-              <NewJob {...env} project={project} onCreated={(ids) => ids.length === 1 && select(ids[0])} />
+              <NewJob {...env} project={project} onCreated={(ids) => {
+                void addCreated(queryClient, filter, ids)
+                if (ids.length === 1) select(ids[0])
+              }} />
               {view === ALL && projects.data.length > 0 && (
                 <p className="mt-2 px-1 text-xs text-muted-foreground">Video thêm ở đây vào Chưa phân loại. Chọn một project bên trái để thêm thẳng vào đó.</p>
               )}
             </div>
             <section className="grid min-w-0 gap-3">
-              <BulkBar jobs={shown} checked={checked} onChecked={setChecked} projects={projects.data}
-                drivers={drivers.data} view={view} onOpenProject={(id) => go({ project: id })} />
-              {jobs.isLoading ? <Loader2 className="animate-spin text-muted-foreground" /> : (
-                <JobList jobs={shown} selected={job} onSelect={select} checked={checked} onCheck={check} />
+              <JobToolbar q={q} onQuery={(text) => go({ project: selected, status, q: text || undefined }, true)}
+                status={status} onStatus={(group) => go({ project: selected, status: group, q: q || undefined })}
+                sort={sort} onSort={setSort} counts={numbers} />
+              <BulkBar jobs={shown} total={total} counts={numbers} filter={filter} checked={checked} everything={everything}
+                onChecked={pick} projects={projects.data} drivers={drivers.data} view={view}
+                onOpenProject={(id) => go({ project: id })} />
+              {changed && (
+                <Button size="sm" variant="secondary" className="sticky top-2 z-10 justify-self-center rounded-full shadow-md"
+                  onClick={refresh} title="Thứ tự hoặc bộ lọc không còn đúng với các thay đổi mới nhất">
+                  <RefreshCw /> Danh sách đã thay đổi · Làm mới
+                </Button>
               )}
+              {list.isLoading ? <Loader2 className="animate-spin text-muted-foreground" />
+                : list.isError ? <p className="text-sm text-destructive">{errorMessage(list.error)}</p> : (
+                  <JobList jobs={shown} selected={job} onSelect={select} checked={checked} onCheck={check}
+                    filtered={!!status || !!q} onClearFilter={() => go({ project: selected })}
+                    more={!!list.hasNextPage} loadingMore={list.isFetchingNextPage} onMore={() => void list.fetchNextPage()} />
+                )}
             </section>
           </div>}
         </main>
@@ -182,7 +248,7 @@ export default function App() {
         <ProjectSettings key={project.id} {...env} project={project} open={settings} onOpenChange={setSettings}
           onDeleted={() => { setSettings(false); go({ project: NONE }) }} />
       )}
-      <JobDetail job={all.find((j) => j.id === job)} drivers={drivers.data} config={config.data}
+      <JobDetail job={job ? detail.data : undefined} drivers={drivers.data} config={config.data}
         projects={projects.data} onClose={() => select(undefined)} />
     </div>
   )

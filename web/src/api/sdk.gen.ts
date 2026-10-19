@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddLangsData, AddLangsErrors, AddLangsResponses, AnalyzeVoiceData, AnalyzeVoiceErrors, AnalyzeVoiceResponses, ArtifactVttData, ArtifactVttErrors, ArtifactVttResponses, AttemptEventsData, AttemptEventsErrors, AttemptEventsResponses, AttemptRequestsData, AttemptRequestsErrors, AttemptRequestsResponses, AttemptSystemLogData, AttemptSystemLogErrors, AttemptSystemLogResponses, CancelJobData, CancelJobErrors, CancelJobResponses, CreateJobsData, CreateJobsErrors, CreateJobsResponses, CreateProjectData, CreateProjectErrors, CreateProjectResponses, CreateVoiceData, CreateVoiceErrors, CreateVoiceResponses, DeleteJobData, DeleteJobErrors, DeleteJobResponses, DeleteJobsData, DeleteJobsErrors, DeleteJobsResponses, DeletePresetData, DeletePresetErrors, DeletePresetResponses, DeleteProjectData, DeleteProjectErrors, DeleteProjectResponses, DeleteVoiceData, DeleteVoiceErrors, DeleteVoiceResponses, DownloadArtifactData, DownloadArtifactErrors, DownloadArtifactResponses, EventsData, EventsResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetBriefData, GetBriefErrors, GetBriefResponses, GetConfigData, GetConfigResponses, GetJobData, GetJobErrors, GetJobResponses, GetLiveChunkData, GetLiveChunkErrors, GetLiveChunkResponses, GetLiveData, GetLiveErrors, GetLiveResponses, GetQueueData, GetQueueResponses, GetTranscriptData, GetTranscriptErrors, GetTranscriptResponses, ListAttemptsData, ListAttemptsErrors, ListAttemptsResponses, ListDirData, ListDirErrors, ListDirResponses, ListDriversData, ListDriversResponses, ListJobsData, ListJobsResponses, ListPresetsData, ListPresetsResponses, ListPresetVoicesData, ListPresetVoicesResponses, ListProjectsData, ListProjectsResponses, ListTemplatesData, ListTemplatesResponses, ListVoicesData, ListVoicesErrors, ListVoicesResponses, MoveJobsData, MoveJobsErrors, MoveJobsResponses, PauseJobsData, PauseJobsErrors, PauseJobsResponses, PickAttemptData, PickAttemptErrors, PickAttemptResponses, PreviewVoiceData, PreviewVoiceErrors, PreviewVoiceResponses, RefreshJobData, RefreshJobErrors, RefreshJobResponses, RerunJobsData, RerunJobsErrors, RerunJobsResponses, RerunTaskData, RerunTaskErrors, RerunTaskResponses, ResumeJobData, ResumeJobErrors, ResumeJobResponses, RevealData, RevealErrors, RevealResponses, SaveBriefData, SaveBriefErrors, SaveBriefResponses, SavePresetData, SavePresetErrors, SavePresetResponses, SaveProjectData, SaveProjectErrors, SaveProjectResponses, SaveTranscriptData, SaveTranscriptErrors, SaveTranscriptResponses, SaveVoiceData, SaveVoiceErrors, SaveVoiceResponses, SetWorkersData, SetWorkersErrors, SetWorkersResponses, TraceData, TraceErrors, TraceResponses, UnpauseJobsData, UnpauseJobsErrors, UnpauseJobsResponses, UpdateJobData, UpdateJobErrors, UpdateJobResponses, UploadData, UploadErrors, UploadResponses, VoiceAudioData, VoiceAudioErrors, VoiceAudioResponses, VoiceSegmentData, VoiceSegmentErrors, VoiceSegmentResponses } from './types.gen';
+import type { AddLangsData, AddLangsErrors, AddLangsResponses, AnalyzeVoiceData, AnalyzeVoiceErrors, AnalyzeVoiceResponses, ArtifactVttData, ArtifactVttErrors, ArtifactVttResponses, AttemptEventsData, AttemptEventsErrors, AttemptEventsResponses, AttemptRequestsData, AttemptRequestsErrors, AttemptRequestsResponses, AttemptSystemLogData, AttemptSystemLogErrors, AttemptSystemLogResponses, CancelJobData, CancelJobErrors, CancelJobResponses, CountJobsData, CountJobsErrors, CountJobsResponses, CreateJobsData, CreateJobsErrors, CreateJobsResponses, CreateProjectData, CreateProjectErrors, CreateProjectResponses, CreateVoiceData, CreateVoiceErrors, CreateVoiceResponses, DeleteJobData, DeleteJobErrors, DeleteJobResponses, DeleteJobsData, DeleteJobsErrors, DeleteJobsResponses, DeletePresetData, DeletePresetErrors, DeletePresetResponses, DeleteProjectData, DeleteProjectErrors, DeleteProjectResponses, DeleteVoiceData, DeleteVoiceErrors, DeleteVoiceResponses, DownloadArtifactData, DownloadArtifactErrors, DownloadArtifactResponses, EventsData, EventsResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetBriefData, GetBriefErrors, GetBriefResponses, GetConfigData, GetConfigResponses, GetJobData, GetJobErrors, GetJobResponses, GetLiveChunkData, GetLiveChunkErrors, GetLiveChunkResponses, GetLiveData, GetLiveErrors, GetLiveResponses, GetQueueData, GetQueueResponses, GetTranscriptData, GetTranscriptErrors, GetTranscriptResponses, JobIdsData, JobIdsErrors, JobIdsResponses, ListAttemptsData, ListAttemptsErrors, ListAttemptsResponses, ListDirData, ListDirErrors, ListDirResponses, ListDriversData, ListDriversResponses, ListJobsData, ListJobsErrors, ListJobsResponses, ListPresetsData, ListPresetsResponses, ListPresetVoicesData, ListPresetVoicesResponses, ListProjectsData, ListProjectsResponses, ListTemplatesData, ListTemplatesResponses, ListVoicesData, ListVoicesErrors, ListVoicesResponses, MoveJobsData, MoveJobsErrors, MoveJobsResponses, PauseJobsData, PauseJobsErrors, PauseJobsResponses, PickAttemptData, PickAttemptErrors, PickAttemptResponses, PreviewVoiceData, PreviewVoiceErrors, PreviewVoiceResponses, RefreshJobData, RefreshJobErrors, RefreshJobResponses, RerunJobsData, RerunJobsErrors, RerunJobsResponses, RerunTaskData, RerunTaskErrors, RerunTaskResponses, ResumeJobData, ResumeJobErrors, ResumeJobResponses, RevealData, RevealErrors, RevealResponses, SaveBriefData, SaveBriefErrors, SaveBriefResponses, SavePresetData, SavePresetErrors, SavePresetResponses, SaveProjectData, SaveProjectErrors, SaveProjectResponses, SaveTranscriptData, SaveTranscriptErrors, SaveTranscriptResponses, SaveVoiceData, SaveVoiceErrors, SaveVoiceResponses, SetWorkersData, SetWorkersErrors, SetWorkersResponses, TraceData, TraceErrors, TraceResponses, UnpauseJobsData, UnpauseJobsErrors, UnpauseJobsResponses, UpdateJobData, UpdateJobErrors, UpdateJobResponses, UploadData, UploadErrors, UploadResponses, VoiceAudioData, VoiceAudioErrors, VoiceAudioResponses, VoiceSegmentData, VoiceSegmentErrors, VoiceSegmentResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -20,8 +20,10 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
 
 /**
  * List Jobs
+ *
+ * The jobs that match, a page at a time: pass next_cursor back as cursor for the next page.
  */
-export const listJobs = <ThrowOnError extends boolean = true>(options?: Options<ListJobsData, ThrowOnError>): RequestResult<ListJobsResponses, unknown, ThrowOnError> => (options?.client ?? client).get<ListJobsResponses, unknown, ThrowOnError>({ url: '/api/jobs', ...options });
+export const listJobs = <ThrowOnError extends boolean = true>(options?: Options<ListJobsData, ThrowOnError>): RequestResult<ListJobsResponses, ListJobsErrors, ThrowOnError> => (options?.client ?? client).get<ListJobsResponses, ListJobsErrors, ThrowOnError>({ url: '/api/jobs', ...options });
 
 /**
  * Create Jobs
@@ -34,6 +36,20 @@ export const createJobs = <ThrowOnError extends boolean = true>(options: Options
         ...options.headers
     }
 });
+
+/**
+ * Count Jobs
+ *
+ * Numbers for the header, the sidebar, the queue and the filter chips.
+ */
+export const countJobs = <ThrowOnError extends boolean = true>(options?: Options<CountJobsData, ThrowOnError>): RequestResult<CountJobsResponses, CountJobsErrors, ThrowOnError> => (options?.client ?? client).get<CountJobsResponses, CountJobsErrors, ThrowOnError>({ url: '/api/jobs/counts', ...options });
+
+/**
+ * Job Ids
+ *
+ * Every job that matches, newest first: to act on all of them.
+ */
+export const jobIds = <ThrowOnError extends boolean = true>(options?: Options<JobIdsData, ThrowOnError>): RequestResult<JobIdsResponses, JobIdsErrors, ThrowOnError> => (options?.client ?? client).get<JobIdsResponses, JobIdsErrors, ThrowOnError>({ url: '/api/jobs/ids', ...options });
 
 /**
  * Delete Job

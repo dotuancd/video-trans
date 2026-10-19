@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Play, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { listPresetVoices, type DriverInfo, type Job, type LibraryVoice } from '@/api'
+import { listPresetVoices, type DriverInfo, type LibraryVoice } from '@/api'
 import { useVoiceLibrary, VoiceCreator } from '@/components/Voices'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,6 +12,7 @@ import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { errorMessage, fileName, useProjects, type Params } from '@/lib/api'
+import { findJob } from '@/lib/jobs'
 
 /** voice value: clone the speaker of the video (the dub driver's default) */
 const SOURCE_VOICE = 'source'
@@ -157,7 +158,7 @@ export function VoicePicker({ value, onChange, context }: {
   const [heard, setHeard] = useState<{ url: string; text: string }>()
   const { project_id: contextProject, ...previewContext } = context ?? {}
   // the project whose voices come first: given, or the job's
-  const projectId = contextProject ?? queryClient.getQueryData<Job[]>(['jobs'])?.find((j) => j.id === context?.job_id)?.project_id
+  const projectId = contextProject ?? (context?.job_id ? findJob(queryClient, context.job_id)?.project_id : undefined)
   const refAudio = (value.ref_audio as string | null | undefined) ?? null
   const voice = (value.voice as string | undefined) ?? SOURCE_VOICE
   const own = library.data?.find((v) => v.path === refAudio)
