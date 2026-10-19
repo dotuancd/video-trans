@@ -282,3 +282,12 @@ def test_long_transcript_is_sampled_across_the_video():
     words = [f"w{i}" for i in range(1000)]
     out = sample(words, max_words=100, samples=4).split()
     assert out[0] == "w0" and out[-1] == "w999" and len([w for w in out if w != "[…]"]) == 100
+
+
+def test_english_to_vietnamese_gets_its_own_rules():
+    from dich.drivers.translate.llm import FIT_PROMPT, PAIR_RULES, fit_system_prompt
+    rules = PAIR_RULES[("en", "vi")]
+    assert rules in system_prompt("en", "vi") and rules in system_prompt("en", "vi", timed=True, brief="x")
+    for source, target in (("en", "ja"), ("ja", "vi"), (None, "vi")):
+        assert rules not in system_prompt(source, target)
+    assert rules.rstrip() in fit_system_prompt("en", "vi", brief="x") and fit_system_prompt("en", "ja") == FIT_PROMPT

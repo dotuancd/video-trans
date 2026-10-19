@@ -63,7 +63,7 @@ OPENAI_PRICES = {
 
 SYSTEM_PROMPT = """You translate {source} video subtitles into {target}.
 - Translate naturally and concisely, like professional {target} subtitles.
-{timing}- Keep technical terms, product names, people's names and code as they are \
+{timing}{rules}- Keep technical terms, product names, people's names and code as they are \
 (e.g. model, prompt, token, API, framework, commit).
 - Each element of "translate" is one sentence, given as the list of "cues" it is split over. \
 Understand and translate the whole sentence naturally first, then split your translation over its \
@@ -80,6 +80,26 @@ up to 15% more is fine (it is read a little faster). Below the count, say it mor
 naturally (complete phrasing, connectives, subjects) rather than tersely; above it, condense. \
 Never add or drop meaning.
 """
+
+# Rules for one source → target pair, on top of the general ones (after YouDub's English → Vietnamese rules).
+PAIR_RULES = {
+    ("en", "vi"): """- Drop meaningless fillers (um, uh, er, you know, I mean; like, kind of, sort of only when \
+used as hesitation) instead of translating them, never words that carry meaning (an apology, a thanks, \
+a yes or no). Never leave a cue empty: a cue of nothing but fillers gets a short natural interjection \
+("À", "Ừ", "Rồi").
+- Keep the forms of address the same for the whole video: the host speaking to viewers is "mình" and \
+the viewers "các bạn"; between people on screen pick fitting pronouns (anh/chị/em/tôi/bạn...) once and \
+stick to them.
+- Do not translate "so" opening a sentence as "vì vậy"/"do đó" unless it really means a consequence: \
+as a filler drop it, as a transition use "rồi", "thế là", "vậy thì".
+- Numbers in Vietnamese style: decimal comma (3,5), no thousands separator (12000, 1500000).
+- Usual YouTube phrases in their usual Vietnamese: subscribe → "đăng ký kênh", like → "bấm thích", \
+"link in the description" → "link ở phần mô tả", comment → "bình luận".
+- Swearing and slang keep their strength: do not soften or censor them, nor make them stronger.
+- Terms Vietnamese speakers commonly use in English stay in English (e.g. app, email, livestream, \
+startup, marketing, deadline), as do brand and product names.
+""",
+}
 
 FIT_PROMPT = """You adjust the length of dub lines, translated from video subtitles. Each element of \
 "translate" is one sentence: its source cues ("source"), the current translation of each cue ("text"), \
@@ -116,10 +136,20 @@ with it, the rules above take precedence):
 
 def system_prompt(source_lang, target_lang, timed=False, brief=None):
     """timed: sentences come with "seconds"/"syllables" (see LLMTranslator.rate). brief: what the video is
-    about (see drivers/brief), so chunks translated apart use the same terms."""
+    about (see drivers/brief), so chunks translated apart use the same terms. Some language pairs add their
+    own rules (PAIR_RULES)."""
     target = english_name(target_lang)
     timing = TIMING_PROMPT.format(target=target) if timed else ""
-    return with_brief(SYSTEM_PROMPT.format(source=english_name(source_lang), target=target, timing=timing), brief)
+    rules = PAIR_RULES.get((source_lang, target_lang), "")
+    prompt = SYSTEM_PROMPT.format(source=english_name(source_lang), target=target, timing=timing, rules=rules)
+    return with_brief(prompt, brief)
+
+
+def fit_system_prompt(source_lang, target_lang, brief=None):
+    """The length pass's prompt: it rewrites the translation, so it keeps the pair's rules too."""
+    rules = PAIR_RULES.get((source_lang, target_lang))
+    return with_brief(FIT_PROMPT + ("\n" + rules.rstrip() if rules else ""), brief)
+
 
 
 def with_brief(prompt, brief):
@@ -726,7 +756,7 @@ class LLMDriver(Driver):
     resources = {"net"}
     consumes = {"transcript": "transcript.src", "brief": "brief?"}
     produces = {"transcript": "transcript.{lang}"}
-    version = "3"   # the video brief goes into the system prompt
+    version = "4"   # English → Vietnamese rules (PAIR_RULES)
 
     def make(self, params, prompt, log, rate):
         raise NotImplementedError
@@ -740,7 +770,7 @@ class LLMDriver(Driver):
                      + (" theo bối cảnh video" if brief else ""))
         sentences = group_sentences(source.cues, max_gap=MAX_GAP)
         translator = self.make(params, prompt, ctx.log, rate)
-        translator.fit_prompt = with_brief(FIT_PROMPT, brief)
+        translator.fit_prompt = fit_system_prompt(source.lang, ctx.lang, brief)
         translator.checkpoint = ctx.checkpoint
         translator.request_log = RequestLog(ctx.dir / REQUESTS)
         if ctx.checkpoint.resumed:
