@@ -9,8 +9,8 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse, StreamingResponse
 
 from dich import drivers, settings
-from dich.api.models import (Config, DriverInfo, Entry, Lane, Language, Listing, PathBody, QueueItem, QueueView,
-                             TemplateInfo, Uploaded, Worker, WorkerCount)
+from dich.api.models import (BulkDownload, Config, DriverInfo, Entry, Lane, Language, Listing, PathBody, QueueItem,
+                             QueueView, TemplateInfo, Uploaded, Worker, WorkerCount)
 from dich.core.ids import is_id, new_id
 from dich.core.langs import LANGUAGES
 from dich.core.template import load_templates
@@ -148,7 +148,8 @@ def router(ctx):
         """{"type": "job", "job"} when a job or one of its tasks changed, {"type": "progress", "job_id", "task_id",
         "done", "total"}, {"type": "log", "job_id", "task_id", "event"}, {"type": "deleted", "id"},
         {"type": "project", "id", "deleted"} when a project was created, changed or deleted, {"type": "voice", "id",
-        "deleted"} likewise for a library voice."""
+        "deleted"} likewise for a library voice, {"type": "bulk_download", "id", "bulk_download"} when a bulk download
+        changed (bulk_download null: deleted)."""
 
         async def stream():
             cursor = await asyncio.to_thread(store.last_event_id)
@@ -165,7 +166,7 @@ def router(ctx):
                     continue
                 idle = 0.0
                 cursor = rows[-1]["id"]
-                changed, out = [], []
+                changed, bulks, out = [], [], []
                 for row in rows:
                     data = row["data"] or {}
                     if row["type"] in ("task", "job"):
@@ -180,10 +181,16 @@ def router(ctx):
                         out.append({"type": "log", "job_id": row["job_id"], "task_id": row["task_id"], "event": row})
                     elif row["type"] in ("project", "voice"):
                         out.append({"type": row["type"], "id": data.get("id"), "deleted": bool(data.get("deleted"))})
+                    elif row["type"] == "bulk_download" and data.get("id") not in bulks:
+                        bulks.append(data.get("id"))
                 for job_id in changed:
                     job = await asyncio.to_thread(job_with_artifacts, job_id)
                     if job:
                         out.append({"type": "job", "job": job})
+                for bulk_id in bulks:
+                    bulk = await asyncio.to_thread(store.bulk_download, bulk_id)
+                    out.append({"type": "bulk_download", "id": bulk_id,
+                                "bulk_download": BulkDownload.of(bulk).model_dump() if bulk else None})
                 for event in out:
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 

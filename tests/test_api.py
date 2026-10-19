@@ -1,3 +1,4 @@
+import re
 import time
 
 import pytest
@@ -542,3 +543,90 @@ def test_updated_at_follows_changes(app):
     client.post(f"/api/jobs/{job_id}/langs", json={"langs": ["fr"]})
     bumped(stamp)
     assert listed(client, sort="updated_desc", limit=1) == [job_id, other]
+
+
+def test_bulk_download_preview(app):
+    client, ctx = app
+    (ctx.root / "b.mp4").write_bytes(b"video b")
+    muxed = {**FAKE, "mux": {"driver": "fake"}}
+    [done] = create(client, ctx, langs=["vi", "ja"], overrides=muxed)
+    [unfinished] = create(client, ctx, sources=[str(ctx.root / "b.mp4")], overrides=muxed)
+    run_job(ctx.store, done)
+
+    def preview(**body):
+        response = client.post("/api/bulk-downloads/preview", json={"job_ids": [done, unfinished, "job_nope"], **body})
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    videos = preview()                                     # default: the dubbed videos, every language
+    assert [f["name"] for f in videos["files"]] == ["a.dub.vi.mp4"]   # dub@ja skipped: no ja video
+    assert videos["single"]["name"] == "a.dub.vi.mp4" and videos["size"] == videos["files"][0]["size"] > 0
+    assert [(j["id"], j["status"]) for j in videos["unfinished"]] == [(unfinished, "queued")]
+    assert videos["langs"] == ["vi"]
+
+    both = preview(srt=True)
+    assert [f["name"] for f in both["files"]] == ["a.dub.vi.mp4", "a.vi.srt", "a.ja.srt"]
+    assert both["single"] is None and both["langs"] == ["vi", "ja"]
+    assert both["size"] == sum(f["size"] for f in both["files"])
+    assert [f["name"] for f in preview(srt=True, langs=["ja"])["files"]] == ["a.ja.srt"]
+    assert preview(video=False, srt=False)["files"] == []
+
+
+def test_bulk_download_create_download_delete(app):
+    import zipfile
+    from io import BytesIO
+
+    from dich.storage import bulk as bulk_zip
+    client, ctx = app
+    project = client.post("/api/projects", json={"name": "Khoá học/2"}).json()
+    [job_id] = create(client, ctx, overrides={**FAKE, "mux": {"driver": "fake"}}, project=project["id"])
+    assert client.post("/api/bulk-downloads", json={"job_ids": [job_id]}).status_code == 400   # nothing done yet
+    run_job(ctx.store, job_id)
+
+    made = client.post("/api/bulk-downloads", json={"job_ids": [job_id], "srt": True}).json()
+    assert made["status"] == "queued" and made["files"] == 2
+    assert re.fullmatch(r"Khoá học-2-\d{8}-\d{4}\.zip", made["name"])
+    assert client.get("/api/bulk-downloads").json()[0]["id"] == made["id"]
+    assert client.get(f"/api/bulk-downloads/{made['id']}/download").status_code == 409   # not made yet
+
+    bulk_zip.run(ctx.store, ctx.store.claim_bulk_download())
+    [ready] = client.get("/api/bulk-downloads").json()
+    assert ready["status"] == "ready" and ready["size"] and ready["expires_at"]
+    whole = client.get(f"/api/bulk-downloads/{made['id']}/download")
+    assert whole.status_code == 200 and int(whole.headers["content-length"]) == ready["size"]
+    assert "Kho%C3%A1%20h%E1%BB%8Dc-2-" in whole.headers["content-disposition"]
+    with zipfile.ZipFile(BytesIO(whole.content)) as zf:
+        assert sorted(zf.namelist()) == ["a.dub.vi.mp4", "a.vi.srt"]
+    part = client.get(f"/api/bulk-downloads/{made['id']}/download", headers={"Range": "bytes=4-9"})
+    assert part.status_code == 206 and part.content == whole.content[4:10]
+
+    again = client.post("/api/bulk-downloads", json={"job_ids": [job_id], "srt": True}).json()
+    assert again["id"] == made["id"]                          # the same files: the zip already made
+
+    ctx.store.x("update bulk_downloads set expires_at = ? where id = ?", time.time() - 1, made["id"])
+    assert client.get(f"/api/bulk-downloads/{made['id']}/download").status_code == 410
+
+    assert client.delete(f"/api/bulk-downloads/{made['id']}").status_code == 204
+    assert client.get("/api/bulk-downloads").json() == []
+    assert client.delete(f"/api/bulk-downloads/{made['id']}").status_code == 404
+    assert client.get(f"/api/bulk-downloads/{made['id']}/download").status_code == 404
+
+
+def test_bulk_download_delete_cancels_first(app):
+    client, ctx = app
+    [job_id] = create(client, ctx)
+    run_job(ctx.store, job_id)
+    ask = {"job_ids": [job_id], "video": False, "srt": True}
+    queued = client.post("/api/bulk-downloads", json=ask).json()
+    assert queued["files"] == 1
+    assert client.delete(f"/api/bulk-downloads/{queued['id']}").status_code == 204     # waiting: cancelled at once
+    [cancelled] = client.get("/api/bulk-downloads").json()
+    assert cancelled["status"] == "cancelled"
+    assert client.get(f"/api/bulk-downloads/{queued['id']}/download").json()["detail"] == "Gói đã bị huỷ"
+
+    running = client.post("/api/bulk-downloads", json=ask).json()
+    ctx.store.claim_bulk_download()
+    assert client.delete(f"/api/bulk-downloads/{running['id']}").status_code == 204    # being made: its worker stops
+    assert ctx.store.bulk_heartbeat(running["id"]) is True
+    assert client.delete(f"/api/bulk-downloads/{queued['id']}").status_code == 204     # stopped: deleted
+    assert [b["id"] for b in client.get("/api/bulk-downloads").json()] == [running["id"]]

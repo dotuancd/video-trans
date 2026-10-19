@@ -1759,7 +1759,7 @@
   "/api/events": {
    "get": {
     "summary": "Events",
-    "description": "{\"type\": \"job\", \"job\"} when a job or one of its tasks changed, {\"type\": \"progress\", \"job_id\", \"task_id\",\n\"done\", \"total\"}, {\"type\": \"log\", \"job_id\", \"task_id\", \"event\"}, {\"type\": \"deleted\", \"id\"},\n{\"type\": \"project\", \"id\", \"deleted\"} when a project was created, changed or deleted, {\"type\": \"voice\", \"id\",\n\"deleted\"} likewise for a library voice.",
+    "description": "{\"type\": \"job\", \"job\"} when a job or one of its tasks changed, {\"type\": \"progress\", \"job_id\", \"task_id\",\n\"done\", \"total\"}, {\"type\": \"log\", \"job_id\", \"task_id\", \"event\"}, {\"type\": \"deleted\", \"id\"},\n{\"type\": \"project\", \"id\", \"deleted\"} when a project was created, changed or deleted, {\"type\": \"voice\", \"id\",\n\"deleted\"} likewise for a library voice, {\"type\": \"bulk_download\", \"id\", \"bulk_download\"} when a bulk download\nchanged (bulk_download null: deleted).",
     "operationId": "events",
     "responses": {
      "200": {
@@ -2452,6 +2452,174 @@
      }
     }
    }
+  },
+  "/api/bulk-downloads/preview": {
+   "post": {
+    "summary": "Preview Bulk Download",
+    "description": "What a bulk download of these jobs would hold, before asking for it.",
+    "operationId": "preview_bulk_download",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BulkDownloadAsk"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BulkDownloadPreview"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/bulk-downloads": {
+   "get": {
+    "summary": "List Bulk Downloads",
+    "description": "Newest first.",
+    "operationId": "list_bulk_downloads",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/BulkDownload"
+         },
+         "type": "array",
+         "title": "Response List Bulk Downloads"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "Create Bulk Download",
+    "description": "Queues the zip of the done jobs' files (unfinished ones left out). The same files asked again\ngive back the zip already made or being made.",
+    "operationId": "create_bulk_download",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BulkDownloadAsk"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BulkDownload"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/bulk-downloads/{bulk_id}/download": {
+   "get": {
+    "summary": "Download Bulk Download",
+    "description": "The zip, resumable (Range).",
+    "operationId": "download_bulk_download",
+    "parameters": [
+     {
+      "name": "bulk_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Bulk Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/zip": {}
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/bulk-downloads/{bulk_id}": {
+   "delete": {
+    "summary": "Delete Bulk Download",
+    "description": "Cancels one waiting or being made (its worker stops); deletes any other, with its zip.",
+    "operationId": "delete_bulk_download",
+    "parameters": [
+     {
+      "name": "bulk_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Bulk Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -2656,6 +2824,281 @@
      "edited"
     ],
     "title": "BriefView"
+   },
+   "BulkDownload": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "queued",
+       "running",
+       "ready",
+       "failed",
+       "cancelled"
+      ],
+      "title": "Status"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name",
+      "description": "The zip's file name"
+     },
+     "files": {
+      "type": "integer",
+      "title": "Files",
+      "description": "Files asked for"
+     },
+     "size": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Size",
+      "description": "Bytes of the zip, when ready"
+     },
+     "done": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Done",
+      "description": "Bytes zipped so far, of total"
+     },
+     "total": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Total"
+     },
+     "skipped": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Skipped",
+      "description": "Files left out: gone before they were zipped"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "cancel_requested": {
+      "type": "boolean",
+      "title": "Cancel Requested"
+     },
+     "created_at": {
+      "type": "number",
+      "title": "Created At"
+     },
+     "ready_at": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ready At"
+     },
+     "expires_at": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expires At",
+      "description": "Deleted after this; asking for the same files again keeps it longer"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "status",
+     "name",
+     "files",
+     "size",
+     "done",
+     "total",
+     "skipped",
+     "error",
+     "cancel_requested",
+     "created_at",
+     "ready_at",
+     "expires_at"
+    ],
+    "title": "BulkDownload"
+   },
+   "BulkDownloadAsk": {
+    "properties": {
+     "job_ids": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Job Ids",
+      "description": "Unknown ids are ignored"
+     },
+     "video": {
+      "type": "boolean",
+      "title": "Video",
+      "description": "The dubbed videos (media.out.*)",
+      "default": true
+     },
+     "srt": {
+      "type": "boolean",
+      "title": "Srt",
+      "description": "The subtitles of each language, as .srt",
+      "default": false
+     },
+     "langs": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Langs",
+      "description": "Only these languages; null: every language"
+     }
+    },
+    "type": "object",
+    "required": [
+     "job_ids"
+    ],
+    "title": "BulkDownloadAsk",
+    "description": "What to put in a bulk download (\"Gói tải về\") of chosen jobs: only jobs that are done count."
+   },
+   "BulkDownloadPreview": {
+    "properties": {
+     "files": {
+      "items": {
+       "$ref": "#/components/schemas/BulkFile"
+      },
+      "type": "array",
+      "title": "Files",
+      "description": "What a bulk download asked like this would hold now"
+     },
+     "size": {
+      "type": "integer",
+      "title": "Size"
+     },
+     "unfinished": {
+      "items": {
+       "$ref": "#/components/schemas/UnfinishedJob"
+      },
+      "type": "array",
+      "title": "Unfinished",
+      "description": "Chosen jobs left out: not done yet"
+     },
+     "langs": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Langs",
+      "description": "Languages the done jobs have files of (with video/srt, any langs)"
+     },
+     "single": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/BulkFile"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "The only file: download it as is (GET /artifacts/{id}/download)"
+     }
+    },
+    "type": "object",
+    "required": [
+     "files",
+     "size",
+     "unfinished",
+     "langs",
+     "single"
+    ],
+    "title": "BulkDownloadPreview"
+   },
+   "BulkFile": {
+    "properties": {
+     "artifact_id": {
+      "type": "string",
+      "title": "Artifact Id"
+     },
+     "job_id": {
+      "type": "string",
+      "title": "Job Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name",
+      "description": "Its name in the zip (before ' (2)' for names taken twice)"
+     },
+     "slot": {
+      "type": "string",
+      "title": "Slot"
+     },
+     "lang": {
+      "type": "string",
+      "title": "Lang"
+     },
+     "size": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Size",
+      "description": "Bytes (a subtitle: its stored transcript, about its .srt)"
+     }
+    },
+    "type": "object",
+    "required": [
+     "artifact_id",
+     "job_id",
+     "name",
+     "slot",
+     "lang",
+     "size"
+    ],
+    "title": "BulkFile"
    },
    "Config": {
     "properties": {
@@ -4814,6 +5257,29 @@
      "edited"
     ],
     "title": "TranscriptView"
+   },
+   "UnfinishedJob": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "status": {
+      "type": "string",
+      "title": "Status"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "title",
+     "status"
+    ],
+    "title": "UnfinishedJob"
    },
    "Uploaded": {
     "properties": {

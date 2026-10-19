@@ -74,3 +74,16 @@ class FakeDub(Driver):
         path = ctx.output("dub.wav")
         path.write_bytes(Path(inputs["transcript"].path).read_bytes())
         return {"audio": path}
+
+
+@register
+class FakeMux(Driver):
+    stage = "mux"
+    name = "fake"
+    consumes = {"video": "media.video", "dub": "audio.dub.{lang}"}
+    produces = {"video": "media.out.{lang}"}
+
+    def run(self, ctx, inputs, params):
+        path = ctx.output("out.mp4")
+        path.write_bytes(Path(inputs["video"].path).read_bytes() + Path(inputs["dub"].path).read_bytes())
+        return {"video": path}

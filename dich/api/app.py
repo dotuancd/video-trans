@@ -48,7 +48,7 @@ class Context:
 
 def create_app(root=None, db_path=None, data_dir=None, workers=True):
     """workers: start the worker processes with the app (False in tests)."""
-    from dich.api import jobs, presets, projects, system, voices
+    from dich.api import bulk_downloads, jobs, presets, projects, system, voices
 
     data_dir = Path(data_dir or settings.DATA_DIR)
     db_path = Path(db_path or data_dir / "dich.sqlite")
@@ -75,6 +75,7 @@ def create_app(root=None, db_path=None, data_dir=None, workers=True):
     app.include_router(presets.router(ctx), prefix="/api")
     app.include_router(projects.router(ctx), prefix="/api")
     app.include_router(voices.router(ctx), prefix="/api")
+    app.include_router(bulk_downloads.router(ctx), prefix="/api")
 
     if WEB_DIST.is_dir():
         app.mount("/", StaticFiles(directory=WEB_DIST, html=True), name="web")

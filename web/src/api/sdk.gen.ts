@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddLangsData, AddLangsErrors, AddLangsResponses, AnalyzeVoiceData, AnalyzeVoiceErrors, AnalyzeVoiceResponses, ArtifactVttData, ArtifactVttErrors, ArtifactVttResponses, AttemptEventsData, AttemptEventsErrors, AttemptEventsResponses, AttemptRequestsData, AttemptRequestsErrors, AttemptRequestsResponses, AttemptSystemLogData, AttemptSystemLogErrors, AttemptSystemLogResponses, CancelJobData, CancelJobErrors, CancelJobResponses, CountJobsData, CountJobsErrors, CountJobsResponses, CreateJobsData, CreateJobsErrors, CreateJobsResponses, CreateProjectData, CreateProjectErrors, CreateProjectResponses, CreateVoiceData, CreateVoiceErrors, CreateVoiceResponses, DeleteJobData, DeleteJobErrors, DeleteJobResponses, DeleteJobsData, DeleteJobsErrors, DeleteJobsResponses, DeletePresetData, DeletePresetErrors, DeletePresetResponses, DeleteProjectData, DeleteProjectErrors, DeleteProjectResponses, DeleteVoiceData, DeleteVoiceErrors, DeleteVoiceResponses, DownloadArtifactData, DownloadArtifactErrors, DownloadArtifactResponses, EventsData, EventsResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetBriefData, GetBriefErrors, GetBriefResponses, GetConfigData, GetConfigResponses, GetJobData, GetJobErrors, GetJobResponses, GetLiveChunkData, GetLiveChunkErrors, GetLiveChunkResponses, GetLiveData, GetLiveErrors, GetLiveResponses, GetQueueData, GetQueueResponses, GetTranscriptData, GetTranscriptErrors, GetTranscriptResponses, JobIdsData, JobIdsErrors, JobIdsResponses, ListAttemptsData, ListAttemptsErrors, ListAttemptsResponses, ListDirData, ListDirErrors, ListDirResponses, ListDriversData, ListDriversResponses, ListJobsData, ListJobsErrors, ListJobsResponses, ListPresetsData, ListPresetsResponses, ListPresetVoicesData, ListPresetVoicesResponses, ListProjectsData, ListProjectsResponses, ListTemplatesData, ListTemplatesResponses, ListVoicesData, ListVoicesErrors, ListVoicesResponses, MoveJobsData, MoveJobsErrors, MoveJobsResponses, PauseJobsData, PauseJobsErrors, PauseJobsResponses, PickAttemptData, PickAttemptErrors, PickAttemptResponses, PreviewVoiceData, PreviewVoiceErrors, PreviewVoiceResponses, RefreshJobData, RefreshJobErrors, RefreshJobResponses, RerunJobsData, RerunJobsErrors, RerunJobsResponses, RerunTaskData, RerunTaskErrors, RerunTaskResponses, ResumeJobData, ResumeJobErrors, ResumeJobResponses, RevealData, RevealErrors, RevealResponses, SaveBriefData, SaveBriefErrors, SaveBriefResponses, SavePresetData, SavePresetErrors, SavePresetResponses, SaveProjectData, SaveProjectErrors, SaveProjectResponses, SaveTranscriptData, SaveTranscriptErrors, SaveTranscriptResponses, SaveVoiceData, SaveVoiceErrors, SaveVoiceResponses, SetWorkersData, SetWorkersErrors, SetWorkersResponses, TraceData, TraceErrors, TraceResponses, UnpauseJobsData, UnpauseJobsErrors, UnpauseJobsResponses, UpdateJobData, UpdateJobErrors, UpdateJobResponses, UploadData, UploadErrors, UploadResponses, VoiceAudioData, VoiceAudioErrors, VoiceAudioResponses, VoiceSegmentData, VoiceSegmentErrors, VoiceSegmentResponses } from './types.gen';
+import type { AddLangsData, AddLangsErrors, AddLangsResponses, AnalyzeVoiceData, AnalyzeVoiceErrors, AnalyzeVoiceResponses, ArtifactVttData, ArtifactVttErrors, ArtifactVttResponses, AttemptEventsData, AttemptEventsErrors, AttemptEventsResponses, AttemptRequestsData, AttemptRequestsErrors, AttemptRequestsResponses, AttemptSystemLogData, AttemptSystemLogErrors, AttemptSystemLogResponses, CancelJobData, CancelJobErrors, CancelJobResponses, CountJobsData, CountJobsErrors, CountJobsResponses, CreateBulkDownloadData, CreateBulkDownloadErrors, CreateBulkDownloadResponses, CreateJobsData, CreateJobsErrors, CreateJobsResponses, CreateProjectData, CreateProjectErrors, CreateProjectResponses, CreateVoiceData, CreateVoiceErrors, CreateVoiceResponses, DeleteBulkDownloadData, DeleteBulkDownloadErrors, DeleteBulkDownloadResponses, DeleteJobData, DeleteJobErrors, DeleteJobResponses, DeleteJobsData, DeleteJobsErrors, DeleteJobsResponses, DeletePresetData, DeletePresetErrors, DeletePresetResponses, DeleteProjectData, DeleteProjectErrors, DeleteProjectResponses, DeleteVoiceData, DeleteVoiceErrors, DeleteVoiceResponses, DownloadArtifactData, DownloadArtifactErrors, DownloadArtifactResponses, DownloadBulkDownloadData, DownloadBulkDownloadErrors, DownloadBulkDownloadResponses, EventsData, EventsResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetBriefData, GetBriefErrors, GetBriefResponses, GetConfigData, GetConfigResponses, GetJobData, GetJobErrors, GetJobResponses, GetLiveChunkData, GetLiveChunkErrors, GetLiveChunkResponses, GetLiveData, GetLiveErrors, GetLiveResponses, GetQueueData, GetQueueResponses, GetTranscriptData, GetTranscriptErrors, GetTranscriptResponses, JobIdsData, JobIdsErrors, JobIdsResponses, ListAttemptsData, ListAttemptsErrors, ListAttemptsResponses, ListBulkDownloadsData, ListBulkDownloadsResponses, ListDirData, ListDirErrors, ListDirResponses, ListDriversData, ListDriversResponses, ListJobsData, ListJobsErrors, ListJobsResponses, ListPresetsData, ListPresetsResponses, ListPresetVoicesData, ListPresetVoicesResponses, ListProjectsData, ListProjectsResponses, ListTemplatesData, ListTemplatesResponses, ListVoicesData, ListVoicesErrors, ListVoicesResponses, MoveJobsData, MoveJobsErrors, MoveJobsResponses, PauseJobsData, PauseJobsErrors, PauseJobsResponses, PickAttemptData, PickAttemptErrors, PickAttemptResponses, PreviewBulkDownloadData, PreviewBulkDownloadErrors, PreviewBulkDownloadResponses, PreviewVoiceData, PreviewVoiceErrors, PreviewVoiceResponses, RefreshJobData, RefreshJobErrors, RefreshJobResponses, RerunJobsData, RerunJobsErrors, RerunJobsResponses, RerunTaskData, RerunTaskErrors, RerunTaskResponses, ResumeJobData, ResumeJobErrors, ResumeJobResponses, RevealData, RevealErrors, RevealResponses, SaveBriefData, SaveBriefErrors, SaveBriefResponses, SavePresetData, SavePresetErrors, SavePresetResponses, SaveProjectData, SaveProjectErrors, SaveProjectResponses, SaveTranscriptData, SaveTranscriptErrors, SaveTranscriptResponses, SaveVoiceData, SaveVoiceErrors, SaveVoiceResponses, SetWorkersData, SetWorkersErrors, SetWorkersResponses, TraceData, TraceErrors, TraceResponses, UnpauseJobsData, UnpauseJobsErrors, UnpauseJobsResponses, UpdateJobData, UpdateJobErrors, UpdateJobResponses, UploadData, UploadErrors, UploadResponses, VoiceAudioData, VoiceAudioErrors, VoiceAudioResponses, VoiceSegmentData, VoiceSegmentErrors, VoiceSegmentResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -366,7 +366,8 @@ export const reveal = <ThrowOnError extends boolean = true>(options: Options<Rev
  * {"type": "job", "job"} when a job or one of its tasks changed, {"type": "progress", "job_id", "task_id",
  * "done", "total"}, {"type": "log", "job_id", "task_id", "event"}, {"type": "deleted", "id"},
  * {"type": "project", "id", "deleted"} when a project was created, changed or deleted, {"type": "voice", "id",
- * "deleted"} likewise for a library voice.
+ * "deleted"} likewise for a library voice, {"type": "bulk_download", "id", "bulk_download"} when a bulk download
+ * changed (bulk_download null: deleted).
  */
 export const events = <ThrowOnError extends boolean = true>(options?: Options<EventsData, ThrowOnError, unknown>): Promise<ServerSentEventsResult<EventsResponses>> => (options?.client ?? client).sse.get<EventsResponses, unknown, ThrowOnError>({ url: '/api/events', ...options });
 
@@ -527,3 +528,53 @@ export const previewVoice = <ThrowOnError extends boolean = true>(options: Optio
         ...options.headers
     }
 });
+
+/**
+ * Preview Bulk Download
+ *
+ * What a bulk download of these jobs would hold, before asking for it.
+ */
+export const previewBulkDownload = <ThrowOnError extends boolean = true>(options: Options<PreviewBulkDownloadData, ThrowOnError>): RequestResult<PreviewBulkDownloadResponses, PreviewBulkDownloadErrors, ThrowOnError> => (options.client ?? client).post<PreviewBulkDownloadResponses, PreviewBulkDownloadErrors, ThrowOnError>({
+    url: '/api/bulk-downloads/preview',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List Bulk Downloads
+ *
+ * Newest first.
+ */
+export const listBulkDownloads = <ThrowOnError extends boolean = true>(options?: Options<ListBulkDownloadsData, ThrowOnError>): RequestResult<ListBulkDownloadsResponses, unknown, ThrowOnError> => (options?.client ?? client).get<ListBulkDownloadsResponses, unknown, ThrowOnError>({ url: '/api/bulk-downloads', ...options });
+
+/**
+ * Create Bulk Download
+ *
+ * Queues the zip of the done jobs' files (unfinished ones left out). The same files asked again
+ * give back the zip already made or being made.
+ */
+export const createBulkDownload = <ThrowOnError extends boolean = true>(options: Options<CreateBulkDownloadData, ThrowOnError>): RequestResult<CreateBulkDownloadResponses, CreateBulkDownloadErrors, ThrowOnError> => (options.client ?? client).post<CreateBulkDownloadResponses, CreateBulkDownloadErrors, ThrowOnError>({
+    url: '/api/bulk-downloads',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Download Bulk Download
+ *
+ * The zip, resumable (Range).
+ */
+export const downloadBulkDownload = <ThrowOnError extends boolean = true>(options: Options<DownloadBulkDownloadData, ThrowOnError>): RequestResult<DownloadBulkDownloadResponses, DownloadBulkDownloadErrors, ThrowOnError> => (options.client ?? client).get<DownloadBulkDownloadResponses, DownloadBulkDownloadErrors, ThrowOnError>({ url: '/api/bulk-downloads/{bulk_id}/download', ...options });
+
+/**
+ * Delete Bulk Download
+ *
+ * Cancels one waiting or being made (its worker stops); deletes any other, with its zip.
+ */
+export const deleteBulkDownload = <ThrowOnError extends boolean = true>(options: Options<DeleteBulkDownloadData, ThrowOnError>): RequestResult<DeleteBulkDownloadResponses, DeleteBulkDownloadErrors, ThrowOnError> => (options.client ?? client).delete<DeleteBulkDownloadResponses, DeleteBulkDownloadErrors, ThrowOnError>({ url: '/api/bulk-downloads/{bulk_id}', ...options });

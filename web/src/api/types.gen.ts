@@ -135,6 +135,174 @@ export type BriefView = {
 };
 
 /**
+ * BulkDownload
+ */
+export type BulkDownload = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Status
+     */
+    status: 'queued' | 'running' | 'ready' | 'failed' | 'cancelled';
+    /**
+     * Name
+     *
+     * The zip's file name
+     */
+    name: string;
+    /**
+     * Files
+     *
+     * Files asked for
+     */
+    files: number;
+    /**
+     * Size
+     *
+     * Bytes of the zip, when ready
+     */
+    size: number | null;
+    /**
+     * Done
+     *
+     * Bytes zipped so far, of total
+     */
+    done: number | null;
+    /**
+     * Total
+     */
+    total: number | null;
+    /**
+     * Skipped
+     *
+     * Files left out: gone before they were zipped
+     */
+    skipped: Array<string>;
+    /**
+     * Error
+     */
+    error: string | null;
+    /**
+     * Cancel Requested
+     */
+    cancel_requested: boolean;
+    /**
+     * Created At
+     */
+    created_at: number;
+    /**
+     * Ready At
+     */
+    ready_at: number | null;
+    /**
+     * Expires At
+     *
+     * Deleted after this; asking for the same files again keeps it longer
+     */
+    expires_at: number | null;
+};
+
+/**
+ * BulkDownloadAsk
+ *
+ * What to put in a bulk download ("Gói tải về") of chosen jobs: only jobs that are done count.
+ */
+export type BulkDownloadAsk = {
+    /**
+     * Job Ids
+     *
+     * Unknown ids are ignored
+     */
+    job_ids: Array<string>;
+    /**
+     * Video
+     *
+     * The dubbed videos (media.out.*)
+     */
+    video?: boolean;
+    /**
+     * Srt
+     *
+     * The subtitles of each language, as .srt
+     */
+    srt?: boolean;
+    /**
+     * Langs
+     *
+     * Only these languages; null: every language
+     */
+    langs?: Array<string> | null;
+};
+
+/**
+ * BulkDownloadPreview
+ */
+export type BulkDownloadPreview = {
+    /**
+     * Files
+     *
+     * What a bulk download asked like this would hold now
+     */
+    files: Array<BulkFile>;
+    /**
+     * Size
+     */
+    size: number;
+    /**
+     * Unfinished
+     *
+     * Chosen jobs left out: not done yet
+     */
+    unfinished: Array<UnfinishedJob>;
+    /**
+     * Langs
+     *
+     * Languages the done jobs have files of (with video/srt, any langs)
+     */
+    langs: Array<string>;
+    /**
+     * The only file: download it as is (GET /artifacts/{id}/download)
+     */
+    single: BulkFile | null;
+};
+
+/**
+ * BulkFile
+ */
+export type BulkFile = {
+    /**
+     * Artifact Id
+     */
+    artifact_id: string;
+    /**
+     * Job Id
+     */
+    job_id: string;
+    /**
+     * Name
+     *
+     * Its name in the zip (before ' (2)' for names taken twice)
+     */
+    name: string;
+    /**
+     * Slot
+     */
+    slot: string;
+    /**
+     * Lang
+     */
+    lang: string;
+    /**
+     * Size
+     *
+     * Bytes (a subtitle: its stored transcript, about its .srt)
+     */
+    size: number | null;
+};
+
+/**
  * Config
  */
 export type Config = {
@@ -1464,6 +1632,24 @@ export type TranscriptView = {
      * Edited
      */
     edited: boolean;
+};
+
+/**
+ * UnfinishedJob
+ */
+export type UnfinishedJob = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Status
+     */
+    status: string;
 };
 
 /**
@@ -3349,3 +3535,131 @@ export type PreviewVoiceResponses = {
 };
 
 export type PreviewVoiceResponse = PreviewVoiceResponses[keyof PreviewVoiceResponses];
+
+export type PreviewBulkDownloadData = {
+    body: BulkDownloadAsk;
+    path?: never;
+    query?: never;
+    url: '/api/bulk-downloads/preview';
+};
+
+export type PreviewBulkDownloadErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PreviewBulkDownloadError = PreviewBulkDownloadErrors[keyof PreviewBulkDownloadErrors];
+
+export type PreviewBulkDownloadResponses = {
+    /**
+     * Successful Response
+     */
+    200: BulkDownloadPreview;
+};
+
+export type PreviewBulkDownloadResponse = PreviewBulkDownloadResponses[keyof PreviewBulkDownloadResponses];
+
+export type ListBulkDownloadsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/bulk-downloads';
+};
+
+export type ListBulkDownloadsResponses = {
+    /**
+     * Response List Bulk Downloads
+     *
+     * Successful Response
+     */
+    200: Array<BulkDownload>;
+};
+
+export type ListBulkDownloadsResponse = ListBulkDownloadsResponses[keyof ListBulkDownloadsResponses];
+
+export type CreateBulkDownloadData = {
+    body: BulkDownloadAsk;
+    path?: never;
+    query?: never;
+    url: '/api/bulk-downloads';
+};
+
+export type CreateBulkDownloadErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateBulkDownloadError = CreateBulkDownloadErrors[keyof CreateBulkDownloadErrors];
+
+export type CreateBulkDownloadResponses = {
+    /**
+     * Successful Response
+     */
+    200: BulkDownload;
+};
+
+export type CreateBulkDownloadResponse = CreateBulkDownloadResponses[keyof CreateBulkDownloadResponses];
+
+export type DownloadBulkDownloadData = {
+    body?: never;
+    path: {
+        /**
+         * Bulk Id
+         */
+        bulk_id: string;
+    };
+    query?: never;
+    url: '/api/bulk-downloads/{bulk_id}/download';
+};
+
+export type DownloadBulkDownloadErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DownloadBulkDownloadError = DownloadBulkDownloadErrors[keyof DownloadBulkDownloadErrors];
+
+export type DownloadBulkDownloadResponses = {
+    /**
+     * Successful Response
+     */
+    200: Blob | File;
+};
+
+export type DownloadBulkDownloadResponse = DownloadBulkDownloadResponses[keyof DownloadBulkDownloadResponses];
+
+export type DeleteBulkDownloadData = {
+    body?: never;
+    path: {
+        /**
+         * Bulk Id
+         */
+        bulk_id: string;
+    };
+    query?: never;
+    url: '/api/bulk-downloads/{bulk_id}';
+};
+
+export type DeleteBulkDownloadErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteBulkDownloadError = DeleteBulkDownloadErrors[keyof DeleteBulkDownloadErrors];
+
+export type DeleteBulkDownloadResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteBulkDownloadResponse = DeleteBulkDownloadResponses[keyof DeleteBulkDownloadResponses];

@@ -457,3 +457,55 @@ class Preview(BaseModel):
     job_id: str | None = Field(None, description="Clone from / read this job's video and subtitles")
     lang: str = "vi"
     path: str | None = Field(None, description="Or a video (with <name>.srt / <name>.vi.srt next to it)")
+
+
+class BulkDownloadAsk(BaseModel):
+    """What to put in a bulk download ("Gói tải về") of chosen jobs: only jobs that are done count."""
+    job_ids: list[str] = Field(description="Unknown ids are ignored")
+    video: bool = Field(True, description="The dubbed videos (media.out.*)")
+    srt: bool = Field(False, description="The subtitles of each language, as .srt")
+    langs: list[str] | None = Field(None, description="Only these languages; null: every language")
+
+
+class BulkFile(BaseModel):
+    artifact_id: str
+    job_id: str
+    name: str = Field(description="Its name in the zip (before ' (2)' for names taken twice)")
+    slot: str
+    lang: str
+    size: int | None = Field(description="Bytes (a subtitle: its stored transcript, about its .srt)")
+
+
+class UnfinishedJob(BaseModel):
+    id: str
+    title: str
+    status: str
+
+
+class BulkDownloadPreview(BaseModel):
+    files: list[BulkFile] = Field(description="What a bulk download asked like this would hold now")
+    size: int
+    unfinished: list[UnfinishedJob] = Field(description="Chosen jobs left out: not done yet")
+    langs: list[str] = Field(description="Languages the done jobs have files of (with video/srt, any langs)")
+    single: BulkFile | None = Field(description="The only file: download it as is (GET /artifacts/{id}/download)")
+
+
+class BulkDownload(BaseModel):
+    id: str
+    status: Literal["queued", "running", "ready", "failed", "cancelled"]
+    name: str = Field(description="The zip's file name")
+    files: int = Field(description="Files asked for")
+    size: int | None = Field(description="Bytes of the zip, when ready")
+    done: int | None = Field(description="Bytes zipped so far, of total")
+    total: int | None
+    skipped: list[str] = Field(description="Files left out: gone before they were zipped")
+    error: str | None
+    cancel_requested: bool
+    created_at: float
+    ready_at: float | None
+    expires_at: float | None = Field(description="Deleted after this; asking for the same files again keeps it longer")
+
+    @classmethod
+    def of(cls, bulk):
+        """Of a store bulk_dict."""
+        return cls(**bulk, files=len(bulk["spec"].get("artifact_ids", [])))
