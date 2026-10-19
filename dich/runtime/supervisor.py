@@ -83,7 +83,9 @@ class Supervisor:
     def start(self):
         store = Store(self.db_path, self.data_dir)
         store.reap(alive=pid_alive)     # tasks left running by a previous server
+        store.reap_bulk_downloads(alive=pid_alive)
         store.prune_old()
+        store.prune_bulk_downloads()
         store.close()
         for lane, count in self.workers.items():
             for index in range(count):
@@ -108,12 +110,14 @@ class Supervisor:
                 last_reap = time.monotonic()
                 try:
                     store.reap(alive=pid_alive)
+                    store.reap_bulk_downloads(alive=pid_alive)
                 except Exception as error:   # database locked for too long: try again next round
                     print(f"supervisor: {error}")
             if time.monotonic() - last_prune > PRUNE_EVERY:
                 last_prune = time.monotonic()
                 try:
                     store.prune_old()
+                    store.prune_bulk_downloads()
                 except Exception as error:
                     print(f"supervisor: {error}")
         store.close()

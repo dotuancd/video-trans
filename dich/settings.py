@@ -45,6 +45,7 @@ SPEECH_RATE = float(env("DICH_SPEECH_RATE", "4.0"))
 
 # web UI
 UI_ROOT = env_path("DICH_UI_ROOT", "~")
+UI_HOST = env("DICH_UI_HOST", "127.0.0.1")   # 0.0.0.0: reachable from other machines (no login: use a VPN)
 UI_PORT = int(env("DICH_UI_PORT", "7860"))
 
 # workers per lane (dich serve / dich worker)
@@ -53,6 +54,7 @@ WORKERS = {
     "net": int(env("DICH_WORKERS_NET", "3")),
     "gpu": int(env("DICH_WORKERS_GPU", "0")),
     "interactive": int(env("DICH_WORKERS_INTERACTIVE", "1")),
+    "bulk_download": int(env("DICH_WORKERS_BULK_DOWNLOAD", "1")),   # zips for "Gói tải về"
 }
 
 # where things are kept
@@ -60,4 +62,5 @@ MODELS_DIR = env_path("DICH_MODELS_DIR", ROOT / "models")                 # loca
 DATA_DIR = env_path("DICH_DATA_DIR", "~/.local/share/dich-video")         # database, job workspaces, uploads
 CACHE_DIR = env_path("DICH_CACHE_DIR", "~/.cache/dich-video")             # TTS sentence cache, voice clips
 DB_PATH = DATA_DIR / "dich.sqlite"
+BULK_DOWNLOAD_TTL_HOURS = float(env("DICH_BULK_DOWNLOAD_TTL_HOURS", "24"))   # a ready zip is kept this long
 KEEP_DAYS = int(env("DICH_KEEP_DAYS", "7"))   # days to keep keep="last" outputs of older runs (0: delete at once)

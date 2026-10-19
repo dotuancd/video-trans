@@ -44,6 +44,7 @@ uv run dich templates | drivers | voices
 ```
 uv run dich serve                   # API + workers, mở http://127.0.0.1:7860
 uv run dich serve --root ~/Videos   # chỉ cho UI đọc/ghi trong thư mục này (mặc định: ~)
+uv run dich serve --host 0.0.0.0    # cho máy khác truy cập (mặc định 127.0.0.1, $DICH_UI_HOST)
 uv run dich worker --lanes cpu      # (tuỳ chọn) thêm worker ở terminal khác
 ```
 
@@ -53,7 +54,9 @@ uv run dich worker --lanes cpu      # (tuỳ chọn) thêm worker ở terminal k
 - **Sửa phụ đề**: song ngữ ngay dưới video, phụ đề trên video theo bản đang gõ; tách/gộp/chuyển chữ. Lưu = bản sửa tay mới; các bước sau thành "Cần chạy lại" → **Cập nhật phía sau**. Chạy lại một bước sẽ hỏi trước khi thay bản đã sửa tay.
 - Template **Lồng tiếng, duyệt bản dịch trước** dừng trước bước lồng tiếng để bạn sửa bản dịch/nghe thử giọng rồi bấm Tiếp tục.
 
-Dữ liệu ở `~/.local/share/dich-video/` (`dich.sqlite`, `jobs/<id>/<bước>/<lần>/` chứa outputs, `events.jsonl`, `system.log`; `uploads/`). Worker là process riêng theo lane (`cpu`, `net`, `interactive`); worker chết thì việc tự chạy lại (tối đa 2 lần). Số worker mỗi lane đổi bằng nút +/− ở trang Hàng đợi, không cần khởi động lại. Lỗi hệ thống hiện mã ngắn; xem chi tiết tại `/api/admin/traces/<mã>`.
+Truy cập từ máy khác: API **không có đăng nhập**, ai vào được cổng là đọc/ghi được thư mục `--root` — chỉ mở `--host` ra ngoài trong mạng riêng như [Tailscale](https://tailscale.com) (`--host` là IP Tailscale của máy, hoặc `0.0.0.0` sau tường lửa), rồi mở `http://<máy>:7860` từ máy kia.
+
+Dữ liệu ở `~/.local/share/dich-video/` (`dich.sqlite`, `jobs/<id>/<bước>/<lần>/` chứa outputs, `events.jsonl`, `system.log`; `uploads/`). Worker là process riêng theo lane (`cpu`, `net`, `interactive`, `bulk_download` tạo zip cho "Gói tải về"); worker chết thì việc tự chạy lại (tối đa 2 lần). Số worker mỗi lane đổi bằng nút +/− ở trang Hàng đợi, không cần khởi động lại. Lỗi hệ thống hiện mã ngắn; xem chi tiết tại `/api/admin/traces/<mã>`.
 
 ### Phát triển
 

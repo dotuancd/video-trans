@@ -85,19 +85,34 @@ def create_app(root=None, db_path=None, data_dir=None, workers=True):
     return app
 
 
-def launch(root=None, port=None, open_browser=True):
+def is_loopback(host):
+    """True for an address only this machine can reach (localhost, 127.x, ::1)."""
+    import ipaddress
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def launch(root=None, port=None, host=None, open_browser=True):
     import threading
     import webbrowser
 
     import uvicorn
 
     port = port or settings.UI_PORT
+    host = host or settings.UI_HOST
     app = create_app(root)
     url = f"http://127.0.0.1:{port}"
     print(f"Dịch video: {url}  (thư mục: {app.state.ctx.root}, dữ liệu: {app.state.ctx.data_dir})")
+    if not is_loopback(host):
+        print(f"⚠ Đang lắng nghe trên {host}:{port}: máy khác truy cập được và API không có xác thực"
+              f" (đọc/ghi được {app.state.ctx.root}). Chỉ nên dùng trong mạng riêng như Tailscale.")
     if open_browser:
         threading.Timer(1.5, webbrowser.open, [url]).start()
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning", timeout_graceful_shutdown=2)
+    uvicorn.run(app, host=host, port=port, log_level="warning", timeout_graceful_shutdown=2)
 
 
 def openapi_json():

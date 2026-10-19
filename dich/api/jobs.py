@@ -16,19 +16,13 @@ from dich.formats.transcript import Cue, Transcript, ensure_ids, to_srt, to_vtt
 from dich.media import is_media, is_subtitle, sha256
 from dich.queue.base import Busy, NeedsConfirm
 from dich.runtime.engine import export_task
+from dich.storage.export import download_name
 from dich.storage.live import live_chunk, read_live
 
 
 def find_media(folder, recursive):
     files = folder.rglob("*") if recursive else folder.glob("*")
     return sorted(f for f in files if f.is_file() and not f.name.startswith(".") and is_media(f.name))
-
-
-def download_name(source, art):
-    """The name an artifact is downloaded as: like its export, after the job's source."""
-    from dich.storage.export import export_name, source_stem
-    base = Path(art["path"]) if job_service.is_url(source) else Path(source)
-    return export_name(art["slot"], source_stem(base), Path(art["path"]).suffix) or Path(art["path"]).name
 
 
 def attach_artifacts(store, jobs):

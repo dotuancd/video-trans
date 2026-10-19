@@ -9,8 +9,14 @@
 # with fresh); cleared when that attempt starts, so a retry after a crash goes on from it.
 # A worker claims a queued task atomically and holds a lease it renews; a task whose lease runs out
 # (worker crashed, killed) goes back to queued, at most MAX_RETRIES times.
+#
+# Bulk downloads ("Gói tải về"): a zip of chosen artifacts made by a bulk_download worker, kept
+# BULK_DOWNLOAD_TTL_HOURS after it is ready. Status queued → running → ready | failed | cancelled; claimed
+# and leased like tasks, a lost worker's zip starts over from the beginning.
 import base64
+import hashlib
 import json
+import os
 import shutil
 import sqlite3
 import threading
@@ -143,6 +149,28 @@ create table if not exists calls (
     error text,
     created_at real not null
 );
+create table if not exists bulk_downloads (
+    id text primary key,
+    status text not null,
+    name text not null,
+    spec text not null,
+    spec_key text not null,
+    path text,
+    size integer,
+    done integer,
+    total integer,
+    skipped text not null default '[]',
+    error text,
+    retries integer not null default 0,
+    lease_until real,
+    pid integer,
+    cancel_requested integer not null default 0,
+    created_at real not null,
+    updated_at real not null,
+    ready_at real,
+    expires_at real
+);
+create index if not exists bulk_downloads_status on bulk_downloads(status);
 """
 MAX_RETRIES = 2
 LEASE = 30.0
@@ -963,6 +991,160 @@ class Store:
         self.x("delete from calls where id = ?", call_id)
         return None, "Hết thời gian chờ (worker đang bận?)"
 
+    # --- bulk downloads: zips of chosen artifacts, made by a bulk_download worker ---
+
+    @property
+    def bulk_dir(self):
+        return self.data_dir / "bulk_downloads"
+
+    def _bulk_event(self, bulk_id, **data):
+        self.event(None, "bulk_download", data={"id": bulk_id, **data})
+
+    def bulk_downloads(self):
+        return [bulk_dict(r) for r in self.q("select * from bulk_downloads order by rowid desc")]
+
+    def bulk_download(self, bulk_id):
+        row = self.one("select * from bulk_downloads where id = ?", bulk_id)
+        return bulk_dict(row) if row else None
+
+    def create_bulk_download(self, name, artifact_ids, options=None):
+        """A zip of the artifacts artifact_ids (options: what the worker needs to name them), queued for a
+        worker. The same artifacts and options asked again give back the one already made (if still kept,
+        now kept TTL longer) or being made, instead of a new zip. Returns its dict."""
+        spec = {"artifact_ids": sorted(artifact_ids), "options": options or {}}
+        key = hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()
+        now = time.time()
+        with self.tx():
+            for row in self.q("select * from bulk_downloads where spec_key = ? and status in ('queued', 'running',"
+                              " 'ready') and cancel_requested = 0 order by rowid desc", key):
+                if row["status"] != "ready":
+                    return bulk_dict(row)
+                if row["expires_at"] > now and row["path"] and Path(row["path"]).exists():
+                    self.x("update bulk_downloads set expires_at = ?, updated_at = ? where id = ?",
+                           now + settings.BULK_DOWNLOAD_TTL_HOURS * 3600, now, row["id"])
+                    self._bulk_event(row["id"], status="ready")
+                    return self.bulk_download(row["id"])
+            bulk_id = new_id("bdl")
+            self.x("insert into bulk_downloads (id, status, name, spec, spec_key, created_at, updated_at)"
+                   " values (?, 'queued', ?, ?, ?, ?, ?)", bulk_id, name, json.dumps(spec, ensure_ascii=False), key,
+                   now, now)
+            self._bulk_event(bulk_id, status="queued")
+        return self.bulk_download(bulk_id)
+
+    def claim_bulk_download(self, lease=LEASE, pid=None):
+        """The oldest queued bulk download, now running under a lease held by process pid; None if none."""
+        with self.tx():
+            row = self.one("update bulk_downloads set status = 'running', lease_until = ?, pid = ?, updated_at = ?,"
+                           " done = null, total = null, error = null where id = (select id from bulk_downloads"
+                           " where status = 'queued' order by rowid limit 1) returning *",
+                           time.time() + lease, pid or os.getpid(), time.time())
+            if row is None:
+                return None
+            self._bulk_event(row["id"], status="running")
+            return bulk_dict(row)
+
+    def bulk_heartbeat(self, bulk_id, lease=LEASE):
+        """Renews the lease; returns True when the worker should stop (cancelled or deleted)."""
+        self.x("update bulk_downloads set lease_until = ? where id = ? and status = 'running'", time.time() + lease,
+               bulk_id)
+        row = self.one("select status, cancel_requested from bulk_downloads where id = ?", bulk_id)
+        return not row or row["status"] != "running" or bool(row["cancel_requested"])
+
+    def bulk_progress(self, bulk_id, done, total):
+        """Bytes written so far of total; the worker calls this now and then, not per block."""
+        self.x("update bulk_downloads set done = ?, total = ?, updated_at = ? where id = ?", done, total,
+               time.time(), bulk_id)
+        self._bulk_event(bulk_id, status="running", done=done, total=total)
+
+    def bulk_ready(self, bulk_id, path, size, skipped=()):
+        """The zip is at path. skipped: notes on files left out (gone before they were zipped). If the bulk
+        download was deleted meanwhile the file is removed; returns False then."""
+        now = time.time()
+        with self.tx():
+            changed = self.x("update bulk_downloads set status = 'ready', path = ?, size = ?, done = ?, total = ?,"
+                             " skipped = ?, error = null, lease_until = null, ready_at = ?, expires_at = ?,"
+                             " updated_at = ? where id = ? and status = 'running' and cancel_requested = 0",
+                             str(path), size, size, size, json.dumps(list(skipped), ensure_ascii=False), now,
+                             now + settings.BULK_DOWNLOAD_TTL_HOURS * 3600, now, bulk_id).rowcount
+            if changed:
+                self._bulk_event(bulk_id, status="ready")
+        if not changed:
+            Path(path).unlink(missing_ok=True)
+            self.bulk_cancelled(bulk_id)
+        return bool(changed)
+
+    def bulk_failed(self, bulk_id, error):
+        self.x("update bulk_downloads set status = 'failed', error = ?, lease_until = null, updated_at = ?"
+               " where id = ? and status = 'running'", error, time.time(), bulk_id)
+        self._bulk_event(bulk_id, status="failed")
+
+    def bulk_cancelled(self, bulk_id):
+        """The worker stopped as asked."""
+        if self.x("update bulk_downloads set status = 'cancelled', lease_until = null, cancel_requested = 0,"
+                  " updated_at = ? where id = ? and status = 'running'", time.time(), bulk_id).rowcount:
+            self._bulk_event(bulk_id, status="cancelled")
+
+    def cancel_bulk_download(self, bulk_id):
+        """A queued one is cancelled; a running one is flagged, its worker stops it."""
+        with self.tx():
+            self.x("update bulk_downloads set status = 'cancelled', updated_at = ? where id = ? and status = 'queued'",
+                   time.time(), bulk_id)
+            self.x("update bulk_downloads set cancel_requested = 1 where id = ? and status = 'running'", bulk_id)
+            found = self.bulk_download(bulk_id)
+            if found:
+                self._bulk_event(bulk_id, status=found["status"])
+            return found
+
+    def delete_bulk_download(self, bulk_id):
+        """The row and its zip, whatever the status: a running worker sees it gone at its next heartbeat."""
+        row = self.bulk_download(bulk_id)
+        if not row:
+            return False
+        self.x("delete from bulk_downloads where id = ?", bulk_id)
+        if row["path"]:
+            Path(row["path"]).unlink(missing_ok=True)
+        self._bulk_event(bulk_id, deleted=True)
+        return True
+
+    def reap_bulk_downloads(self, alive=None):
+        """Running bulk downloads whose lease ran out or whose worker is gone start over (queued), at most
+        MAX_RETRIES times, then fail; cancelled if the user asked. Returns how many."""
+        count = 0
+        with self.tx():
+            for row in self.q("select * from bulk_downloads where status = 'running'"):
+                expired = (row["lease_until"] or 0) < time.time()
+                gone = alive is not None and row["pid"] and not alive(row["pid"])
+                if not (expired or gone):
+                    continue
+                if row["cancel_requested"]:
+                    status, fields = "cancelled", {"cancel_requested": 0}
+                elif row["retries"] < MAX_RETRIES:
+                    status, fields = "queued", {"retries": row["retries"] + 1, "done": None, "total": None}
+                else:
+                    status, fields = "failed", {"error": "Worker dừng đột ngột nhiều lần"}
+                sets = "".join(f", {k} = ?" for k in fields)
+                self.x(f"update bulk_downloads set status = ?, lease_until = null, pid = null, updated_at = ?{sets}"
+                       " where id = ?", status, time.time(), *fields.values(), row["id"])
+                self._bulk_event(row["id"], status=status)
+                count += 1
+        return count
+
+    def prune_bulk_downloads(self):
+        """Delete ready zips past their expiry, failed or cancelled rows older than the TTL, and files in
+        bulk_dir that no row owns (left by a lost worker). Returns how many rows were deleted."""
+        now = time.time()
+        old = now - settings.BULK_DOWNLOAD_TTL_HOURS * 3600
+        rows = self.q("select id from bulk_downloads where (status = 'ready' and expires_at < ?)"
+                      " or (status in ('failed', 'cancelled') and updated_at < ?)", now, old)
+        for row in rows:
+            self.delete_bulk_download(row["id"])
+        if self.bulk_dir.is_dir():
+            owned = {r["id"] for r in self.q("select id from bulk_downloads where status in ('queued', 'running', 'ready')")}
+            for path in self.bulk_dir.iterdir():
+                if path.name.split(".")[0] not in owned:
+                    path.unlink(missing_ok=True)
+        return len(rows)
+
 
 def task_dict(row):
     keys = row.keys()
@@ -1036,6 +1218,14 @@ def artifact_dict(row):
     return Artifact({"id": row["id"], "job_id": row["job_id"], "task_id": row["task_id"], "attempt_id": row["attempt_id"],
             "name": row["name"], "slot": row["slot"], "path": row["path"], "sha256": row["sha256"],
             "size": row["size"], "keep": row["keep"], "external": bool(row["external"])})
+
+
+def bulk_dict(row):
+    return {"id": row["id"], "status": row["status"], "name": row["name"], "spec": loads(row["spec"], {}),
+            "path": row["path"], "size": row["size"], "done": row["done"], "total": row["total"],
+            "skipped": loads(row["skipped"], []), "error": row["error"], "retries": row["retries"],
+            "cancel_requested": bool(row["cancel_requested"]), "created_at": row["created_at"],
+            "updated_at": row["updated_at"], "ready_at": row["ready_at"], "expires_at": row["expires_at"]}
 
 
 def event_dict(row):

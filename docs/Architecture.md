@@ -2,7 +2,8 @@
 
 > **Trạng thái:** bước 1–5 của §10 đã triển khai trong package `dich/` (thay `dich.py`, `dich_server/`). Khác bản thiết kế: nguồn
 > upload/browse gộp thành driver `source/file` (kèm tuỳ chọn dùng phụ đề có sẵn cạnh video); templates ở `dich/templates/`
-> (+ `<data>/templates/`); module log là `dich/logging/`; thêm lane `interactive` cho nghe thử giọng (API không chạy model).
+> (+ `<data>/templates/`); module log là `dich/logging/`; thêm lane `interactive` cho nghe thử giọng (API không chạy model) và lane
+> `bulk_download` tạo zip "Gói tải về" (bảng `bulk_downloads` riêng, không phải task).
 
 Nguồn → (Tách nền) → ASR → (Hiệu chỉnh) → Dịch ×N ngôn ngữ → Lồng tiếng ×N → Ghép ×N.
 

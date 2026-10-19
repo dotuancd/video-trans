@@ -31,6 +31,13 @@ def source_stem(path):
     return stem
 
 
+def download_name(source, art):
+    """The name an artifact is downloaded as: like its export, after the job's source."""
+    from dich.core.jobs import is_url
+    base = Path(art["path"]) if is_url(source) else Path(source)
+    return export_name(art["slot"], source_stem(base), Path(art["path"]).suffix) or Path(art["path"]).name
+
+
 def export(artifact, slot, export_dir, source):
     """Path written for the artifact, or None when the slot is not exported. Never overwrites `source`."""
     if not export_dir:

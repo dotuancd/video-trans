@@ -47,11 +47,14 @@ def build_parser():
         serve = commands.add_parser(name, help="giao diện web + workers" if name == "serve" else "như serve")
         serve.add_argument("--root", type=Path, default=settings.UI_ROOT,
                            help=f"thư mục UI được đọc/ghi (mặc định: {settings.UI_ROOT}, $DICH_UI_ROOT)")
+        serve.add_argument("--host", default=settings.UI_HOST,
+                           help=f"địa chỉ lắng nghe (mặc định: {settings.UI_HOST}, $DICH_UI_HOST); 0.0.0.0 để máy khác"
+                                " truy cập — không có đăng nhập, nên dùng qua Tailscale")
         serve.add_argument("--port", type=int, default=settings.UI_PORT)
         serve.add_argument("--no-browser", action="store_true")
 
     worker = commands.add_parser("worker", help="chạy thêm workers (cùng database)")
-    worker.add_argument("--lanes", default="cpu,net", help="cpu,net,gpu,interactive")
+    worker.add_argument("--lanes", default="cpu,net", help="cpu,net,gpu,interactive,bulk_download")
     worker.add_argument("--count", type=int, default=1, help="số process mỗi lane")
 
     commands.add_parser("drivers", help="liệt kê drivers và có dùng được không")
@@ -163,7 +166,7 @@ def main(argv=None):
 
     if args.command in ("serve", "ui"):
         from dich.api.app import launch
-        launch(args.root, args.port, open_browser=not args.no_browser)
+        launch(args.root, args.port, args.host, open_browser=not args.no_browser)
     elif args.command == "worker":
         from dich.runtime.supervisor import Supervisor
         lanes = [lane.strip() for lane in args.lanes.split(",") if lane.strip()]

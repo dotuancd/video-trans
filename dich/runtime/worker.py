@@ -10,6 +10,7 @@ from pathlib import Path
 from dich.logging import system
 from dich.queue.sqlite import Store
 from dich.runtime.engine import Engine
+from dich.storage import bulk as bulk_zip
 
 IDLE = 0.3   # seconds between polls when there is nothing to do
 
@@ -31,13 +32,18 @@ def worker_main(lanes, db_path=None, data_dir=None, log_path=None, retire=None):
         os._exit(3)
 
     engine = Engine(store, capture=True, on_cancel=on_cancel)
-    task_lanes = [lane for lane in lanes if lane != "interactive"]
+    task_lanes = [lane for lane in lanes if lane not in ("interactive", "bulk_download")]
     print(f"worker {os.getpid()} lanes={','.join(lanes)}", flush=True)
     while not (retire and retire.is_set()):
         if "interactive" in lanes:
             call = store.claim_call()
             if call:
                 engine.answer(call)
+                continue
+        if "bulk_download" in lanes:
+            bulk = store.claim_bulk_download()
+            if bulk:
+                bulk_zip.run(store, bulk)
                 continue
         task = store.claim(task_lanes) if task_lanes else None
         if task:
