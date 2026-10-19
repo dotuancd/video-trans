@@ -1,17 +1,24 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { AlertTriangle, Clock, Cpu, Globe, Loader2, Minus, Plus, Zap } from 'lucide-react'
-import { getQueue, setWorkers, type Lane, type QueueItem, type QueueView as Queue, type Worker } from '@/api'
+import { AlertTriangle, Clock, Cpu, Download, Globe, Loader2, Minus, Package, Plus, Trash2, X, Zap } from 'lucide-react'
+import {
+  deleteBulkDownload, getQueue, setWorkers,
+  type BulkDownload, type Lane, type QueueItem, type QueueView as Queue, type Worker,
+} from '@/api'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
-import { errorMessage, stageLabel } from '@/lib/api'
+import { bulkDownloadUrl, errorMessage, sizeLabel, stageLabel } from '@/lib/api'
+import {
+  BULK_KEY, BULK_LANE, bulkPercent, isMaking, skippedLabel, startDownload, useBulkDownloads,
+} from '@/lib/bulkDownloads'
 
 const LANES: Record<string, { label: string; hint: string; icon: typeof Cpu }> = {
   cpu: { label: 'CPU', hint: 'Phụ đề, tách nền, lồng tiếng, ghép video trên máy', icon: Cpu },
   net: { label: 'Mạng / API', hint: 'Bước gọi dịch vụ ngoài (OpenAI…)', icon: Globe },
   gpu: { label: 'GPU', hint: 'Bước cần card đồ hoạ', icon: Zap },
+  [BULK_LANE]: { label: 'Gói tải về', hint: 'Đóng gói zip kết quả của nhiều việc để tải về', icon: Package },
 }
 
 /** Seconds since `since` (epoch seconds) as "45s", "3m 05s", "1h 02m". */
@@ -66,10 +73,11 @@ function WorkerStepper({ lane }: { lane: Lane }) {
 
 const itemLabel = (item: QueueItem) => `${stageLabel(item.stage)}${item.lang ? ` · ${item.lang}` : ''}`
 
-function WorkerDots({ lane }: { lane: Lane }) {
-  const busy = new Set(lane.running.map((i) => i.pid))
+/** `pids`: the processes busy on the lane (by default those running its tasks). */
+function WorkerDots({ lane, pids = lane.running.map((i) => i.pid) }: { lane: Lane; pids?: (number | null | undefined)[] }) {
+  const busy = new Set(pids)
   if (!lane.workers) {
-    return <span className="text-xs text-muted-foreground">{lane.running.length} đang chạy · {lane.configured} worker theo cài đặt</span>
+    return <span className="text-xs text-muted-foreground">{pids.length} đang chạy · {lane.configured} worker theo cài đặt</span>
   }
   const state = (w: Worker) => (w.retiring ? 'retiring' : !w.alive ? 'dead' : busy.has(w.pid) ? 'busy' : 'idle')
   const busyCount = lane.workers.filter((w) => state(w) === 'busy').length
@@ -125,46 +133,136 @@ function Row({ item, index, now, onOpen }: { item: QueueItem; index?: number; no
   )
 }
 
-function LaneCard({ lane, now, onOpen }: { lane: Lane; now: number; onOpen: (jobId: string) => void }) {
+/** A lane's card: name, counts, its workers (and +/− when this server runs them), a warning when nothing would do its
+ * work, then the body. */
+function LaneShell({ lane, counts, pids, stuck, children }: {
+  lane: Lane; counts: string; pids?: (number | null | undefined)[]; stuck?: ReactNode; children: ReactNode
+}) {
   const meta = LANES[lane.name] ?? { label: lane.name, hint: '', icon: Cpu }
   const Icon = meta.icon
-  const noWorker = lane.queued.length > 0 && lane.configured === 0
   return (
     <section className="rounded-xl border bg-card">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-3">
         <Icon className="size-4 text-muted-foreground" />
         <h3 className="font-medium" title={meta.hint}>{meta.label}</h3>
-        <span className="text-xs text-muted-foreground tabular-nums">{lane.running.length} chạy · {lane.queued.length} chờ</span>
+        <span className="text-xs text-muted-foreground tabular-nums">{counts}</span>
         <span className="ml-auto flex items-center gap-3">
-          <WorkerDots lane={lane} />
+          <WorkerDots lane={lane} pids={pids} />
           {lane.scalable && <WorkerStepper lane={lane} />}
         </span>
       </header>
-      {noWorker && (
+      {stuck && lane.configured === 0 && (
         <p className="flex items-start gap-2 border-b bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
           <AlertTriangle className="mt-px size-3.5 shrink-0" />
-          {lane.scalable
-            ? <>Không có worker nào cho lane này nên các bước dưới sẽ chờ mãi. Bấm <Plus className="inline size-3" /> để thêm.</>
-            : <>Không có worker nào cho lane này nên các bước dưới sẽ chờ mãi. Đặt DICH_WORKERS_{lane.name.toUpperCase()}=1 rồi chạy lại server, hoặc chạy thêm <code>dich worker --lanes {lane.name}</code>.</>}
+          <span>
+            {stuck} {lane.scalable
+              ? <>Bấm <Plus className="inline size-3" /> để thêm.</>
+              : <>Đặt DICH_WORKERS_{lane.name.toUpperCase()}=1 rồi chạy lại server, hoặc chạy thêm <code>dich worker --lanes {lane.name}</code>.</>}
+          </span>
         </p>
       )}
-      <div className="grid gap-1 p-2">
-        {lane.running.length === 0 && lane.queued.length === 0 && (
-          <p className="px-3 py-2 text-sm text-muted-foreground">Trống</p>
+      <div className="grid gap-1 p-2">{children}</div>
+    </section>
+  )
+}
+
+function LaneCard({ lane, now, onOpen }: { lane: Lane; now: number; onOpen: (jobId: string) => void }) {
+  return (
+    <LaneShell lane={lane} counts={`${lane.running.length} chạy · ${lane.queued.length} chờ`}
+      stuck={lane.queued.length > 0 && 'Không có worker nào cho lane này nên các bước dưới sẽ chờ mãi.'}>
+      {lane.running.length === 0 && lane.queued.length === 0 && (
+        <p className="px-3 py-2 text-sm text-muted-foreground">Trống</p>
+      )}
+      {lane.running.length > 0 && (
+        <ul className="grid gap-0.5">{lane.running.map((item) => <Row key={item.id} item={item} now={now} onOpen={onOpen} />)}</ul>
+      )}
+      {lane.queued.length > 0 && (
+        <>
+          {lane.running.length > 0 && <div className="mx-3 my-1 h-px bg-border" />}
+          <ul className="grid gap-0.5">
+            {lane.queued.map((item, i) => <Row key={item.id} item={item} index={i + 1} now={now} onOpen={onOpen} />)}
+          </ul>
+        </>
+      )}
+    </LaneShell>
+  )
+}
+
+const BULK_STATUS: Record<BulkDownload['status'], string> = {
+  queued: 'Đang chờ', running: 'Đang tạo', ready: 'Sẵn sàng', failed: 'Lỗi', cancelled: 'Đã huỷ',
+}
+
+/** Cancels a bulk download waiting or being made, deletes any other (with its zip). */
+function useDeleteBulkDownload() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => deleteBulkDownload({ path: { bulk_id: id } }),
+    onError: (error) => toast.error(errorMessage(error)),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: BULK_KEY }),
+  })
+}
+
+function BulkRow({ bulk, now }: { bulk: BulkDownload; now: number }) {
+  const remove = useDeleteBulkDownload()
+  const making = isMaking(bulk)
+  const percent = bulkPercent(bulk)
+  return (
+    <li className="grid gap-1.5 rounded-lg px-3 py-2">
+      <div className="flex items-center gap-3">
+        {making
+          ? <Loader2 className="size-3.5 shrink-0 animate-spin text-sky-600 dark:text-sky-400" />
+          : <Package className="size-3.5 shrink-0 text-muted-foreground" />}
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">{bulk.name}</span>
+        {bulk.status === 'ready' && (
+          <Button type="button" variant="outline" size="xs" onClick={() => startDownload(bulkDownloadUrl(bulk.id))}>
+            <Download /> Tải về
+          </Button>
         )}
-        {lane.running.length > 0 && (
-          <ul className="grid gap-0.5">{lane.running.map((item) => <Row key={item.id} item={item} now={now} onOpen={onOpen} />)}</ul>
+        <Button type="button" variant="ghost" size="xs" disabled={remove.isPending || bulk.cancel_requested}
+          onClick={() => remove.mutate(bulk.id)}>
+          {making ? <><X /> Huỷ</> : <><Trash2 /> Xoá</>}
+        </Button>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-6.5 text-xs text-muted-foreground">
+        <span className={cn('font-medium text-foreground/80', bulk.status === 'failed' && 'text-destructive')}>
+          {BULK_STATUS[bulk.status]}
+        </span>
+        <span>· {bulk.files} file</span>
+        {bulk.size != null && <span className="tabular-nums">· {sizeLabel(bulk.size)}</span>}
+        {bulk.status === 'ready' && bulk.expires_at && (
+          <span className="tabular-nums" title="Gói bị xoá sau thời gian này; tạo lại gói cùng các file sẽ gia hạn">
+            · còn {duration(bulk.expires_at - now)}
+          </span>
         )}
-        {lane.queued.length > 0 && (
-          <>
-            {lane.running.length > 0 && <div className="mx-3 my-1 h-px bg-border" />}
-            <ul className="grid gap-0.5">
-              {lane.queued.map((item, i) => <Row key={item.id} item={item} index={i + 1} now={now} onOpen={onOpen} />)}
-            </ul>
-          </>
+        {bulk.cancel_requested && <span className="text-amber-700 dark:text-amber-300">· đang huỷ…</span>}
+        {bulk.status === 'running' && !!bulk.total && (
+          <span className="ml-auto tabular-nums">{sizeLabel(bulk.done ?? 0)}/{sizeLabel(bulk.total)} · {percent}%</span>
         )}
       </div>
-    </section>
+      {bulk.status === 'failed' && bulk.error && <p className="pl-6.5 text-xs text-destructive">{bulk.error}</p>}
+      {bulk.skipped.length > 0 && (
+        <p className="pl-6.5 text-xs text-amber-700 dark:text-amber-300">{skippedLabel(bulk)}: {bulk.skipped.join(', ')}</p>
+      )}
+      {bulk.status === 'running' && <div className="pl-6.5"><Progress value={percent} /></div>}
+    </li>
+  )
+}
+
+/** The bulk_download lane: its workers and the bulk downloads ("Gói tải về"), newest first. */
+function BulkDownloadsCard({ lane, now }: { lane: Lane; now: number }) {
+  const bulks = useBulkDownloads()
+  const list = bulks.data ?? []
+  const pending = list.filter(isMaking)
+  return (
+    <LaneShell lane={lane} counts={`${list.length} gói · ${pending.length} đang tạo`}
+      pids={pending.filter((b) => b.status === 'running').map((b) => b.pid)}
+      stuck={pending.length > 0 && 'Không có worker nào tạo gói nên các gói dưới sẽ chờ mãi.'}>
+      {bulks.error && <p className="px-3 py-2 text-sm text-destructive">{errorMessage(bulks.error)}</p>}
+      {!bulks.error && list.length === 0 && (
+        <p className="px-3 py-2 text-sm text-muted-foreground">Chưa có gói nào. Tick các việc rồi bấm Tải về để tạo.</p>
+      )}
+      {list.length > 0 && <ul className="grid gap-0.5">{list.map((b) => <BulkRow key={b.id} bulk={b} now={now} />)}</ul>}
+    </LaneShell>
   )
 }
 
@@ -192,7 +290,10 @@ export function QueueView({ onOpen }: { onOpen: (jobId: string) => void }) {
   const now = useNow()
   if (queue.error) return <p className="text-sm text-destructive">{errorMessage(queue.error)}</p>
   if (!queue.data) return <Loader2 className="animate-spin text-muted-foreground" />
-  const { lanes, blocked, waiting_review } = queue.data
+  const { blocked, waiting_review } = queue.data
+  // the bulk_download lane has no tasks: its card lists the bulk downloads instead
+  const bulkLane = queue.data.lanes.find((l) => l.name === BULK_LANE)
+  const lanes = queue.data.lanes.filter((l) => l !== bulkLane)
   // a lane with no worker and nothing to do (GPU off by default) is noise: one line to turn it on
   const shown = lanes.filter((l) => l.running.length || l.queued.length || l.configured || l.workers?.length)
   const off = lanes.filter((l) => l.scalable && !shown.includes(l))
@@ -208,6 +309,7 @@ export function QueueView({ onOpen }: { onOpen: (jobId: string) => void }) {
         <span className="ml-auto flex items-center gap-1 text-xs"><Clock className="size-3.5" /> cập nhật mỗi 1,5s · bấm một dòng để mở việc</span>
       </p>
       {shown.map((lane) => <LaneCard key={lane.name} lane={lane} now={now} onOpen={onOpen} />)}
+      {bulkLane && <BulkDownloadsCard lane={bulkLane} now={now} />}
       {off.map((lane) => <OffLane key={lane.name} lane={lane} />)}
     </div>
   )

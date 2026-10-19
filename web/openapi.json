@@ -2906,6 +2906,18 @@
       ],
       "title": "Error"
      },
+     "pid": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pid",
+      "description": "Process of the worker making it"
+     },
      "cancel_requested": {
       "type": "boolean",
       "title": "Cancel Requested"
@@ -2949,6 +2961,7 @@
      "total",
      "skipped",
      "error",
+     "pid",
      "cancel_requested",
      "created_at",
      "ready_at",

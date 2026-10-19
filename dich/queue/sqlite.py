@@ -1224,7 +1224,7 @@ def bulk_dict(row):
     return {"id": row["id"], "status": row["status"], "name": row["name"], "spec": loads(row["spec"], {}),
             "path": row["path"], "size": row["size"], "done": row["done"], "total": row["total"],
             "skipped": loads(row["skipped"], []), "error": row["error"], "retries": row["retries"],
-            "cancel_requested": bool(row["cancel_requested"]), "created_at": row["created_at"],
+            "pid": row["pid"], "cancel_requested": bool(row["cancel_requested"]), "created_at": row["created_at"],
             "updated_at": row["updated_at"], "ready_at": row["ready_at"], "expires_at": row["expires_at"]}
 
 

@@ -501,6 +501,7 @@ class BulkDownload(BaseModel):
     total: int | None
     skipped: list[str] = Field(description="Files left out: gone before they were zipped")
     error: str | None
+    pid: int | None = Field(description="Process of the worker making it")
     cancel_requested: bool
     created_at: float
     ready_at: float | None

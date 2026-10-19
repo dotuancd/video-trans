@@ -5,6 +5,14 @@ import { listBulkDownloads, type BulkDownload } from '@/api'
 import { bulkDownloadUrl, sizeLabel } from '@/lib/api'
 
 export const BULK_KEY = ['bulk-downloads']
+/** The queue lane whose workers make the zips. */
+export const BULK_LANE = 'bulk_download'
+
+/** Waiting or being made: it can still be cancelled. */
+export const isMaking = (bulk: BulkDownload) => bulk.status === 'queued' || bulk.status === 'running'
+export const bulkPercent = (bulk: BulkDownload) => (bulk.total ? Math.floor(((bulk.done ?? 0) / bulk.total) * 100) : 0)
+export const skippedLabel = (bulk: BulkDownload) =>
+  bulk.skipped.length ? `${bulk.skipped.length} file đã mất, bỏ qua` : undefined
 
 export const useBulkDownloads = () =>
   useQuery({ queryKey: BULK_KEY, queryFn: async () => (await listBulkDownloads()).data })
@@ -61,7 +69,7 @@ export function BulkDownloadToasts() {
         continue
       }
       const done = () => setWatched(watched.filter((w) => w !== id))
-      const skipped = bulk.skipped.length ? `${bulk.skipped.length} file đã mất, bỏ qua` : undefined
+      const skipped = skippedLabel(bulk)
       if (bulk.status === 'ready') {
         toast.success('Gói tải về đã sẵn sàng', {
           id, duration: Infinity, closeButton: true, onDismiss: done,
@@ -74,8 +82,7 @@ export function BulkDownloadToasts() {
         toast.dismiss(id)
         done()
       } else {
-        const percent = bulk.total ? Math.floor(((bulk.done ?? 0) / bulk.total) * 100) : 0
-        toast.loading(bulk.status === 'queued' ? 'Gói tải về đang chờ…' : `Đang tạo gói tải về… ${percent}%`, {
+        toast.loading(bulk.status === 'queued' ? 'Gói tải về đang chờ…' : `Đang tạo gói tải về… ${bulkPercent(bulk)}%`, {
           id, duration: Infinity, description: `${bulk.files} file · ${bulk.name}`,
         })
       }

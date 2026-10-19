@@ -185,6 +185,12 @@ export type BulkDownload = {
      */
     error: string | null;
     /**
+     * Pid
+     *
+     * Process of the worker making it
+     */
+    pid: number | null;
+    /**
      * Cancel Requested
      */
     cancel_requested: boolean;

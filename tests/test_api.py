@@ -625,7 +625,9 @@ def test_bulk_download_delete_cancels_first(app):
     assert client.get(f"/api/bulk-downloads/{queued['id']}/download").json()["detail"] == "Gói đã bị huỷ"
 
     running = client.post("/api/bulk-downloads", json=ask).json()
-    ctx.store.claim_bulk_download()
+    assert running["pid"] is None
+    ctx.store.claim_bulk_download(pid=4242)
+    assert client.get("/api/bulk-downloads").json()[0]["pid"] == 4242                # the worker making it
     assert client.delete(f"/api/bulk-downloads/{running['id']}").status_code == 204    # being made: its worker stops
     assert ctx.store.bulk_heartbeat(running["id"]) is True
     assert client.delete(f"/api/bulk-downloads/{queued['id']}").status_code == 204     # stopped: deleted
