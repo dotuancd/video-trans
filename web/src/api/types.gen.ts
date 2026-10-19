@@ -225,13 +225,13 @@ export type BulkDownloadAsk = {
     /**
      * Srt
      *
-     * The subtitles of each language, as .srt
+     * The subtitles, as .srt: the original and each language's
      */
     srt?: boolean;
     /**
      * Langs
      *
-     * Only these languages; null: every language
+     * Only these languages (the original subtitles always come); null: every language
      */
     langs?: Array<string> | null;
 };
@@ -292,6 +292,8 @@ export type BulkFile = {
     slot: string;
     /**
      * Lang
+     *
+     * "src": the original subtitles
      */
     lang: string;
     /**

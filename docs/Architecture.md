@@ -134,7 +134,7 @@ Trạng thái task: `blocked → queued → running → done | failed | cancelle
 - Export: `export=false` → không export; project có `export_dir` → vào đó; không thì cạnh file gốc (URL: thư mục export của job).
 - Web tải lên ngay khi thả file (khay theo project, nhớ trong localStorage); `prune_uploads` lúc khởi động xoá thư mục `upl_*` quá 7 ngày mà không job nào dùng.
 
-**Gói tải về** (`bdl_…`, bảng `bulk_downloads`, lane `bulk_download`, `dich/api/bulk_downloads.py`): zip kết quả của các job đã chọn — chỉ job `done`; `media.out.*` (`video`) và/hoặc `transcript.*` thành .srt (`srt`), lọc `langs`.
+**Gói tải về** (`bdl_…`, bảng `bulk_downloads`, lane `bulk_download`, `dich/api/bulk_downloads.py`): zip kết quả của các job đã chọn — chỉ job `done`; `media.out.*` (`video`) và/hoặc `transcript.*` thành .srt (`srt`: kèm cả phụ đề gốc `transcript.src`, không bị lọc), lọc `langs`.
 - API: `POST /bulk-downloads/preview` (file sẽ có, tổng dung lượng, job chưa xong bị bỏ, ngôn ngữ có, `single` khi chỉ 1 file → tải thẳng `/artifacts/{id}/download`); `POST /bulk-downloads` (cùng tập artifact còn hạn → dùng lại + gia hạn); `GET /bulk-downloads`; `GET /bulk-downloads/{id}/download` (Range; 409 chưa xong, 410 hết hạn); `DELETE /bulk-downloads/{id}` (đang chờ/đang tạo → huỷ, còn lại → xoá cùng zip). SSE phát `{"type": "bulk_download", "id", "bulk_download"}` (null: đã xoá).
 - Tên zip `<project>-YYYYMMDD-HHmm.zip` khi mọi file cùng một project, không thì `dich-video-…`.
 

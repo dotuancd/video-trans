@@ -565,10 +565,10 @@ def test_bulk_download_preview(app):
     assert videos["langs"] == ["vi"]
 
     both = preview(srt=True)
-    assert [f["name"] for f in both["files"]] == ["a.dub.vi.mp4", "a.vi.srt", "a.ja.srt"]
+    assert [f["name"] for f in both["files"]] == ["a.dub.vi.mp4", "a.srt", "a.vi.srt", "a.ja.srt"]   # + the original
     assert both["single"] is None and both["langs"] == ["vi", "ja"]
     assert both["size"] == sum(f["size"] for f in both["files"])
-    assert [f["name"] for f in preview(srt=True, langs=["ja"])["files"]] == ["a.ja.srt"]
+    assert [f["name"] for f in preview(srt=True, langs=["ja"])["files"]] == ["a.srt", "a.ja.srt"]
     assert preview(video=False, srt=False)["files"] == []
 
 
@@ -584,7 +584,7 @@ def test_bulk_download_create_download_delete(app):
     run_job(ctx.store, job_id)
 
     made = client.post("/api/bulk-downloads", json={"job_ids": [job_id], "srt": True}).json()
-    assert made["status"] == "queued" and made["files"] == 2
+    assert made["status"] == "queued" and made["files"] == 3
     assert re.fullmatch(r"Khoá học-2-\d{8}-\d{4}\.zip", made["name"])
     assert client.get("/api/bulk-downloads").json()[0]["id"] == made["id"]
     assert client.get(f"/api/bulk-downloads/{made['id']}/download").status_code == 409   # not made yet
@@ -596,7 +596,7 @@ def test_bulk_download_create_download_delete(app):
     assert whole.status_code == 200 and int(whole.headers["content-length"]) == ready["size"]
     assert "Kho%C3%A1%20h%E1%BB%8Dc-2-" in whole.headers["content-disposition"]
     with zipfile.ZipFile(BytesIO(whole.content)) as zf:
-        assert sorted(zf.namelist()) == ["a.dub.vi.mp4", "a.vi.srt"]
+        assert sorted(zf.namelist()) == ["a.dub.vi.mp4", "a.srt", "a.vi.srt"]
     part = client.get(f"/api/bulk-downloads/{made['id']}/download", headers={"Range": "bytes=4-9"})
     assert part.status_code == 206 and part.content == whole.content[4:10]
 
@@ -618,7 +618,7 @@ def test_bulk_download_delete_cancels_first(app):
     run_job(ctx.store, job_id)
     ask = {"job_ids": [job_id], "video": False, "srt": True}
     queued = client.post("/api/bulk-downloads", json=ask).json()
-    assert queued["files"] == 1
+    assert queued["files"] == 2
     assert client.delete(f"/api/bulk-downloads/{queued['id']}").status_code == 204     # waiting: cancelled at once
     [cancelled] = client.get("/api/bulk-downloads").json()
     assert cancelled["status"] == "cancelled"

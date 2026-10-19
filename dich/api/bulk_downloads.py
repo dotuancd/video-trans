@@ -30,8 +30,8 @@ def router(ctx):
         return bulk
 
     def contents(body):
-        """(files, unfinished jobs, langs having files, projects of the files' jobs) of what body asks for."""
-        slots = (["media.out"] if body.video else []) + (["transcript"] if body.srt else [])
+        """(files, unfinished jobs, langs having files, projects of the files' jobs) of what body asks for.
+        Subtitles come with the original (transcript.src, whatever the langs)."""
         files, unfinished, langs, projects = [], [], [], set()
         for job_id in dict.fromkeys(body.job_ids):
             job = store.job(job_id)
@@ -40,16 +40,19 @@ def router(ctx):
             if job["status"] != "done":
                 unfinished.append(UnfinishedJob(id=job["id"], title=job["title"], status=job["status"]))
                 continue
-            for slot in slots:
-                for lang in job["langs"]:
-                    _task, art = store.slot_artifact(job_id, f"{slot}.{lang}")
-                    if not art:
-                        continue
+            wanted = ([(f"media.out.{lang}", lang) for lang in job["langs"]] if body.video else [])
+            wanted += ([("transcript.src", "src")] + [(f"transcript.{lang}", lang) for lang in job["langs"]]
+                       if body.srt else [])
+            for slot, lang in wanted:
+                _task, art = store.slot_artifact(job_id, slot)
+                if not art:
+                    continue
+                if lang != "src":
                     langs.append(lang)
-                    if body.langs is None or lang in body.langs:
-                        files.append(BulkFile(artifact_id=art["id"], job_id=job_id, name=download_name(job["source"], art),
-                                              slot=art["slot"], lang=lang, size=art["size"]))
-                        projects.add(job["project_id"])
+                if lang == "src" or body.langs is None or lang in body.langs:
+                    files.append(BulkFile(artifact_id=art["id"], job_id=job_id, name=download_name(job["source"], art),
+                                          slot=art["slot"], lang=lang, size=art["size"]))
+                    projects.add(job["project_id"])
         return files, unfinished, list(dict.fromkeys(langs)), projects
 
     @api.post("/bulk-downloads/preview")

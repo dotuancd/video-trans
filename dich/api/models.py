@@ -463,8 +463,9 @@ class BulkDownloadAsk(BaseModel):
     """What to put in a bulk download ("Gói tải về") of chosen jobs: only jobs that are done count."""
     job_ids: list[str] = Field(description="Unknown ids are ignored")
     video: bool = Field(True, description="The dubbed videos (media.out.*)")
-    srt: bool = Field(False, description="The subtitles of each language, as .srt")
-    langs: list[str] | None = Field(None, description="Only these languages; null: every language")
+    srt: bool = Field(False, description="The subtitles, as .srt: the original and each language's")
+    langs: list[str] | None = Field(None, description="Only these languages (the original subtitles always come);"
+                                                      " null: every language")
 
 
 class BulkFile(BaseModel):
@@ -472,7 +473,7 @@ class BulkFile(BaseModel):
     job_id: str
     name: str = Field(description="Its name in the zip (before ' (2)' for names taken twice)")
     slot: str
-    lang: str
+    lang: str = Field(description="\"src\": the original subtitles")
     size: int | None = Field(description="Bytes (a subtitle: its stored transcript, about its .srt)")
 
 

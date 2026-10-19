@@ -2975,7 +2975,7 @@
      "srt": {
       "type": "boolean",
       "title": "Srt",
-      "description": "The subtitles of each language, as .srt",
+      "description": "The subtitles, as .srt: the original and each language's",
       "default": false
      },
      "langs": {
@@ -2991,7 +2991,7 @@
        }
       ],
       "title": "Langs",
-      "description": "Only these languages; null: every language"
+      "description": "Only these languages (the original subtitles always come); null: every language"
      }
     },
     "type": "object",
@@ -3074,7 +3074,8 @@
      },
      "lang": {
       "type": "string",
-      "title": "Lang"
+      "title": "Lang",
+      "description": "\"src\": the original subtitles"
      },
      "size": {
       "anyOf": [
