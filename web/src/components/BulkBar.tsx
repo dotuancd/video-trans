@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { FolderInput, Inbox, Loader2, Play, SlidersHorizontal, Trash2, X } from 'lucide-react'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Download, FolderInput, Inbox, Loader2, Play, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { deleteJobs, moveJobs, rerunJobs, type DriverInfo, type Job, type JobCounts, type JobsDone, type Project } from '@/api'
+import {
+  createBulkDownload, deleteJobs, moveJobs, previewBulkDownload, rerunJobs,
+  type DriverInfo, type Job, type JobCounts, type JobsDone, type Project,
+} from '@/api'
 import { BulkActions, pausable, paused } from '@/components/JobList'
 import { DriverParams, DriverSelect, Field, SwitchField } from '@/components/Params'
 import { COLORS, Dot, NONE } from '@/components/Projects'
@@ -13,12 +16,16 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { same } from '@/components/JobConfig'
-import { driversOf, errorMessage, FRESH_HINT, stageLabel, type Params } from '@/lib/api'
+import {
+  downloadUrl, driversOf, errorMessage, FRESH_HINT, sizeLabel, stageLabel, STATUS_LABELS, useConfig, type Params, type Status,
+} from '@/lib/api'
+import { startDownload, watchBulkDownload } from '@/lib/bulkDownloads'
+import { cn } from '@/lib/utils'
 import { dropJobs, matchingIds, putJob, type JobFilter } from '@/lib/jobs'
 
 /** The list's header: tick every job (those loaded, then every one matching the filter, as in Gmail), and
  * what can be done with the jobs ticked (or with all of them). */
-export function BulkBar({ jobs, total, counts, filter, checked, everything, onChecked, projects, drivers, view, onOpenProject }: {
+export function BulkBar({ jobs, total, counts, filter, checked, everything, onChecked, projects, drivers, view, onOpenProject, onOpenJob }: {
   /** the jobs loaded */
   jobs: Job[]
   /** how many jobs match the filter, loaded or not */
@@ -35,6 +42,7 @@ export function BulkBar({ jobs, total, counts, filter, checked, everything, onCh
   /** the project shown (ALL, NONE or its id) */
   view: string
   onOpenProject: (id: string) => void
+  onOpenJob: (id: string) => void
 }) {
   const picked = jobs.filter((j) => checked.has(j.id))
   const ids = [...checked]
@@ -82,6 +90,7 @@ export function BulkBar({ jobs, total, counts, filter, checked, everything, onCh
           <div className="ml-auto flex flex-wrap gap-2">
             {everything ? <BulkActions toPause={counts?.pausable ?? 0} toResume={counts?.resumable ?? 0} ids={ids} />
               : <BulkActions toPause={picked.filter(pausable).length} toResume={picked.filter(paused).length} ids={ids} />}
+            <DownloadDialog ids={ids} onOpenJob={onOpenJob} />
             <MoveMenu ids={ids} projects={projects} view={view} onOpenProject={onOpenProject} />
             <RerunDialog jobs={picked} ids={ids} drivers={drivers} />
             <DeleteDialog jobs={picked} ids={ids} onDeleted={(gone) => onChecked(new Set(ids.filter((id) => !gone.includes(id))), everything)} />
@@ -129,6 +138,139 @@ function MoveMenu({ ids, projects, view, onOpenProject }: {
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+/** Download the results of the jobs ticked: their dubbed videos and/or subtitles, in some languages. What it would
+ * hold is previewed first, with the jobs not done yet (left out). One file is downloaded as is; more are zipped by
+ * the server ("Gói tải về"), followed by a toast. */
+function DownloadDialog({ ids, onOpenJob }: { ids: string[]; onOpenJob: (id: string) => void }) {
+  const queryClient = useQueryClient()
+  const languages = useConfig().data?.languages
+  const [open, setOpen] = useState(false)
+  const [video, setVideo] = useState(true)
+  const [srt, setSrt] = useState(false)
+  /** null: every language */
+  const [langs, setLangs] = useState<string[] | null>(null)
+  const [showUnfinished, setShowUnfinished] = useState(false)
+  const body = { job_ids: ids, video, srt, langs }
+  const preview = useQuery({
+    queryKey: ['bulk-preview', body],
+    queryFn: async () => (await previewBulkDownload({ body })).data,
+    enabled: open && (video || srt),
+    placeholderData: keepPreviousData,
+  })
+  const create = useMutation({
+    mutationFn: async () => (await createBulkDownload({ body })).data,
+    onSuccess: (bulk) => {
+      watchBulkDownload(queryClient, bulk)
+      setOpen(false)
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  })
+  const data = video || srt ? preview.data : undefined
+  const unfinished = data?.unfinished ?? []
+  const count = data?.files.length ?? 0
+  const langName = (code: string) => languages?.find((l) => l.code === code)?.name ?? code
+  const toggle = (code: string) => {
+    const on = langs ?? data?.langs ?? []
+    const next = on.includes(code) ? on.filter((l) => l !== code) : [...on, code]
+    if (next.length) setLangs(data && data.langs.every((l) => next.includes(l)) ? null : next)
+  }
+  const go = () => {
+    if (data?.single) {
+      startDownload(downloadUrl(data.single.artifact_id))
+      setOpen(false)
+    } else {
+      create.mutate()
+    }
+  }
+  const checkbox = 'size-4 cursor-pointer accent-sky-600'
+
+  return (
+    <>
+      <Button size="sm" variant="outline"
+        onClick={() => { setLangs(null); setShowUnfinished(false); setOpen(true) }}>
+        <Download /> Tải về
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Tải về kết quả {ids.length} việc</DialogTitle>
+            <DialogDescription>Chỉ việc đã xong mới có file để tải. Nhiều file được gói thành một file zip.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input type="checkbox" className={checkbox} checked={video} onChange={(e) => { setVideo(e.target.checked); setLangs(null) }} />
+                Video lồng tiếng
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input type="checkbox" className={checkbox} checked={srt} onChange={(e) => { setSrt(e.target.checked); setLangs(null) }} />
+                Phụ đề .srt <span className="text-xs text-muted-foreground">(kèm phụ đề gốc)</span>
+              </label>
+            </div>
+            {data && data.langs.length > 1 && (
+              <Field label="Ngôn ngữ">
+                <div className="flex flex-wrap gap-1.5">
+                  {data.langs.map((code) => {
+                    const on = !langs || langs.includes(code)
+                    return (
+                      <button key={code} type="button" aria-pressed={on} onClick={() => toggle(code)}
+                        className={cn('rounded-full border px-3 py-1 text-xs transition-colors',
+                          on ? 'border-primary bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}>
+                        {langName(code)}
+                      </button>
+                    )
+                  })}
+                </div>
+              </Field>
+            )}
+            <p className="flex items-center gap-2 text-sm">
+              {!video && !srt ? <span className="text-muted-foreground">Chọn ít nhất một loại file</span>
+                : !data ? <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                  : count ? <span>{count} file · {sizeLabel(data.size)}{data.single && ' — tải thẳng, không cần gói'}</span>
+                    : <span className="text-muted-foreground">Không có file nào để tải</span>}
+              {preview.isFetching && data && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
+            </p>
+            {preview.isError && <p className="text-sm text-destructive">{errorMessage(preview.error)}</p>}
+            {unfinished.length > 0 && (
+              <div className="grid gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm">
+                <p>
+                  {unfinished.length} việc chưa xong sẽ không được tải.{' '}
+                  <Button size="sm" variant="link" className="h-auto p-0" onClick={() => setShowUnfinished(!showUnfinished)}>
+                    {showUnfinished ? 'Ẩn' : `Xem ${unfinished.length} việc chưa xong`}
+                  </Button>
+                </p>
+                {showUnfinished && (
+                  <ul className="grid max-h-48 gap-0.5 overflow-y-auto">
+                    {unfinished.map((j) => (
+                      <li key={j.id}>
+                        <button type="button" className="flex w-full gap-2 rounded px-1 py-0.5 text-left hover:bg-accent"
+                          onClick={() => { setOpen(false); onOpenJob(j.id) }}>
+                          <span className="min-w-0 flex-1 truncate">{j.title}</span>
+                          <span className="shrink-0 text-xs text-muted-foreground">{STATUS_LABELS[j.status as Status] ?? j.status}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setOpen(false)}>Huỷ</Button>
+            {(!data || count > 0) && (
+              <Button className="h-auto min-h-9 whitespace-normal" onClick={go}
+                disabled={!count || preview.isFetching || preview.isError || create.isPending}>
+                {create.isPending ? <Loader2 className="animate-spin" /> : <Download />}
+                {unfinished.length ? 'Tiếp tục tải mà không có các việc chưa xong' : 'Tải'}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 

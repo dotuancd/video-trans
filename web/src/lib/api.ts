@@ -66,6 +66,10 @@ export const artifactUrl = (id: string) => `/api/artifacts/${id}`
 export const downloadUrl = (id: string) => `/api/artifacts/${id}/download`
 /** Shown in the browser (transcripts as SRT text) instead of downloaded. */
 export const inlineUrl = (id: string) => `/api/artifacts/${id}/download?inline=true`
+export const bulkDownloadUrl = (id: string) => `/api/bulk-downloads/${id}/download`
+
+export const sizeLabel = (bytes: number) =>
+  bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : bytes >= 1e6 ? `${(bytes / 1e6).toFixed(0)} MB` : `${Math.ceil(bytes / 1e3)} KB`
 
 /** The current output of a job for a slot: the last task producing it that has one. */
 export function slotArtifact(job: Job, slot: string): (ArtifactInfo & { task: Task }) | undefined {

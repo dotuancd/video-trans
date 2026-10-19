@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query'
-import { countJobs, getJob, jobIds, listJobs, type Event, type Job, type JobPage, type ListJobsData } from '@/api'
+import { countJobs, getJob, jobIds, listJobs, type BulkDownload, type Event, type Job, type JobPage, type ListJobsData } from '@/api'
 import { isActive, type JobStatus } from '@/lib/api'
+import { BULK_KEY, putBulkDownload } from '@/lib/bulkDownloads'
 
 type ListQuery = NonNullable<ListJobsData['query']>
 export type StatusGroup = NonNullable<ListQuery['status']>
@@ -181,8 +182,9 @@ type LiveEvent =
   | { type: 'deleted'; id: string }
   | { type: 'project'; id: string; deleted: boolean }
   | { type: 'voice'; id: string; deleted: boolean }
+  | { type: 'bulk_download'; id: string; bulk_download: BulkDownload | null }
 
-/** Keeps the cached jobs, the counts and open pipeline logs in sync with the server's event stream. Jobs
+/** Keeps the cached jobs, the counts, open pipeline logs and bulk downloads in sync with the server's event stream. Jobs
  * change in place; when the list shown (filter) is no longer right, onListChanged fires instead of moving
  * jobs under the cursor. onJobFinished fires when a job stops running. */
 export function useLiveJobs({ filter, onJobFinished, onListChanged }: {
@@ -213,6 +215,7 @@ export function useLiveJobs({ filter, onJobFinished, onListChanged }: {
       void queryClient.invalidateQueries({ queryKey: ['projects'] })
       void queryClient.invalidateQueries({ queryKey: ['voice-library'] })
       void queryClient.invalidateQueries({ queryKey: ['events'] })
+      void queryClient.invalidateQueries({ queryKey: BULK_KEY })
     }
     source.onmessage = (message) => {
       const event = JSON.parse(message.data) as LiveEvent
@@ -257,6 +260,8 @@ export function useLiveJobs({ filter, onJobFinished, onListChanged }: {
         }
       } else if (event.type === 'voice') {
         void queryClient.invalidateQueries({ queryKey: ['voice-library'] })
+      } else if (event.type === 'bulk_download') {
+        putBulkDownload(queryClient, event.id, event.bulk_download)
       }
     }
     return () => {

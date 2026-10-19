@@ -3,7 +3,7 @@ import { AlertCircle, Captions, FileAudio, FileVideo, Upload, X } from 'lucide-r
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
-import { errorMessage, save, uploadFile } from '@/lib/api'
+import { errorMessage, save, sizeLabel, uploadFile } from '@/lib/api'
 
 const MEDIA = /\.(mp4|mkv|mov|m4v|webm|avi|wav|mp3|m4a|aac|flac|ogg)$/i
 const AUDIO = /\.(wav|mp3|m4a|aac|flac|ogg)$/i
@@ -30,9 +30,6 @@ export function groupUploads(files: File[]): UploadGroup[] {
     key, files: members, source: members.reduce((best, f) => (rank(f.name) < rank(best.name) ? f : best)),
   }))
 }
-
-export const sizeLabel = (bytes: number) =>
-  bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : bytes >= 1e6 ? `${(bytes / 1e6).toFixed(0)} MB` : `${Math.ceil(bytes / 1e3)} KB`
 
 /** Drop or pick videos / .srt from this computer. */
 export function UploadDrop({ onFiles, compact, hint }: { onFiles: (files: File[]) => void; compact?: boolean; hint?: string }) {

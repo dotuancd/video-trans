@@ -227,7 +227,7 @@ export default function App() {
                 sort={sort} onSort={setSort} counts={numbers} />
               <BulkBar jobs={shown} total={total} counts={numbers} filter={filter} checked={checked} everything={everything}
                 onChecked={pick} projects={projects.data} drivers={drivers.data} view={view}
-                onOpenProject={(id) => go({ project: id })} />
+                onOpenProject={(id) => go({ project: id })} onOpenJob={select} />
               {changed && (
                 <Button size="sm" variant="secondary" className="sticky top-2 z-10 justify-self-center rounded-full shadow-md"
                   onClick={refresh} title="Thứ tự hoặc bộ lọc không còn đúng với các thay đổi mới nhất">
