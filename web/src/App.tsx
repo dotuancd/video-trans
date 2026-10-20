@@ -9,6 +9,7 @@ import { BulkBar } from '@/components/BulkBar'
 import { JobList } from '@/components/JobList'
 import { JobToolbar } from '@/components/JobToolbar'
 import { NewJob } from '@/components/NewJob'
+import { Player } from '@/components/Player'
 import { ALL, COLORS, Dot, NONE, ProjectSettings, ProjectSidebar, QUEUE, VOICES } from '@/components/Projects'
 import { useVoiceLibrary, VoiceLibrary } from '@/components/Voices'
 import { QueueView } from '@/components/QueueView'
@@ -18,16 +19,20 @@ import {
   addCreated, listKey, SORTS, STATUS_GROUPS, useJob, useJobCounts, useJobList, useLiveJobs, type JobFilter, type JobSort,
   type StatusGroup,
 } from '@/lib/jobs'
+import { commonLang } from '@/lib/playback'
 
-type UrlState = { project: string; job?: string; status?: StatusGroup; q?: string }
+type UrlState = { project: string; job?: string; status?: StatusGroup; q?: string; play?: string }
 
-/** ?project=…&status=…&q=…&job=… : the project shown (all, none or its id), the list's status group and search,
- * and the job open, kept in history. */
+/** ?project=…&status=…&q=…&job=…&play=… : the project shown (all, none or its id), the list's status group and search,
+ * the job open and the job watched in the player, kept in history. */
 function useUrlState() {
   const read = (): UrlState => {
     const query = new URLSearchParams(location.search)
     const status = STATUS_GROUPS.find((g) => g.id === query.get('status'))?.id
-    return { project: query.get('project') || ALL, job: query.get('job') || undefined, status, q: query.get('q') || undefined }
+    return {
+      project: query.get('project') || ALL, job: query.get('job') || undefined, status, q: query.get('q') || undefined,
+      play: query.get('play') || undefined,
+    }
   }
   const [state, setState] = useState(read)
   useEffect(() => {
@@ -42,7 +47,9 @@ function useUrlState() {
     if (next.status) query.set('status', next.status)
     if (next.q) query.set('q', next.q)
     if (next.job) query.set('job', next.job)
-    history[replace ? 'replaceState' : 'pushState'](null, '', query.size ? `?${query}` : location.pathname)
+    if (next.play) query.set('play', next.play)
+    // the job played by this entry: the player closes by going back when it opened it
+    history[replace ? 'replaceState' : 'pushState']({ play: next.play }, '', query.size ? `?${query}` : location.pathname)
     setState(next)
   }
   return [state, go] as const
@@ -69,7 +76,7 @@ export default function App() {
   const projects = useProjects()
   const voices = useVoiceLibrary()
   const [url, go] = useUrlState()
-  const { project: selected, job, status, q = '' } = url
+  const { project: selected, job, status, q = '', play } = url
   const [sort, setSort] = useSort()
   const [settings, setSettings] = useState(false)
 
@@ -80,6 +87,7 @@ export default function App() {
   const list = useJobList(filter, isList && !!projects.data)
   const counts = useJobCounts({ project: listProject, q, status })
   const detail = useJob(job)
+  const playJob = useJob(play)
   const filterKey = JSON.stringify(listKey(filter))
   const [changed, setChanged] = useState(false) // the list loaded is no longer what the server would give
   const [changedIn, setChangedIn] = useState(filterKey)
@@ -103,12 +111,13 @@ export default function App() {
   }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !job && !document.querySelector('[role=dialog]')) pick(new Set())
+      if (e.key === 'Escape' && !job && !play && !document.querySelector('[role=dialog]')) pick(new Set())
     }
     addEventListener('keydown', onKey)
     return () => removeEventListener('keydown', onKey)
-  }, [job])
-  const select = (id?: string) => go({ ...url, job: id })
+  }, [job, play])
+  const select = (id?: string) => go({ ...url, job: id, play: undefined })
+  const watch = (id?: string) => go({ ...url, job: undefined, play: id })
   useLiveJobs({
     filter,
     onListChanged: () => setChanged(true),
@@ -136,6 +145,7 @@ export default function App() {
   const project = projects.data.find((p) => p.id === selected)
   const view = project ? project.id : [NONE, QUEUE, VOICES].includes(selected) ? selected : ALL
   const shown = list.data?.pages.flatMap((p) => p.jobs) ?? []
+  const lang = commonLang(shown) // what the player shows first
   const numbers = counts.data
   // NONE is the key of the jobs of no project
   const sidebar: Record<string, number> = {
@@ -236,7 +246,7 @@ export default function App() {
               )}
               {list.isLoading ? <Loader2 className="animate-spin text-muted-foreground" />
                 : list.isError ? <p className="text-sm text-destructive">{errorMessage(list.error)}</p> : (
-                  <JobList jobs={shown} selected={job} onSelect={select} checked={checked} onCheck={check}
+                  <JobList jobs={shown} selected={job} onSelect={select} onPlay={watch} lang={lang} checked={checked} onCheck={check}
                     filtered={!!status || !!q} onClearFilter={() => go({ project: selected })}
                     more={!!list.hasNextPage} loadingMore={list.isFetchingNextPage} onMore={() => void list.fetchNextPage()} />
                 )}
@@ -247,6 +257,10 @@ export default function App() {
       {project && (
         <ProjectSettings key={project.id} {...env} project={project} open={settings} onOpenChange={setSettings}
           onDeleted={() => { setSettings(false); go({ project: NONE }) }} />
+      )}
+      {play && (
+        <Player job={playJob.data} error={playJob.error} lang={lang}
+          onClose={() => (history.state?.play === play ? history.back() : watch(undefined))} />
       )}
       <JobDetail job={job ? detail.data : undefined} drivers={drivers.data} config={config.data}
         projects={projects.data} onClose={() => select(undefined)} />

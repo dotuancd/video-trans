@@ -6,7 +6,7 @@ import {
 import { toast } from 'sonner'
 import {
   addLangs, cancelJob, deleteJob, getBrief, listAttempts, pickAttempt, refreshJob, rerunTask, resumeJob, reveal, saveBrief, updateJob,
-  type Config, type DriverInfo, type Job, type LiveAudio, type LlmRequest, type Project, type Task, type TranscriptSaved,
+  type Config, type DriverInfo, type Job, type LlmRequest, type Project, type Task, type TranscriptSaved,
 } from '@/api'
 import { STATUS_STYLE, taskLabel } from '@/components/JobList'
 import { DriverParams, DriverSelect, SwitchField } from '@/components/Params'
@@ -25,10 +25,10 @@ import {
 } from '@/lib/api'
 import { dropJobs, putJob } from '@/lib/jobs'
 import { clock, useLiveDub, useLiveIndex } from '@/lib/liveDub'
+import { escapeVtt, mediaOf, mkvHint, VIDEO, type Source } from '@/lib/playback'
 
 /** Select value of "no project" */
 const NO_PROJECT = '-'
-const VIDEO = /\.(mp4|mov|m4v|webm|mkv)$/i
 const SYSTEM_ERROR = /mã ([0-9a-f]{8})/
 /** stages that talk to an LLM: their attempts list the requests sent */
 const LLM_STAGES = ['translate', 'brief']
@@ -129,21 +129,19 @@ function JobBody({ job, drivers, config, projects, onClose }: {
   const draft = useSubtitleDraft(job.id, lang, onSaved)
 
   // what can be played for the language shown, best first; the original stays reachable
-  const out = target ? slotArtifact(job, `media.out.${target}`) : undefined
-  const voice = target ? slotArtifact(job, `audio.dub.${target}`) : undefined
-  const original = slotArtifact(job, 'media.video')
+  const { out, original, voice } = mediaOf(job, target)
   // before the dubbed video exists: the original with the dub made so far laid over it
   const dubTask = target ? task(`dub@${target}`) : undefined
   const liveIndex = useLiveIndex(dubTask, !out && !!original && (dubTask?.status === 'running' || dubTask?.status === 'done'))
   const live = !out && original && dubTask && liveIndex.data?.chunks.length ? liveIndex.data : undefined
   const sources: Source[] = [
-    out && { label: 'Bản lồng tiếng', id: out.id, artifact: out.id, path: out.path },
+    out,
     live && original && dubTask && {
       label: live.finished ? 'Lồng tiếng (xem trước)' : 'Lồng tiếng (đang tạo)',
-      id: `live-${original.id}`, artifact: original.id, path: original.path, live: { taskId: dubTask.id, index: live },
+      id: `live-${original.id}`, artifact: original.artifact, path: original.path, live: { taskId: dubTask.id, index: live },
     },
-    original && { label: 'Bản gốc', id: original.id, artifact: original.id, path: original.path },
-    !out && voice && { label: 'Giọng đọc', id: voice.id, artifact: voice.id, path: voice.path },
+    original,
+    !out && voice,
   ].filter((x) => !!x)
   const exported = job.tasks.flatMap((t) => t.exports)
   const brief = job.tasks.find((t) => t.stage === 'brief' && t.artifacts?.length)
@@ -359,10 +357,6 @@ function AddLanguage({ job, config, onAdded }: { job: Job; config: Config; onAdd
   )
 }
 
-type Source = { label: string; id: string; artifact: string; path: string; live?: { taskId: string; index: LiveAudio } }
-
-const escapeVtt = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-
 /** The job's title; click to rename: Enter or leaving the field saves, Esc cancels, an empty name is not saved. */
 function TitleEditor({ title, onSave }: { title: string; onSave: (title: string) => void }) {
   const [editing, setEditing] = useState<string | null>(null)
@@ -475,9 +469,7 @@ function Preview({ sources, draft, media, onMedia, onActive }: {
               + ' — phát được phần đã xong, phần sau tự nối tiếp.'}
         </p>
       )}
-      {/\.mkv$/i.test(source.path) && (
-        <p className="text-xs text-muted-foreground">Trình duyệt có thể không phát được .mkv — mở bằng trình phát video.</p>
-      )}
+      {mkvHint(source.path) && <p className="text-xs text-muted-foreground">{mkvHint(source.path)}</p>}
     </div>
   )
 }

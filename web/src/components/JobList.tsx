@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { STATUS_LABELS, errorMessage, formatCost, stageLabel, type Status } from '@/lib/api'
 import { putJob } from '@/lib/jobs'
+import { playback } from '@/lib/playback'
 
 export const STATUS_STYLE: Record<Status, { icon: typeof Check; className: string }> = {
   blocked: { icon: CircleDashed, className: 'text-muted-foreground border-border' },
@@ -38,11 +39,14 @@ export function TaskChip({ task }: { task: Task }) {
   )
 }
 
-export function JobList({ jobs, selected, onSelect, checked, onCheck, filtered, onClearFilter, more, loadingMore, onMore }: {
+export function JobList({ jobs, selected, onSelect, onPlay, lang, checked, onCheck, filtered, onClearFilter, more, loadingMore, onMore }: {
   /** the jobs loaded */
   jobs: Job[]
   selected?: string
   onSelect: (id: string) => void
+  /** opens the player, shown on the jobs with something to watch in `lang` (else another of theirs) */
+  onPlay: (id: string) => void
+  lang?: string
   /** jobs ticked for the bulk actions */
   checked: Set<string>
   /** shift: tick every job from the last one ticked */
@@ -120,6 +124,12 @@ export function JobList({ jobs, selected, onSelect, checked, onCheck, filtered, 
               </div>
               {failed?.message && <p className="truncate text-xs text-red-700 dark:text-red-300">{failed.message}</p>}
             </button>
+            {playback(job, lang) && (
+              <Button size="icon" variant="ghost" className="my-3 mr-3 shrink-0 self-center" title="Xem"
+                aria-label={`Xem ${job.title}`} onClick={() => onPlay(job.id)}>
+                <Play />
+              </Button>
+            )}
           </li>
         )
       })}

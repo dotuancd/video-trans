@@ -1,12 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowDownToLine, Loader2, Save, Trash2, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { getTranscript, saveTranscript, type EditCue, type TranscriptSaved } from '@/api'
+import { saveTranscript, type EditCue, type TranscriptSaved } from '@/api'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import { errorMessage } from '@/lib/api'
+import { errorMessage, useTranscript } from '@/lib/api'
 import { mergeNext, moveWords, newKey, remove, split, type Field, type Row } from '@/lib/cues'
 
 const clock = (seconds: number) => {
@@ -24,12 +24,7 @@ const sameAs = (row: Row, cue: EditCue, hasSource: boolean) =>
  * lang: "src" edits the original alone, a language code its translation with the original next to it. */
 export function useSubtitleDraft(jobId: string, lang: string | undefined, onSaved?: (changed: TranscriptSaved) => void) {
   const queryClient = useQueryClient()
-  const subtitles = useQuery({
-    queryKey: ['transcript', jobId, lang],
-    queryFn: async () => (await getTranscript({ path: { job_id: jobId }, query: { lang } })).data,
-    enabled: !!lang,
-    retry: false,
-  })
+  const subtitles = useTranscript(jobId, lang)
   const cues = subtitles.data?.cues
   const hasSource = !!cues?.some((c) => c.source !== null && c.source !== undefined)
   const [rows, setRows] = useState<Row[]>([])

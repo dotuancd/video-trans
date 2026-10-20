@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { client } from '@/api/client.gen'
 import {
-  attemptEvents, attemptRequests, getConfig, listDrivers, listProjects, listTemplates,
+  attemptEvents, attemptRequests, getConfig, getTranscript, listDrivers, listProjects, listTemplates,
   type ArtifactInfo, type DriverInfo, type Job, type Task, type Uploaded,
 } from '@/api'
 
@@ -121,6 +121,16 @@ export function useProjects() {
 
 export function driversOf(drivers: DriverInfo[] | undefined, stage: string) {
   return drivers?.filter((d) => d.stage === stage) ?? []
+}
+
+/** A job's subtitles: lang a language code, "src" the original's; nothing loaded without one. */
+export function useTranscript(jobId: string, lang: string | undefined) {
+  return useQuery({
+    queryKey: ['transcript', jobId, lang],
+    queryFn: async () => (await getTranscript({ path: { job_id: jobId }, query: { lang } })).data,
+    enabled: !!lang,
+    retry: false,
+  })
 }
 
 /** The pipeline log of an attempt, kept current by useLiveJobs (lib/jobs). */
