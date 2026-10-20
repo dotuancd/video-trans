@@ -98,3 +98,18 @@ Sắp xếp theo giá trị với người dùng (cao → thấp). Mục đã l�
 - **Tự chuyển bài (vt-s9r.4):** video có hình nhưng tiếng codec lạ (AC3/DTS trong .mkv) vẫn "phát được" nên không tự báo lỗi — cần kiểm `audioTracks`/`webkitAudioDecodedByteCount` nếu hay gặp. Đếm ngược vẫn chạy khi tab ẩn; có thể tạm dừng theo `visibilitychange`.
 - **Điều khiển xem (vt-s9r.3):** Gốc/Lồng tiếng áp cho cả phiên xem, không lưu — nếu hay xem bản gốc có thể lưu như ngôn ngữ. Ngôn ngữ nhớ chỉ dùng khi danh sách (hoặc việc đang mở) có nó; mở thẳng `?play=` trước khi danh sách tải có thể bỏ qua lựa chọn nhớ. Bản gốc .mkv không giải mã được khi bấm Gốc sẽ rơi vào đếm ngược tự chuyển bài thay vì gợi ý quay lại Lồng tiếng. ←/→ không còn cuộn cột danh sách phát.
 - **Nhớ vị trí xem (vt-s9r.5):** bản gốc vẫn nhớ theo job + ngôn ngữ — đổi ngôn ngữ mà vẫn xem bản gốc thì bắt đầu lại; có thể dùng chung vị trí khi cùng file. Nút "Xem tiếp" chỉ thấy các trang đã tải. Thanh tiến độ chỉ có ở cột playlist, chưa có ở danh sách việc. Không nghe sự kiện `storage` nên hai tab có thể ghi đè nhau. `toWatch`/`resumeAt` là ứng viên test vitest.
+- **Player trên Video.js 10 (vt-0qq):** phụ đề vẫn là overlay riêng (một dòng, chữ to) nên nút CC/phím C của skin không có tác dụng — có thể đưa transcript thành text track (như SubtitleEditor) để dùng menu phụ đề của skin và `::cue`. Phím của skin chỉ chạy khi focus ở trong video; ngoài đó Player tự xử lý Space/←/→/F (10 s như skin) — nếu muốn thêm J/K/L/M/↑↓/0–9 toàn trang thì cần lấy source skin qua shadcn. ErrorDialog của skin hiện cùng màn "Không phát được" khi lỗi. JobDetail (xem trước + live dub) vẫn dùng `<video>` gốc. Bundle +~74 KB gzip.
+- **Phụ đề/audio trong skin (vt-bze):** đổi audio track dùng `audioTracks` của trình duyệt — mp4 chỉ Safari có, Chrome/Firefox không hiện menu; nếu cần thì backend xuất thêm HLS (mỗi track một rendition) hoặc tách file tiếng. Nguồn chỉ có audio (`<audio>`) không vẽ text track nên mất phụ đề — có thể phát bằng `<Video>` để hiện. Track "Gốc" có `srclang="src"` (không phải mã BCP 47): nên lưu ngôn ngữ nguồn để ghi đúng. Chỉ nhớ bật/tắt phụ đề, chưa nhớ ngôn ngữ phụ đề chọn trong menu.
+
+## Player không thanh trên cùng (vt-540)
+- ✅ Đã làm: tiêu đề bằng part `Title` (skin video cài source ở `web/src/components/videojs`).
+- Skin audio vẫn là bản đóng gói, chưa có ⏮ ⏭: cài `@videojs/audio` qua shadcn nếu playlist có nhiều audio.
+- ✅ Đã làm: cụm ngôn ngữ / danh sách / đóng nằm trong skin (slot `corner`).
+- ✅ Đã làm: chọn ngôn ngữ bằng Menu của Video.js (`LanguageMenu`).
+- ✅ Đã làm (vt-6xs): menu ngôn ngữ, select dự phòng và nhãn phụ đề hiện tên đầy đủ ("Tiếng Việt") bằng `Intl.DisplayNames` (`lib/langName`); nút trên thanh vẫn là mã ngắn cho gọn. BulkBar còn lấy tên từ API `languages` — có thể dùng chung `langName` để bỏ phụ thuộc.
+
+## Nút danh sách, ⏮ ⏭, nút thoát (vt-4js)
+- ✅ Đã làm: nút hiện/ẩn danh sách thay chỗ PiP; ⏮ ⏭ lên đầu cột playlist (cạnh "Tự chuyển bài"); nút đóng thành ← góc trên trái.
+- ✅ Đã làm (toàn màn hình): cột danh sách phát hiện đè lên video, phía trên thanh điều khiển, bật/tắt bằng cùng nút danh sách. Khi ẩn cột thì vẫn chỉ còn phím P/N để chuyển bài.
+- PiP không còn nút; file `videojs/ui/pip-button.tsx` vẫn giữ nếu cần lại.
+- **Ngôn ngữ xem do bộ lọc danh sách quyết định**: player đã bỏ nút chọn ngôn ngữ (vt-pzy), giờ luôn phát theo ngôn ngữ phổ biến nhất của danh sách. Khi danh sách có nhiều ngôn ngữ, thêm bộ lọc ngôn ngữ ở danh sách việc để người dùng tự chọn ngôn ngữ trước khi bấm Xem.
