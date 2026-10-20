@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUpDown, Search, X } from 'lucide-react'
-import type { JobCounts } from '@/api'
+import { ArrowUpDown, Play, Search, X } from 'lucide-react'
+import type { Job, JobCounts } from '@/api'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger,
@@ -8,10 +8,11 @@ import {
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { SORTS, STATUS_GROUPS, type JobSort, type StatusGroup } from '@/lib/jobs'
+import { toWatch, useWatched } from '@/lib/watched'
 
 /** Above the job list: search (as you stop typing; / to get there), the status groups with their numbers,
- * and the order. */
-export function JobToolbar({ q, onQuery, status, onStatus, sort, onSort, counts }: {
+ * the order and the button watching the list. */
+export function JobToolbar({ q, onQuery, status, onStatus, sort, onSort, counts, watch }: {
   q: string
   onQuery: (q: string) => void
   status?: StatusGroup
@@ -19,6 +20,7 @@ export function JobToolbar({ q, onQuery, status, onStatus, sort, onSort, counts 
   sort: JobSort
   onSort: (sort: JobSort) => void
   counts?: JobCounts
+  watch?: Watch
 }) {
   const [text, setText] = useState(q)
   const [sent, setSent] = useState(q)
@@ -97,6 +99,22 @@ export function JobToolbar({ q, onQuery, status, onStatus, sort, onSort, counts 
           </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
+      {watch && <WatchButton {...watch} />}
     </div>
+  )
+}
+
+/** The jobs shown, played in `lang`: the one the player will play them in. */
+type Watch = { jobs: Job[]; lang?: string; onPlay: (id: string) => void }
+
+/** Plays the job of the list left part-way through most lately (see lib/watched), else the first with something to
+ * watch. */
+function WatchButton({ jobs, lang, onPlay }: Watch) {
+  const watch = toWatch(jobs, lang, useWatched())
+  return (
+    <Button size="sm" variant="outline" disabled={!watch} onClick={() => watch && onPlay(watch.job.id)}
+      title={!watch ? 'Chưa có video nào để xem' : watch.left ? `Xem tiếp: ${watch.job.title}` : 'Xem từ đầu danh sách'}>
+      <Play /> {watch?.left ? 'Xem tiếp' : 'Xem'}
+    </Button>
   )
 }

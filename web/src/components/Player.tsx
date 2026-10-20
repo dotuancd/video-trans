@@ -8,6 +8,7 @@ import { artifactUrl, downloadUrl, errorMessage, loadSaved, save, useTranscript 
 import type { JobSort } from '@/lib/jobs'
 import { cn } from '@/lib/utils'
 import { mkvHint, neighbour, placeIn, playback, VIDEO, type Source } from '@/lib/playback'
+import { progress, resumeAt, saveWatched, useWatched, watchedIn } from '@/lib/watched'
 
 /** The jobs watched one after another: the job list as shown, kept current. */
 export type Playlist = {
@@ -30,7 +31,8 @@ const DARK = 'text-white hover:bg-white/15 hover:text-white disabled:opacity-40'
  * With a playlist, ◀ ▶ (P / N) or its column go to the jobs around it. Esc or the close button closes it, as does
  * Back (the URL holds ?play=). With 'Tự chuyển bài' on, a video ended or failing to play counts down to the next.
  * Its top bar picks the language of the whole playlist (remembered), the dubbed video or the original (where it was
- * watched), the subtitles on or off (C). Space plays / pauses, ← → go 5 s back / on, F is fullscreen. */
+ * watched), the subtitles on or off (C). Space plays / pauses, ← → go 5 s back / on, F is fullscreen. A job is played
+ * from where it was left in that language (see lib/watched), from the start once watched to the end. */
 export function Player({ job, error, lang, playlist, onPlay, onClose }: {
   /** undefined while loading */
   job?: Job
@@ -225,7 +227,8 @@ export function Player({ job, error, lang, playlist, onPlay, onClose }: {
                     media.current = element
                   }}
                   subtitles={settings.subtitles ? best.subtitles : undefined}
-                  start={resume?.job === job.id ? resume.time : undefined}
+                  start={resume?.job === job.id ? resume.time : resumeAt(watchedIn(job.id, wanted))}
+                  onProgress={(time, duration, now) => saveWatched(job.id, wanted, time, duration, now)}
                   onStop={(failed) => setStop({ id: best.source.id, failed })}
                   onPlaying={() => stopped && !stopped.failed && setStop(undefined)} />}
           {stopped && (stopped.failed || counting || atEnd) && (
@@ -249,7 +252,7 @@ export function Player({ job, error, lang, playlist, onPlay, onClose }: {
   )
 }
 
-/** The jobs of the playlist with something to watch, the one watched marked. */
+/** The jobs of the playlist with something to watch, the one watched marked, how much of each was watched under it. */
 function PlaylistColumn({ playlist, current, lang, dub, onPlay }: {
   playlist: Playlist
   current?: string
@@ -258,6 +261,7 @@ function PlaylistColumn({ playlist, current, lang, dub, onPlay }: {
   onPlay: (id: string) => void
 }) {
   const playing = useRef<HTMLButtonElement>(null)
+  const saved = useWatched()
   useEffect(() => {
     playing.current?.scrollIntoView({ block: 'nearest' })
   }, [current])
@@ -268,6 +272,8 @@ function PlaylistColumn({ playlist, current, lang, dub, onPlay }: {
           const best = playback(job, lang, dub)
           if (!best) return null
           const on = job.id === current
+          const watched = watchedIn(job.id, lang, saved)
+          const share = watched && progress(watched)
           return (
             <li key={job.id}>
               <button type="button" ref={on ? playing : undefined} aria-current={on || undefined}
@@ -275,6 +281,11 @@ function PlaylistColumn({ playlist, current, lang, dub, onPlay }: {
                 className={cn('grid w-full gap-0.5 px-4 py-2 text-left text-sm hover:bg-white/10', on && 'bg-white/15')}>
                 <span className={cn('line-clamp-2', on && 'font-medium')}>{job.title}</span>
                 <span className="text-xs text-white/50">{best.dubbed ? 'Lồng tiếng' : 'Gốc'}</span>
+                {share !== undefined && (
+                  <span className="mt-1 h-0.5 overflow-hidden rounded-full bg-white/15" title={`Đã xem ${Math.round(share * 100)}%`}>
+                    <span className="block h-full bg-red-500" style={{ width: `${share * 100}%` }} />
+                  </span>
+                )}
               </button>
             </li>
           )
@@ -316,8 +327,9 @@ function NextUp({ next, onPlay, onCancel }: { next: Job; onPlay: () => void; onC
 }
 
 /** onStop: the media ended, or (failed) cannot be played: an error, or a video whose picture the browser cannot
- * decode (.mkv, codec). onPlaying: it plays (again). start: the second it is played from. */
-function Media({ jobId, source, subtitles, start, media, onStop, onPlaying }: {
+ * decode (.mkv, codec). onPlaying: it plays (again). start: the second it is played from. onProgress: where it is
+ * as it plays; now: paused or ended. */
+function Media({ jobId, source, subtitles, start, media, onStop, onPlaying, onProgress }: {
   jobId: string
   source: Source
   subtitles?: string
@@ -326,18 +338,41 @@ function Media({ jobId, source, subtitles, start, media, onStop, onPlaying }: {
   media: (element: HTMLMediaElement | null) => void
   onStop: (failed: boolean) => void
   onPlaying: () => void
+  onProgress: (time: number, duration: number, now: boolean) => void
 }) {
   const transcript = useTranscript(jobId, subtitles)
   const [time, setTime] = useState(0)
   const cue = transcript.data?.cues.find((c) => c.start <= time && time < c.end)
+  const element = useRef<HTMLMediaElement>(null)
+  const latest = useRef(onProgress)
+  useEffect(() => {
+    latest.current = onProgress
+  })
+  // closed or another video: where it was left, the last seconds too
+  useEffect(() => () => {
+    const m = element.current
+    if (m && !m.ended && m.currentTime) latest.current(m.currentTime, m.duration, true)
+  }, [])
   const props = {
     src: artifactUrl(source.artifact), controls: true, autoPlay: true,
-    ref: media,
+    ref: (m: HTMLMediaElement | null) => {
+      if (m) element.current = m
+      media(m)
+    },
     onLoadedMetadata: (e: SyntheticEvent<HTMLMediaElement>) => {
       if (start) e.currentTarget.currentTime = start
     },
-    onTimeUpdate: (e: SyntheticEvent<HTMLMediaElement>) => setTime(e.currentTarget.currentTime),
-    onEnded: () => onStop(false),
+    onTimeUpdate: (e: SyntheticEvent<HTMLMediaElement>) => {
+      setTime(e.currentTarget.currentTime)
+      onProgress(e.currentTarget.currentTime, e.currentTarget.duration, false)
+    },
+    // paused at the end too: ended is saved as watched to the end
+    onPause: (e: SyntheticEvent<HTMLMediaElement>) => !e.currentTarget.ended
+      && onProgress(e.currentTarget.currentTime, e.currentTarget.duration, true),
+    onEnded: (e: SyntheticEvent<HTMLMediaElement>) => {
+      onProgress(e.currentTarget.duration, e.currentTarget.duration, true)
+      onStop(false)
+    },
     onError: () => onStop(true),
     onPlaying,
   }

@@ -149,6 +149,9 @@ export default function App() {
   const view = project ? project.id : [NONE, QUEUE, VOICES].includes(selected) ? selected : ALL
   const shown = list.data?.pages.flatMap((p) => p.jobs) ?? []
   const lang = commonLang(shown) // what the player shows first
+  // what it will play the list in: the language last picked in it where the list has it (see Player)
+  const picked = loadSaved<{ lang?: string }>('player', {}).lang
+  const playLang = picked && shown.some((j) => j.langs.includes(picked)) ? picked : lang
   const numbers = counts.data
   // NONE is the key of the jobs of no project
   const sidebar: Record<string, number> = {
@@ -237,7 +240,7 @@ export default function App() {
             <section className="grid min-w-0 gap-3">
               <JobToolbar q={q} onQuery={(text) => go({ project: selected, status, q: text || undefined }, true)}
                 status={status} onStatus={(group) => go({ project: selected, status: group, q: q || undefined })}
-                sort={sort} onSort={setSort} counts={numbers} />
+                sort={sort} onSort={setSort} counts={numbers} watch={{ jobs: shown, lang: playLang, onPlay: watch }} />
               <BulkBar jobs={shown} total={total} counts={numbers} filter={filter} checked={checked} everything={everything}
                 onChecked={pick} projects={projects.data} drivers={drivers.data} view={view}
                 onOpenProject={(id) => go({ project: id })} onOpenJob={select} />

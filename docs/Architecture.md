@@ -133,6 +133,7 @@ Trạng thái task: `blocked → queued → running → done | failed | cancelle
 - Server **không** tự gộp cấu hình project vào job: web gửi template/langs/overrides đã resolve (cho phép "sửa cho lần này"); CLI không đổi.
 - Export: `export=false` → không export; project có `export_dir` → vào đó; không thì cạnh file gốc (URL: thư mục export của job).
 - Web tải lên ngay khi thả file (khay theo project, nhớ trong localStorage); `prune_uploads` lúc khởi động xoá thư mục `upl_*` quá 7 ngày mà không job nào dùng.
+- Player (`?play=<jobId>`, web/src/components/Player.tsx): vị trí xem nhớ trong localStorage theo job + ngôn ngữ (`web/src/lib/watched.ts`, giữ 300 mục gần nhất), không lưu server.
 
 **Gói tải về** (`bdl_…`, bảng `bulk_downloads`, lane `bulk_download`, `dich/api/bulk_downloads.py`): zip kết quả của các job đã chọn — chỉ job `done`; `media.out.*` (`video`) và/hoặc `transcript.*` thành .srt (`srt`: kèm cả phụ đề gốc `transcript.src`, không bị lọc), lọc `langs`.
 - API: `POST /bulk-downloads/preview` (file sẽ có, tổng dung lượng, job chưa xong bị bỏ, ngôn ngữ có, `single` khi chỉ 1 file → tải thẳng `/artifacts/{id}/download`); `POST /bulk-downloads` (cùng tập artifact còn hạn → dùng lại + gia hạn); `GET /bulk-downloads`; `GET /bulk-downloads/{id}/download` (Range; 409 chưa xong, 410 hết hạn); `DELETE /bulk-downloads/{id}` (đang chờ/đang tạo → huỷ, còn lại → xoá cùng zip). SSE phát `{"type": "bulk_download", "id", "bulk_download"}` (null: đã xoá).
