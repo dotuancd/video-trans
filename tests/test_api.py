@@ -366,6 +366,32 @@ def test_edit_brief_makes_the_translation_stale(app, monkeypatch):
     assert client.get(f"/api/jobs/{job_id}/brief").json()["edited"]
 
 
+def test_transcript_edit_keeps_the_brief(app, monkeypatch):
+    import fake_drivers
+    client, ctx = app
+    monkeypatch.setattr(fake_drivers.FakeTranslate, "consumes", {"transcript": "transcript.src", "brief": "brief?"})
+    [job_id] = create(client, ctx, langs=["vi"],
+                      overrides={**FAKE, "brief": {"params": {"summary": "Video về nấu ăn"}}})
+    run_job(ctx.store, job_id)
+    cues = client.get(f"/api/jobs/{job_id}/transcript").json()["cues"]
+    cues[0]["text"] = "hi."
+    client.put(f"/api/jobs/{job_id}/transcript", json={"cues": cues})
+    tasks = {t["key"]: t["status"] for t in client.get(f"/api/jobs/{job_id}").json()["tasks"]}
+    assert tasks["brief"] == "done" and tasks["translate@vi"] == "stale"
+
+
+def test_delete_cue_in_editor(app):
+    client, ctx = app
+    [job_id] = create(client, ctx)
+    run_job(ctx.store, job_id)
+    cues = client.get(f"/api/jobs/{job_id}/transcript", params={"lang": "vi"}).json()["cues"]
+    saved = client.put(f"/api/jobs/{job_id}/transcript", params={"lang": "vi"}, json={"cues": cues[1:]}).json()
+    assert saved["texts"] == 1 and saved["sources"] == 1 and saved["source_text_changed"]
+    assert [c["id"] for c in client.get(f"/api/jobs/{job_id}/transcript").json()["cues"]] == [c["id"] for c in cues[1:]]
+    tasks = {t["key"]: t["status"] for t in client.get(f"/api/jobs/{job_id}").json()["tasks"]}
+    assert tasks["translate@vi"] == "done" and tasks["dub@vi"] == "stale"
+
+
 def test_voice_library(app):
     import numpy as np
     import soundfile as sf

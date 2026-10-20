@@ -1,4 +1,4 @@
-// Structural edits of a subtitle draft: merge, split and moving words between neighbouring cues.
+// Structural edits of a subtitle draft: merge, split, delete and moving words between neighbouring cues.
 // Pure functions over the row list; times come from the timed words of the transcript when the spoken line
 // still matches them, else are estimated from the share of characters moved.
 
@@ -48,6 +48,11 @@ export function mergeNext(rows: Row[], i: number): Row[] {
   if (!b) return rows
   const merged = { key: a.key, id: a.id, start: a.start, end: b.end, source: join(a.source, b.source), text: join(a.text, b.text) }
   return [...rows.slice(0, i), merged, ...rows.slice(i + 2)]
+}
+
+/** Cue i gone, with its original and translation; its time is left silent. */
+export function remove(rows: Row[], i: number): Row[] {
+  return rows.length > 1 ? [...rows.slice(0, i), ...rows.slice(i + 1)] : rows
 }
 
 /** Cue i cut at character `at` of its `field`; the other field is cut at the word boundary in the same proportion.

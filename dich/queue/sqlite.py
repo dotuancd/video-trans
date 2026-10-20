@@ -815,10 +815,11 @@ class Store:
             self.touch(task["job_id"])
             self.advance(task["job_id"])
 
-    def save_human(self, task_id, name, path, sha256=None, size=None):
+    def save_human(self, task_id, name, path, sha256=None, size=None, keep=()):
         """An edit by hand of a task's output `name`: a new attempt (origin human) that becomes current;
-        tasks after it that were done become stale. A stale, failed, cancelled or gated task is done with
-        the edit as its result, so the steps after it can run without running it again (and losing the edit)."""
+        tasks after it that were done become stale, but those of the stages `keep`. A stale, failed, cancelled
+        or gated task is done with the edit as its result, so the steps after it can run without running it
+        again (and losing the edit)."""
         with self.tx():
             task = self.task(task_id)
             if task["status"] == "running":
@@ -845,6 +846,8 @@ class Store:
                            task_id=task_id)
             # blocked steps after a done one only wait for "Cập nhật phía sau", like the done ones
             for other in self.descendants(task["job_id"], task["key"]):
+                if other["status"] == "done" and other["stage"] in keep:
+                    continue
                 if other["status"] == "done" or (settled and other["status"] == "blocked"):
                     self._status(other, "stale", message="Đầu vào đã sửa tay")
         return attempt

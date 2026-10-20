@@ -1,13 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDownToLine, Loader2, Save, Undo2 } from 'lucide-react'
+import { ArrowDownToLine, Loader2, Save, Trash2, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { getTranscript, saveTranscript, type EditCue, type TranscriptSaved } from '@/api'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { errorMessage } from '@/lib/api'
-import { mergeNext, moveWords, newKey, split, type Field, type Row } from '@/lib/cues'
+import { mergeNext, moveWords, newKey, remove, split, type Field, type Row } from '@/lib/cues'
 
 const clock = (seconds: number) => {
   const m = Math.floor(seconds / 60)
@@ -19,7 +19,7 @@ const sameAs = (row: Row, cue: EditCue, hasSource: boolean) =>
   row.start === cue.start && row.end === cue.end && row.text.trim() === cue.text
   && (!hasSource || row.source.trim() === cue.source)
 
-/** Loaded cues plus the unsaved edits — texts, and cues merged, split or with words moved between them
+/** Loaded cues plus the unsaved edits — texts, and cues merged, split, deleted or with words moved between them
  * (of the translation and its original together), shared by the editor and the player.
  * lang: "src" edits the original alone, a language code its translation with the original next to it. */
 export function useSubtitleDraft(jobId: string, lang: string | undefined, onSaved?: (changed: TranscriptSaved) => void) {
@@ -38,7 +38,7 @@ export function useSubtitleDraft(jobId: string, lang: string | undefined, onSave
     setRows(cues?.map((c) => ({ key: newKey(), id: c.id, start: c.start, end: c.end, source: c.source ?? '', text: c.text })) ?? [])
     setHistory([])
   }, [cues])
-  /** a merge, split or move: undoable as one step */
+  /** a merge, split, delete or move: undoable as one step */
   const restructure = (next: Row[]) => {
     if (next === rows) return
     setHistory((h) => [...h.slice(-49), rows])
@@ -74,10 +74,12 @@ export function useSubtitleDraft(jobId: string, lang: string | undefined, onSave
 
 export type SubtitleDraft = ReturnType<typeof useSubtitleDraft>
 
+const ROW_ACTION = 'text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-foreground focus-visible:opacity-100'
+
 const HINT = 'Enter: tách câu tại con trỏ · Backspace ở đầu câu: gộp với câu trên · Alt+↑ / Alt+↓: chuyển chữ trước / sau con trỏ lên câu trên / xuống câu dưới · Shift+Enter: xuống dòng'
 
 /** Side by side original / Vietnamese, both editable (or the original alone before translation).
- * Cues can be split, merged, and have words moved to their neighbours; times follow the spoken words when the
+ * Cues can be split, merged, deleted, and have words moved to their neighbours; times follow the spoken words when the
  * transcript's word timings are known, else the share of characters. */
 export function SubtitleEditor({ draft, active, onSeek }: {
   draft: SubtitleDraft
@@ -163,7 +165,7 @@ export function SubtitleEditor({ draft, active, onSeek }: {
           {rows.length} câu{dirty ? ` · ${dirty} câu chưa lưu` : ''}
         </p>
         <div className="flex gap-2">
-          <Button size="sm" variant="ghost" disabled={!canUndo} onClick={undo} title="Hoàn tác gộp / tách / chuyển chữ">
+          <Button size="sm" variant="ghost" disabled={!canUndo} onClick={undo} title="Hoàn tác gộp / tách / xóa / chuyển chữ">
             <Undo2 /> Hoàn tác
           </Button>
           <Button size="sm" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
@@ -183,13 +185,20 @@ export function SubtitleEditor({ draft, active, onSeek }: {
                 title="Phát từ đây" onClick={() => onSeek?.(row.start)}>
                 {clock(row.start)}
               </button>
-              {i < rows.length - 1 && (
-                <button type="button" title="Gộp với câu dưới" aria-label="Gộp với câu dưới"
-                  className="text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-foreground focus-visible:opacity-100"
-                  onClick={() => restructure(mergeNext(rows, i))}>
-                  <ArrowDownToLine className="size-3.5" />
-                </button>
-              )}
+              <div className="flex gap-1">
+                {i < rows.length - 1 && (
+                  <button type="button" title="Gộp với câu dưới" aria-label="Gộp với câu dưới" className={ROW_ACTION}
+                    onClick={() => restructure(mergeNext(rows, i))}>
+                    <ArrowDownToLine className="size-3.5" />
+                  </button>
+                )}
+                {rows.length > 1 && (
+                  <button type="button" title="Xóa câu này" aria-label="Xóa câu này" className={cn(ROW_ACTION, 'hover:text-destructive')}
+                    onClick={() => restructure(remove(rows, i))}>
+                    <Trash2 className="size-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
             {hasSource && input(i, 'source', {
               'aria-label': 'Phụ đề gốc',

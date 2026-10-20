@@ -13,6 +13,15 @@ Sắp xếp theo giá trị với người dùng (cao → thấp). Mục đã l�
 - **Câu lồng tiếng quá dài / dead air:** `fit_dub` đã tắt mặc định (dịch gượng, chi phí ×2). Hướng chính: co giãn ở bước
   Lồng tiếng. Mô phỏng 1,5h video: dead air 34% (min_speed 0,85) → 27% (0,8) → 22% (0,75, nhưng ~60% câu đọc chậm) —
   cần nghe thử để chốt min_speed. Kèm **cảnh báo câu quá dài trong editor** (từ `sped_up`/`late` của dub) để người dùng rút gọn.
+  *Đã thử, bỏ (vt-329):* nhịp chung cả video kiểu YouDub (Σ TTS / Σ gốc, mỗi câu ±10%) — dead air chỉ giảm 0,4–1,7 điểm,
+  nghe A/B không phân biệt được. Dead air còn lại do bản dịch ngắn, không phải do co giãn.
+- **Giữ tiếng gốc cho âm không lời (học từ YouDub `audio_mode`):** LLM dịch trả thêm `tts|original` cho mỗi câu; cười, hét,
+  thở dốc… ghép lại đoạn audio gốc thay vì TTS đọc "(tiếng cười)". Kèm luật bỏ từ đệm (um, uh, you know) trong prompt dịch.
+- **Phát hiện câu TTS hỏng và đọc lại:** so thời lượng clip với số âm tiết × `SPEECH_RATE`; lệch quá xa (lặp, kéo dài,
+  im lặng) → đọc lại tối đa 2–3 lần, giữ bản gần nhất (VoxCPM có sẵn `retry_badcase`, VieNeu thì chưa).
+- **Phụ đề dễ đọc hơn:** cue hiện đúng từ đầu–cuối từ nên chớp nhanh; nới đầu ~0,1s / cuối ~0,3s vào khoảng lặng (chia theo
+  tỉ lệ khi khoảng lặng hẹp, chừa 50ms) — chỉ cho phụ đề xuất ra, không đổi timing dub. Cue tiếng Việt dài hơn `max_chars`
+  thì tách tiếp theo dấu câu, chia thời gian theo số ký tự.
 - **Tách giọng `demucs` / VAD Silero khi có nhạc nền:** VAD theo âm lượng gần như vô dụng trên audio có nhạc. Slot
   `audio.speech`/`audio.background` đã có, chỉ cần driver. Silero chạy *cạnh* RMS trong cùng vòng giải mã streaming
   (benchmark: 110 phút ~28s, model 2,3 MB), không thay demucs.
@@ -54,6 +63,8 @@ Sắp xếp theo giá trị với người dùng (cao → thấp). Mục đã l�
 - **Pipeline theo đoạn (streaming):** ASR/dịch/dub theo cửa sổ ~2 phút → có tiếng Việt sau ~1 phút; dub ưu tiên quanh chỗ
   đang xem. Cần slot streaming trong DAG.
 - **Upload tiếp tục khi đứt** (chunk + `Content-Range`); live preview dub không bắt đầu lại từ 0 sau khi tiếp tục.
+- **Clone giọng theo từng câu (YouDub):** mẫu giọng = chính đoạn gốc của câu đó (−80/+160ms), câu < 1,2s dùng mẫu chung →
+  cảm xúc/ngữ điệu từng câu khớp hơn. Đổi lại: không cache theo giọng được, chậm hơn, dễ mang ngữ điệu tiếng Anh sang. Cần nghe A/B.
 - **Watch folder** cho project (cần watcher ở supervisor).
 - **Driver mới:** ASR `parakeet` / Whisper API; `refine` (LLM sửa ASR).
 - **Nhiều máy:** bảng `workers` (heartbeat) để thấy worker chạy bằng `dich worker`; hàng đợi Redis/Postgres; SSE thay poll 1,5s.
@@ -75,3 +86,8 @@ Sắp xếp theo giá trị với người dùng (cao → thấp). Mục đã l�
 - **Preview gói tải về (vt-6ap.4):** đang gọi `slot_artifact` theo từng job × ngôn ngữ × loại file — chậm khi chọn hàng nghìn việc; gom thành một truy vấn `current_artifacts`. Job đã xong nhưng không có file khớp (không ghép video, bị lọc ngôn ngữ) đang bị bỏ qua im lặng: có thể trả thêm `empty` để dialog giải thích "0 file". Dung lượng phụ đề trong preview là của transcript gốc, không phải .srt (chỉ ước lượng).
 - **Dialog Tải về (vt-6ap.5):** `UnfinishedJob.status` đang là `str` — đổi sang Literal để UI khỏi ép kiểu; khi gói được dùng lại (cùng tập file còn hạn) toast có thể ghi "Dùng lại gói đã tạo"; toast tiến độ chưa thấy được trên máy thật vì zip ZIP_STORED xong rất nhanh — nên thử với vài GB.
 - **Mục Gói tải về trong Hàng đợi (vt-6ap.6):** "còn …" tính bằng đồng hồ trình duyệt — máy khác lệch giờ sẽ thấy sai; có thể trả `now` của server trong `/api/bulk-downloads`. Bấm Tải khi gói vừa hết hạn (chưa bị prune) chỉ thấy tải lỗi trong trình duyệt (410) — có thể HEAD trước rồi toast "Gói đã hết hạn". Thanh tiến độ chưa thử với gói vài GB (zip xong quá nhanh).
+- **Luật dịch theo cặp ngôn ngữ (vt-v7s):** mới có en→vi; thêm ja/zh/ko→vi khi có video thật để so. Bump `version` driver dịch xoá cache mọi cặp — nếu hay chỉnh prompt, đưa hash của prompt vào khoá cache thay cho bump tay. gpt-5-mini từng dồn chữ sang cue bên cạnh để lại cue rỗng khi được phép bỏ trống: nếu tái diễn, `check()` có thể từ chối cue rỗng khi cue gốc có nội dung.
+
+- **Phím tắt xóa câu phụ đề**: hiện chỉ có nút thùng rác (hover). Có thể thêm Ctrl/Cmd+Shift+Backspace để xóa câu đang gõ mà không rời bàn phím.
+- **Chạy lại brief khi sửa nhiều**: sửa phụ đề không còn làm brief stale. Nếu người dùng sửa phần lớn transcript (vd. >30% câu), có thể gợi ý "Chạy lại bối cảnh?" thay vì im lặng giữ bản cũ.
+- **Player xem liên tục (sau vt-s9r):** thời lượng trong playlist (cần lưu `duration` khi probe nguồn, chung với ý sắp theo thời lượng); đồng bộ vị trí/"đã xem" lên server nếu hay xem trên nhiều máy qua Tailscale (hiện chỉ `localStorage`); phụ đề song ngữ trên player; bố cục cho di động; phát từ các việc tick chọn ở BulkBar.

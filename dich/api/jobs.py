@@ -403,8 +403,8 @@ def router(ctx):
         path = store.job_dir(task["job_id"]) / "edits" / f"{slot}-{time.time_ns()}.jsonl"
         transcript.save(path)
         name = next(n for n, s in task["outputs"].items() if s == slot)
-        try:
-            store.save_human(task["id"], name, path, sha256(path), path.stat().st_size)
+        try:   # a few lines fixed by hand don't change what the video is about: the brief stays
+            store.save_human(task["id"], name, path, sha256(path), path.stat().st_size, keep={"brief"})
         except Busy as error:
             raise HTTPException(409, str(error))
 
