@@ -48,8 +48,9 @@ function useUrlState() {
     if (next.q) query.set('q', next.q)
     if (next.job) query.set('job', next.job)
     if (next.play) query.set('play', next.play)
-    // the job played by this entry: the player closes by going back when it opened it
-    history[replace ? 'replaceState' : 'pushState']({ play: next.play }, '', query.size ? `?${query}` : location.pathname)
+    // opened: this entry opened the player (another job played in it keeps that), which closes by going back
+    const opened = !!next.play && (replace ? !!history.state?.opened : !state.play)
+    history[replace ? 'replaceState' : 'pushState']({ opened }, '', query.size ? `?${query}` : location.pathname)
     setState(next)
   }
   return [state, go] as const
@@ -117,10 +118,12 @@ export default function App() {
     return () => removeEventListener('keydown', onKey)
   }, [job, play])
   const select = (id?: string) => go({ ...url, job: id, play: undefined })
-  const watch = (id?: string) => go({ ...url, job: undefined, play: id })
+  // replace: another job of the playlist, Back still closes the player
+  const watch = (id?: string, replace = false) => go({ ...url, job: undefined, play: id }, replace)
   useLiveJobs({
     filter,
-    onListChanged: () => setChanged(true),
+    // the player's playlist is the latest list: no banner to refresh it under the player
+    onListChanged: () => (play ? void queryClient.invalidateQueries({ queryKey: listKey(filter), exact: true }) : setChanged(true)),
     onJobFinished: (job) => {
       const message = `${job.title}: ${STATUS_LABELS[job.status as keyof typeof STATUS_LABELS] ?? job.status}`
       const open = { action: { label: 'Xem', onClick: () => select(job.id) } }
@@ -259,8 +262,12 @@ export default function App() {
           onDeleted={() => { setSettings(false); go({ project: NONE }) }} />
       )}
       {play && (
-        <Player job={playJob.data} error={playJob.error} lang={lang}
-          onClose={() => (history.state?.play === play ? history.back() : watch(undefined))} />
+        <Player job={playJob.data} error={playJob.error} lang={lang} onPlay={(id) => watch(id, true)}
+          playlist={isList ? {
+            jobs: shown, sort, more: !!list.hasNextPage, loadingMore: list.isFetchingNextPage,
+            onMore: () => void list.fetchNextPage(),
+          } : undefined}
+          onClose={() => (history.state?.opened ? history.back() : watch(undefined))} />
       )}
       <JobDetail job={job ? detail.data : undefined} drivers={drivers.data} config={config.data}
         projects={projects.data} onClose={() => select(undefined)} />
