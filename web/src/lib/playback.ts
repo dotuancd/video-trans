@@ -29,13 +29,15 @@ export type Playback = { source: Source; subtitles?: string; dubbed: boolean }
 
 /** The best way to watch the job in language `lang`: dubbed > original with the translated subtitles > original with
  * its own subtitles. A job without `lang`, or with nothing of it yet, is watched in its other languages the same way.
- * Undefined when there is nothing to watch yet. */
-export function playback(job: Job, lang: string | undefined): Playback | undefined {
+ * Undefined when there is nothing to watch yet. dub = false: the original is watched over a dubbed video, with the
+ * subtitles of the dub's language (else its own). */
+export function playback(job: Job, lang: string | undefined, dub = true): Playback | undefined {
   const langs = [...new Set([lang, ...job.langs].filter((l) => !!l && job.langs.includes(l)))] as string[]
   const has = (l: string) => !!slotArtifact(job, `transcript.${l}`)
   const { original } = mediaOf(job, undefined)
   for (const l of langs) {
     const { out } = mediaOf(job, l)
+    if (out && !dub && original) return { source: original, subtitles: has(l) ? l : has('src') ? 'src' : undefined, dubbed: false }
     if (out) return { source: out, subtitles: has(l) ? l : undefined, dubbed: true }
     if (original && has(l)) return { source: original, subtitles: l, dubbed: false }
   }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from 'react'
-import { ChevronLeft, ChevronRight, ListVideo, Loader2, Maximize, X } from 'lucide-react'
+import { Captions, CaptionsOff, ChevronLeft, ChevronRight, ListVideo, Loader2, Maximize, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Job } from '@/api'
 import { Button } from '@/components/ui/button'
@@ -28,7 +28,9 @@ const DARK = 'text-white hover:bg-white/15 hover:text-white disabled:opacity-40'
 
 /** The page covered by one job's best version (see lib/playback) with its subtitles on one line: watching only.
  * With a playlist, ◀ ▶ (P / N) or its column go to the jobs around it. Esc or the close button closes it, as does
- * Back (the URL holds ?play=). With 'Tự chuyển bài' on, a video ended or failing to play counts down to the next. */
+ * Back (the URL holds ?play=). With 'Tự chuyển bài' on, a video ended or failing to play counts down to the next.
+ * Its top bar picks the language of the whole playlist (remembered), the dubbed video or the original (where it was
+ * watched), the subtitles on or off (C). Space plays / pauses, ← → go 5 s back / on, F is fullscreen. */
 export function Player({ job, error, lang, playlist, onPlay, onClose }: {
   /** undefined while loading */
   job?: Job
@@ -40,14 +42,8 @@ export function Player({ job, error, lang, playlist, onPlay, onClose }: {
   onClose: () => void
 }) {
   const root = useRef<HTMLDivElement>(null)
-  // the language is kept from the moment the job is known, for the whole playlist: the list loading later must not
-  // restart the video
-  const [kept, keep] = useState<{ lang?: string }>()
-  if (job && !kept) keep({ lang })
-  const wanted = kept ? kept.lang : lang
-  const best = job && playback(job, wanted)
-
-  const [settings, setSettings] = useState(() => loadSaved('player', { playlist: true, auto: true }))
+  const [settings, setSettings] = useState(() =>
+    loadSaved<{ playlist: boolean; auto: boolean; subtitles: boolean; lang?: string }>('player', { playlist: true, auto: true, subtitles: true }))
   const set = (change: Partial<typeof settings>) => {
     const value = { ...settings, ...change }
     setSettings(value)
@@ -55,6 +51,27 @@ export function Player({ job, error, lang, playlist, onPlay, onClose }: {
   }
   const column = settings.playlist
   const jobs = playlist?.jobs ?? []
+  const langs = [...new Set([...job?.langs ?? [], ...jobs.flatMap((j) => j.langs)])]
+  // the language is kept from the moment the job is known, for the whole playlist: the list loading later must not
+  // restart the video. The one last picked wins where the list has it; the job's own when the list is not loaded yet.
+  const [kept, keep] = useState<{ lang?: string }>()
+  if (job && !kept) keep({ lang: settings.lang && langs.includes(settings.lang) ? settings.lang : lang ?? job.langs[0] })
+  const wanted = kept ? kept.lang : lang
+  // dub: the dubbed video is wanted over the original
+  const [dub, setDub] = useState(true)
+  const best = job && playback(job, wanted, dub)
+  // both versions to pick from
+  const both = !!job && !!best && playback(job, wanted, !dub)?.source.id !== best.source.id
+  const media = useRef<HTMLMediaElement>(null)
+  // where the job was left for its other version or language: played from there
+  const [resume, setResume] = useState<{ job: string; time: number }>()
+  if (resume && resume.job !== job?.id) setResume(undefined)
+  const remember = () => job && setResume({ job: job.id, time: media.current?.ended ? 0 : media.current?.currentTime ?? 0 })
+  const pick = (dubbed: boolean) => {
+    if (!best || best.dubbed === dubbed) return
+    remember()
+    setDub(dubbed)
+  }
   // the list as it was when the job watched was last in it: where it stood once filtered out
   const [seen, setSeen] = useState<string[]>([])
   if (job && jobs.some((j) => j.id === job.id) && (seen.length !== jobs.length || seen.some((id, i) => id !== jobs[i].id))) {
@@ -70,7 +87,10 @@ export function Player({ job, error, lang, playlist, onPlay, onClose }: {
   const counting = !!stopped && !stopped.cancelled && settings.auto && !!next
   const atEnd = !!stopped && settings.auto && !next && !loading
 
-  const keys = useRef<{ onClose: () => void; step: (dir: 1 | -1) => void }>(undefined)
+  const fullscreen = () => void (document.fullscreenElement ? document.exitFullscreen() : root.current?.requestFullscreen())
+  const subtitles = () => best?.subtitles && set({ subtitles: !settings.subtitles })
+
+  const keys = useRef<{ onClose: () => void; step: (dir: 1 | -1) => void; subtitles: () => void; fullscreen: () => void }>(undefined)
   useEffect(() => {
     keys.current = {
       onClose,
@@ -79,18 +99,40 @@ export function Player({ job, error, lang, playlist, onPlay, onClose }: {
         if (to) onPlay(to.id)
         else if (dir > 0 && playlist && !loading) toast.info(END)
       },
+      subtitles,
+      fullscreen,
     }
   })
   useEffect(() => {
+    // the keys are the page's, typing left alone (the language picker keeps ↑ ↓ only)
+    const typing = (e: KeyboardEvent) => e.target instanceof HTMLElement
+      && (e.target.isContentEditable || ['INPUT', 'TEXTAREA'].includes(e.target.tagName))
     const onKey = (e: KeyboardEvent) => {
       // Esc in fullscreen leaves fullscreen only
       if (e.key === 'Escape' && !document.fullscreenElement) keys.current?.onClose()
-      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return
-      if (e.key === 'n' || e.key === 'N') keys.current?.step(1)
-      if (e.key === 'p' || e.key === 'P') keys.current?.step(-1)
+      if (e.ctrlKey || e.metaKey || e.altKey || typing(e)) return
+      const m = media.current
+      const seek = (by: number) => m && (m.currentTime = Math.max(0, Math.min(m.duration || Infinity, m.currentTime + by)))
+      const key = e.key.toLowerCase()
+      // not those of a button or the media's own controls focused
+      if ([' ', 'arrowleft', 'arrowright'].includes(key)) e.preventDefault()
+      if (key === ' ' && !e.repeat) void (m?.paused ? m.play().catch(() => {}) : m?.pause())
+      if (key === 'arrowleft') seek(-5)
+      if (key === 'arrowright') seek(5)
+      if (e.repeat) return
+      if (key === 'n') keys.current?.step(1)
+      if (key === 'p') keys.current?.step(-1)
+      if (key === 'c') keys.current?.subtitles()
+      if (key === 'f') keys.current?.fullscreen()
     }
+    // a button focused is clicked by Space let go
+    const onKeyUp = (e: KeyboardEvent) => e.key === ' ' && !typing(e) && e.preventDefault()
     addEventListener('keydown', onKey)
-    return () => removeEventListener('keydown', onKey)
+    addEventListener('keyup', onKeyUp)
+    return () => {
+      removeEventListener('keydown', onKey)
+      removeEventListener('keyup', onKeyUp)
+    }
   }, [])
 
   const loadMore = useRef(playlist?.onMore)
@@ -121,6 +163,40 @@ export function Player({ job, error, lang, playlist, onPlay, onClose }: {
             </>
           )}
           <h2 className="min-w-0 flex-1 truncate font-medium">{job?.title}</h2>
+          {langs.length > 0 && (
+            <select aria-label="Ngôn ngữ" title="Ngôn ngữ xem cho cả danh sách" value={wanted ?? ''}
+              className="h-8 rounded-md border border-white/20 bg-black px-2 text-sm uppercase text-white"
+              onChange={(e) => {
+                remember()
+                keep({ lang: e.target.value })
+                set({ lang: e.target.value })
+                // the keys go back to the player
+                e.target.blur()
+              }}>
+              {wanted === undefined && <option value="" />}
+              {langs.map((l) => <option key={l} value={l}>{l}</option>)}
+            </select>
+          )}
+          {best && (
+            <div role="group" aria-label="Bản phát" className="flex rounded-md border border-white/20 p-0.5">
+              {[true, false].map((dubbed) => {
+                const on = best.dubbed === dubbed
+                return (
+                  <Button key={String(dubbed)} size="sm" variant="ghost" aria-pressed={on}
+                    className={cn(DARK, 'h-7', on && 'bg-white/15')} disabled={!on && !both}
+                    title={on || both ? undefined : dubbed ? 'Chưa có bản lồng tiếng' : 'Không có bản gốc'}
+                    onClick={() => pick(dubbed)}>
+                    {dubbed ? 'Lồng tiếng' : 'Gốc'}
+                  </Button>
+                )
+              })}
+            </div>
+          )}
+          <Button size="icon" variant="ghost" className={cn(DARK, best?.subtitles && settings.subtitles && 'bg-white/15')}
+            disabled={!best?.subtitles} title={!best?.subtitles ? 'Không có phụ đề' : settings.subtitles ? 'Tắt phụ đề (C)' : 'Bật phụ đề (C)'}
+            onClick={subtitles}>
+            {settings.subtitles ? <Captions /> : <CaptionsOff />}
+          </Button>
           {playlist && (
             <label className="flex items-center gap-2 px-2 text-sm text-white/80" title="Hết video thì sang video kế">
               <Switch size="sm" checked={settings.auto} onCheckedChange={(auto) => set({ auto })} />
@@ -133,8 +209,7 @@ export function Player({ job, error, lang, playlist, onPlay, onClose }: {
               <ListVideo />
             </Button>
           )}
-          <Button size="icon" variant="ghost" className={DARK} title="Toàn màn hình"
-            onClick={() => void root.current?.requestFullscreen()}>
+          <Button size="icon" variant="ghost" className={DARK} title="Toàn màn hình (F)" onClick={fullscreen}>
             <Maximize />
           </Button>
           <Button size="icon" variant="ghost" className={DARK} title="Đóng (Esc)" onClick={onClose}>
@@ -145,7 +220,12 @@ export function Player({ job, error, lang, playlist, onPlay, onClose }: {
           {error ? <p className="text-sm text-red-300">{errorMessage(error)}</p>
             : !job ? <Loader2 className="animate-spin text-white/60" />
               : !best ? <p className="text-sm text-white/70">Việc này chưa có video hoặc audio để xem.</p>
-                : <Media key={best.source.id} jobId={job.id} source={best.source} subtitles={best.subtitles}
+                : <Media key={best.source.id} jobId={job.id} source={best.source}
+                  media={(element) => {
+                    media.current = element
+                  }}
+                  subtitles={settings.subtitles ? best.subtitles : undefined}
+                  start={resume?.job === job.id ? resume.time : undefined}
                   onStop={(failed) => setStop({ id: best.source.id, failed })}
                   onPlaying={() => stopped && !stopped.failed && setStop(undefined)} />}
           {stopped && (stopped.failed || counting || atEnd) && (
@@ -164,16 +244,17 @@ export function Player({ job, error, lang, playlist, onPlay, onClose }: {
           )}
         </div>
       </div>
-      {playlist && column && <PlaylistColumn playlist={playlist} current={job?.id} lang={wanted} onPlay={onPlay} />}
+      {playlist && column && <PlaylistColumn playlist={playlist} current={job?.id} lang={wanted} dub={dub} onPlay={onPlay} />}
     </div>
   )
 }
 
 /** The jobs of the playlist with something to watch, the one watched marked. */
-function PlaylistColumn({ playlist, current, lang, onPlay }: {
+function PlaylistColumn({ playlist, current, lang, dub, onPlay }: {
   playlist: Playlist
   current?: string
   lang?: string
+  dub: boolean
   onPlay: (id: string) => void
 }) {
   const playing = useRef<HTMLButtonElement>(null)
@@ -184,7 +265,7 @@ function PlaylistColumn({ playlist, current, lang, onPlay }: {
     <aside aria-label="Danh sách phát" className="flex w-72 shrink-0 flex-col border-l border-white/10">
       <ol className="min-h-0 flex-1 overflow-y-auto py-1">
         {playlist.jobs.map((job) => {
-          const best = playback(job, lang)
+          const best = playback(job, lang, dub)
           if (!best) return null
           const on = job.id === current
           return (
@@ -235,11 +316,14 @@ function NextUp({ next, onPlay, onCancel }: { next: Job; onPlay: () => void; onC
 }
 
 /** onStop: the media ended, or (failed) cannot be played: an error, or a video whose picture the browser cannot
- * decode (.mkv, codec). onPlaying: it plays (again). */
-function Media({ jobId, source, subtitles, onStop, onPlaying }: {
+ * decode (.mkv, codec). onPlaying: it plays (again). start: the second it is played from. */
+function Media({ jobId, source, subtitles, start, media, onStop, onPlaying }: {
   jobId: string
   source: Source
   subtitles?: string
+  start?: number
+  /** given the element playing */
+  media: (element: HTMLMediaElement | null) => void
   onStop: (failed: boolean) => void
   onPlaying: () => void
 }) {
@@ -248,6 +332,10 @@ function Media({ jobId, source, subtitles, onStop, onPlaying }: {
   const cue = transcript.data?.cues.find((c) => c.start <= time && time < c.end)
   const props = {
     src: artifactUrl(source.artifact), controls: true, autoPlay: true,
+    ref: media,
+    onLoadedMetadata: (e: SyntheticEvent<HTMLMediaElement>) => {
+      if (start) e.currentTarget.currentTime = start
+    },
     onTimeUpdate: (e: SyntheticEvent<HTMLMediaElement>) => setTime(e.currentTarget.currentTime),
     onEnded: () => onStop(false),
     onError: () => onStop(true),
@@ -258,7 +346,10 @@ function Media({ jobId, source, subtitles, onStop, onPlaying }: {
       {VIDEO.test(source.path)
         // fullscreen is the whole player's (the subtitles are drawn over the video, not by it)
         ? <video {...props} controlsList="nofullscreen"
-          onLoadedMetadata={(e) => e.currentTarget.videoWidth || onStop(true)} className="size-full object-contain" />
+          onLoadedMetadata={(e) => {
+            props.onLoadedMetadata(e)
+            if (!e.currentTarget.videoWidth) onStop(true)
+          }} className="size-full object-contain" />
         : <audio {...props} className="w-full max-w-2xl" />}
       {cue && (
         <div className="pointer-events-none absolute inset-x-0 bottom-16 flex justify-center px-6">
