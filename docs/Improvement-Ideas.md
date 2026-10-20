@@ -74,6 +74,9 @@ Sắp xếp theo giá trị với người dùng (cao → thấp). Mục đã l�
 
 ## Dev / hạ tầng
 
+- **Test cho web (vitest):** web chưa có test runner; logic thuần như `lib/playback.ts` (chọn bản phát, ngôn ngữ phổ biến),
+  `lib/cues.ts`, `lib/jobs.ts` (`compareJobs`, `matches`) chỉ được kiểm bằng tay. Thêm vitest + vài test bảng cho các hàm này.
+
 - Build `web/dist` trong CI hoặc pre-commit.
 - Proxy dev trong `web/vite.config.ts` đọc `DICH_UI_PORT` (đang cố định 7860).
 - Báo upstream `needle.Whistle` cắt JSON ở `buffer_size` mà không báo lỗi.
