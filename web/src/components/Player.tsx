@@ -3,7 +3,8 @@ import { ChevronLeft, ChevronRight, ListVideo, Loader2, Maximize, X } from 'luci
 import { toast } from 'sonner'
 import type { Job } from '@/api'
 import { Button } from '@/components/ui/button'
-import { artifactUrl, errorMessage, loadSaved, save, useTranscript } from '@/lib/api'
+import { Switch } from '@/components/ui/switch'
+import { artifactUrl, downloadUrl, errorMessage, loadSaved, save, useTranscript } from '@/lib/api'
 import type { JobSort } from '@/lib/jobs'
 import { cn } from '@/lib/utils'
 import { mkvHint, neighbour, placeIn, playback, VIDEO, type Source } from '@/lib/playback'
@@ -21,11 +22,13 @@ export type Playlist = {
 /** Loaded once fewer jobs than this are left after the one watched. */
 const AHEAD = 5
 const END = 'Đã xem hết'
+/** Seconds counted down before the next video. */
+const COUNTDOWN = 5
 const DARK = 'text-white hover:bg-white/15 hover:text-white disabled:opacity-40'
 
 /** The page covered by one job's best version (see lib/playback) with its subtitles on one line: watching only.
  * With a playlist, ◀ ▶ (P / N) or its column go to the jobs around it. Esc or the close button closes it, as does
- * Back (the URL holds ?play=). */
+ * Back (the URL holds ?play=). With 'Tự chuyển bài' on, a video ended or failing to play counts down to the next. */
 export function Player({ job, error, lang, playlist, onPlay, onClose }: {
   /** undefined while loading */
   job?: Job
@@ -44,11 +47,13 @@ export function Player({ job, error, lang, playlist, onPlay, onClose }: {
   const wanted = kept ? kept.lang : lang
   const best = job && playback(job, wanted)
 
-  const [column, setColumn] = useState(() => loadSaved('player', { playlist: true }).playlist)
-  const toggle = () => {
-    setColumn(!column)
-    save('player', { playlist: !column })
+  const [settings, setSettings] = useState(() => loadSaved('player', { playlist: true, auto: true }))
+  const set = (change: Partial<typeof settings>) => {
+    const value = { ...settings, ...change }
+    setSettings(value)
+    save('player', value)
   }
+  const column = settings.playlist
   const jobs = playlist?.jobs ?? []
   // the list as it was when the job watched was last in it: where it stood once filtered out
   const [seen, setSeen] = useState<string[]>([])
@@ -59,6 +64,11 @@ export function Player({ job, error, lang, playlist, onPlay, onClose }: {
   const previous = job && playlist && neighbour(jobs, job, playlist.sort, wanted, -1, seen)
   const near = !!job && !!playlist && (!next || placeIn(jobs, job, playlist.sort, seen).index >= jobs.length - AHEAD)
   const loading = !!playlist?.more && !next
+  // how the video watched stopped: ended, or could not be played; cancelled: the move to the next one called off
+  const [stop, setStop] = useState<{ id: string; failed: boolean; cancelled?: boolean }>()
+  const stopped = best && stop?.id === best.source.id ? stop : undefined
+  const counting = !!stopped && !stopped.cancelled && settings.auto && !!next
+  const atEnd = !!stopped && settings.auto && !next && !loading
 
   const keys = useRef<{ onClose: () => void; step: (dir: 1 | -1) => void }>(undefined)
   useEffect(() => {
@@ -112,8 +122,14 @@ export function Player({ job, error, lang, playlist, onPlay, onClose }: {
           )}
           <h2 className="min-w-0 flex-1 truncate font-medium">{job?.title}</h2>
           {playlist && (
+            <label className="flex items-center gap-2 px-2 text-sm text-white/80" title="Hết video thì sang video kế">
+              <Switch size="sm" checked={settings.auto} onCheckedChange={(auto) => set({ auto })} />
+              Tự chuyển bài
+            </label>
+          )}
+          {playlist && (
             <Button size="icon" variant="ghost" className={cn(DARK, column && 'bg-white/15')}
-              title={column ? 'Ẩn danh sách phát' : 'Hiện danh sách phát'} onClick={toggle}>
+              title={column ? 'Ẩn danh sách phát' : 'Hiện danh sách phát'} onClick={() => set({ playlist: !column })}>
               <ListVideo />
             </Button>
           )}
@@ -129,7 +145,23 @@ export function Player({ job, error, lang, playlist, onPlay, onClose }: {
           {error ? <p className="text-sm text-red-300">{errorMessage(error)}</p>
             : !job ? <Loader2 className="animate-spin text-white/60" />
               : !best ? <p className="text-sm text-white/70">Việc này chưa có video hoặc audio để xem.</p>
-                : <Media key={best.source.id} jobId={job.id} source={best.source} subtitles={best.subtitles} />}
+                : <Media key={best.source.id} jobId={job.id} source={best.source} subtitles={best.subtitles}
+                  onStop={(failed) => setStop({ id: best.source.id, failed })}
+                  onPlaying={() => stopped && !stopped.failed && setStop(undefined)} />}
+          {stopped && (stopped.failed || counting || atEnd) && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/70 p-6 text-center">
+              {stopped.failed && (
+                <p>
+                  Không phát được — <a href={downloadUrl(best!.source.artifact)} download
+                    className="underline underline-offset-4 hover:text-white/80">Mở bằng trình phát</a>
+                </p>
+              )}
+              {counting ? (
+                <NextUp key={next!.id} next={next!} onPlay={() => onPlay(next!.id)}
+                  onCancel={() => setStop({ ...stopped, cancelled: true })} />
+              ) : atEnd && <p className="text-sm text-white/60">{END}</p>}
+            </div>
+          )}
         </div>
       </div>
       {playlist && column && <PlaylistColumn playlist={playlist} current={job?.id} lang={wanted} onPlay={onPlay} />}
@@ -178,19 +210,55 @@ function PlaylistColumn({ playlist, current, lang, onPlay }: {
   )
 }
 
-function Media({ jobId, source, subtitles }: { jobId: string; source: Source; subtitles?: string }) {
+/** The countdown to the next video, played when it reaches 0. */
+function NextUp({ next, onPlay, onCancel }: { next: Job; onPlay: () => void; onCancel: () => void }) {
+  const [left, setLeft] = useState(COUNTDOWN)
+  const play = useRef(onPlay)
+  useEffect(() => {
+    play.current = onPlay
+  })
+  useEffect(() => {
+    if (left <= 0) return play.current()
+    const timer = setTimeout(() => setLeft(left - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [left])
+  return (
+    <div className="grid max-w-md justify-items-center gap-3">
+      <p className="text-sm text-white/60">Tiếp theo sau {left} giây</p>
+      <p className="line-clamp-2 text-lg font-medium">{next.title}</p>
+      <div className="flex gap-2">
+        <Button size="sm" onClick={onPlay}>Phát ngay</Button>
+        <Button size="sm" variant="ghost" className={DARK} onClick={onCancel}>Huỷ</Button>
+      </div>
+    </div>
+  )
+}
+
+/** onStop: the media ended, or (failed) cannot be played: an error, or a video whose picture the browser cannot
+ * decode (.mkv, codec). onPlaying: it plays (again). */
+function Media({ jobId, source, subtitles, onStop, onPlaying }: {
+  jobId: string
+  source: Source
+  subtitles?: string
+  onStop: (failed: boolean) => void
+  onPlaying: () => void
+}) {
   const transcript = useTranscript(jobId, subtitles)
   const [time, setTime] = useState(0)
   const cue = transcript.data?.cues.find((c) => c.start <= time && time < c.end)
   const props = {
     src: artifactUrl(source.artifact), controls: true, autoPlay: true,
     onTimeUpdate: (e: SyntheticEvent<HTMLMediaElement>) => setTime(e.currentTarget.currentTime),
+    onEnded: () => onStop(false),
+    onError: () => onStop(true),
+    onPlaying,
   }
   return (
     <>
       {VIDEO.test(source.path)
         // fullscreen is the whole player's (the subtitles are drawn over the video, not by it)
-        ? <video {...props} controlsList="nofullscreen" className="size-full object-contain" />
+        ? <video {...props} controlsList="nofullscreen"
+          onLoadedMetadata={(e) => e.currentTarget.videoWidth || onStop(true)} className="size-full object-contain" />
         : <audio {...props} className="w-full max-w-2xl" />}
       {cue && (
         <div className="pointer-events-none absolute inset-x-0 bottom-16 flex justify-center px-6">
