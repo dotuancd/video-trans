@@ -17,7 +17,7 @@ Trả lời ngắn gọn, súc tích. Có thể dựa vào mẫu sau:
 **Tôi đã làm gì:** Mô tả ngắn gọn những hoạt động mà bạn đã thực hiện để hoàn thành nhiệm vụ.
 **Bạn cần phải thực hiện:** Mô tả những việc mà bạn cần sự tham gia của con người để đưa ra quyết định, hoặc để giúp bạn có thể tiếp tục thực hiện các bước phía sau.
 **Đề xuất cải tiến:** Mô tả những việc mà bạn nghĩ rằng sẽ làm cho hệ thống trở nên tốthơn. Những đề xuất này bạn viết vào mục `docs/Improvement-Ideas.md`
-**Context:** Đề xuất những thao tác cần làm để tiếp kiệm tokens những vẫn giữ được context.
+**Context:** Đề xuất những thao tác cần làm để tiếp kiệm tokens nhưng vẫn giữ được context.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
 ## Beads Issue Tracker

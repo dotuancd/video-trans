@@ -5,9 +5,20 @@ Công cụ chuyển ngữ video
 
 ## Model sử dụng
 
-- https://github.com/snakers4/silero-vad (Voice Activity Detection)
-- https://huggingface.co/openbmb/VoxCPM2
-- https://huggingface.co/tencent/Hy-MT2-1.8B
+| Bước | Model | Driver |
+|---|---|---|
+| Phụ đề (ASR) | [Cactus-Compute/whistle](https://huggingface.co/Cactus-Compute/whistle) qua [cactus-needle](https://pypi.org/project/cactus-needle/) | `asr/needle` |
+| Dịch local | [vinai/vinai-translate-en2vi-v2](https://huggingface.co/vinai/vinai-translate-en2vi-v2) (mặc định), [Helsinki-NLP/opus-mt-en-vi](https://huggingface.co/Helsinki-NLP/opus-mt-en-vi) | `translate/local` |
+| Dịch LLM | [OpenAI API](https://platform.openai.com/docs) hoặc [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) (`claude -p`) | `translate/llm`, `brief/llm` |
+| Lồng tiếng | [VieNeu-TTS v3 Turbo](https://github.com/pnnbao97/VieNeu-TTS) | `dub/vieneu` |
+
+## Đang cân nhắc (chưa dùng)
+
+- [silero-vad](https://github.com/snakers4/silero-vad) (Voice Activity Detection)
+- [openbmb/VoxCPM2](https://huggingface.co/openbmb/VoxCPM2) (TTS)
+- [tencent/Hy-MT2-1.8B](https://huggingface.co/tencent/Hy-MT2-1.8B) (dịch)
+- [Demucs](https://github.com/facebookresearch/demucs) (tách nền — template đã có bước `separate` nhưng chưa có driver)
+- [moondream/parakeet-redux](https://huggingface.co/moondream/parakeet-redux) (ASR, xem `experiments/`)
 
 ## Công cụ tương tự
 
@@ -19,7 +30,7 @@ Công cụ chuyển ngữ video
 uv sync --extra ui --extra local --extra openai --extra tts --extra url   # hoặc --all-extras
 ```
 
-Nhóm phụ thuộc: `local` (dịch bằng model local), `openai` (dịch bằng OpenAI API), `tts` (lồng tiếng), `ui` (giao diện web), `url` (tải video từ URL bằng yt-dlp), `experiments` (moondream). Ghép video cần `ffmpeg` (`brew install ffmpeg`). `uv run dich drivers` cho biết driver nào dùng được trên máy.
+Nhóm phụ thuộc: `local` (dịch bằng model local), `openai` (dịch bằng OpenAI API), `tts` (lồng tiếng), `ui` (giao diện web), `url` (tải video từ URL bằng yt-dlp), `experiments` (moondream). Ghép video cần `ffmpeg` (`brew install ffmpeg`). `uv run video-trans drivers` cho biết driver nào dùng được trên máy.
 
 # Sử dụng
 
@@ -28,13 +39,13 @@ Kiến trúc: xem `docs/Architecture.md`. Mỗi video là một **việc** (job)
 ## Dòng lệnh
 
 ```
-uv run dich video.mp4                          # phụ đề + dịch sang tiếng Việt (template subs-only)
-uv run dich "<folder>" -r --to vi,ja -e claude # cả thư mục, 2 ngôn ngữ, dịch bằng Claude Code
-uv run dich video.mp4 --dub                    # + lồng tiếng + ghép video (template default)
-uv run dich "https://youtu.be/…" --dub         # tải từ URL
-uv run dich video.mp4 --use-srt --dub          # dùng video.srt / video.vi.srt có sẵn, chỉ lồng tiếng
-uv run dich video.mp4 --dub --voice "Ngọc Huyền" --set dub.max_speed=1.5 --set mux.add_track=true
-uv run dich templates | drivers | voices
+uv run video-trans video.mp4                          # phụ đề + dịch sang tiếng Việt (template subs-only)
+uv run video-trans "<folder>" -r --to vi,ja -e claude # cả thư mục, 2 ngôn ngữ, dịch bằng Claude Code
+uv run video-trans video.mp4 --dub                    # + lồng tiếng + ghép video (template default)
+uv run video-trans "https://youtu.be/…" --dub         # tải từ URL
+uv run video-trans video.mp4 --use-srt --dub          # dùng video.srt / video.vi.srt có sẵn, chỉ lồng tiếng
+uv run video-trans video.mp4 --dub --voice "Ngọc Huyền" --set dub.max_speed=1.5 --set mux.add_track=true
+uv run video-trans templates | drivers | voices
 ```
 
 `--set stage.param=value` đặt tham số bất kỳ của driver (`--set refine.enabled=true`, `--set asr.driver=…`). Việc tạo từ CLI cũng hiện trong giao diện web (chung database).
@@ -42,10 +53,7 @@ uv run dich templates | drivers | voices
 ## Giao diện web
 
 ```
-uv run dich serve                   # API + workers, mở http://127.0.0.1:7860
-uv run dich serve --root ~/Videos   # chỉ cho UI đọc/ghi trong thư mục này (mặc định: ~)
-uv run dich serve --host 0.0.0.0    # cho máy khác truy cập (mặc định 127.0.0.1, $DICH_UI_HOST)
-uv run dich worker --lanes cpu      # (tuỳ chọn) thêm worker ở terminal khác
+uv run video-trans ui                   # API + workers, mở http://127.0.0.1:7860
 ```
 
 - **Việc mới**: nguồn từ **Tải lên** (nhiều file; `a.srt`/`a.vi.srt` tải cùng `a.mp4` được dùng luôn), **Trên máy** (file hoặc thư mục) hoặc **URL**. Chọn việc cần làm (template), các ngôn ngữ đích, driver dịch, giọng đọc (mặc định clone giọng gốc; ▶ nghe thử). Tham số của mọi driver nằm trong ngăn "Nâng cao" (tab theo bước, form tự sinh từ driver); lưu thành **preset** để lần sau chọn 1 chạm ở ô "Cấu hình" (lưu ở `<data>/presets.json`).
@@ -56,26 +64,14 @@ uv run dich worker --lanes cpu      # (tuỳ chọn) thêm worker ở terminal k
 
 Truy cập từ máy khác: API **không có đăng nhập**, ai vào được cổng là đọc/ghi được thư mục `--root` — chỉ mở `--host` ra ngoài trong mạng riêng như [Tailscale](https://tailscale.com) (`--host` là IP Tailscale của máy, hoặc `0.0.0.0` sau tường lửa), rồi mở `http://<máy>:7860` từ máy kia.
 
-Dữ liệu ở `~/.local/share/dich-video/` (`dich.sqlite`, `jobs/<id>/<bước>/<lần>/` chứa outputs, `events.jsonl`, `system.log`; `uploads/`). Worker là process riêng theo lane (`cpu`, `net`, `interactive`, `bulk_download` tạo zip cho "Gói tải về"); worker chết thì việc tự chạy lại (tối đa 2 lần). Số worker mỗi lane đổi bằng nút +/− ở trang Hàng đợi, không cần khởi động lại. Lỗi hệ thống hiện mã ngắn; xem chi tiết tại `/api/admin/traces/<mã>`.
-
-### Phát triển
-
-React 19 + Vite + Tailwind 4 + shadcn/ui (`web/`) ⇄ FastAPI (`dich/api/`, REST + SSE) ⇄ SQLite queue (`dich/queue/`) ⇄ worker processes (`dich/runtime/`) ⇄ drivers (`dich/drivers/<stage>/`). Driver mới: subclass `dich.drivers.Driver` với `@register`, khai báo `consumes`/`produces` theo slot; plugin ngoài đăng ký qua entry point `dich.drivers`.
-
-```
-uv run dich serve --no-browser      # API ở :7860
-cd web && npm install && npm run dev  # UI ở :5173, proxy /api sang :7860
-npm run api                         # sau khi đổi API: sinh lại client TypeScript (src/api)
-npm run build                       # cập nhật web/dist
-uv run pytest
-```
+Worker là process riêng theo lane (`cpu`, `net`, `interactive`, `bulk_download` tạo zip cho "Gói tải về"); worker chết thì việc tự chạy lại (tối đa 2 lần). Số worker mỗi lane đổi bằng nút +/− ở trang Hàng đợi, không cần khởi động lại. Lỗi hệ thống hiện mã ngắn; xem chi tiết tại `/api/admin/traces/<mã>`.
 
 # Tạo subtitle (needle-whistle)
 
 Model: https://huggingface.co/Cactus-Compute/whistle. Không cần trích audio thủ công: PyAV (đã kèm sẵn thư viện FFmpeg trong wheel) decode video/audio (mp4, mkv, mov, mp3, m4a, wav…) sang 16 kHz mono cho model, ngay trong Python. File `<name>.dub.*` do tool tạo ra không bị coi là media đầu vào khi quét thư mục.
 
 ```
-uv run dich "<folder>" -r --template transcribe
+uv run video-trans "<folder>" -r --template transcribe
 ```
 
 Chạy trực tiếp binary needle (không cần Python):
@@ -117,19 +113,19 @@ Khi hết limit, bước Dịch báo lỗi "Claude Code báo lỗi: …"; bấm 
 
 # Lồng tiếng từ subtitle tiếng Việt (local)
 
-Dùng [VieNeu-TTS v3 Turbo](https://github.com/pnnbao97/VieNeu-TTS) (Apache 2.0): TTS tiếng Việt chạy trên CPU qua ONNX Runtime (không cần PyTorch), output 48 kHz. Mặc định (giọng `source`) clone giọng người nói trong chính video: lấy đoạn nói liền 3–8s dài nhất theo timing phụ đề (bỏ qua 10% đầu nếu có đoạn tương đương), cắt vào `~/.cache/dich-video/ref`; không có video thì dùng giọng mặc định (`DICH_VOICE`). Ngoài ra có 25 giọng sẵn (`dich voices`) và clone từ clip mẫu tự chọn (`--ref-audio`). Video nhiều người nói chỉ clone được một giọng. Lần chạy đầu tự tải model từ Hugging Face. Video ~7 phút lồng tiếng mất ~2 phút trên M1 Pro (RTF ~0.3). `onnxruntime` được ghim ở 1.23.2 vì bản ≥1.31 từ chối load model từ cache Hugging Face.
+Dùng [VieNeu-TTS v3 Turbo](https://github.com/pnnbao97/VieNeu-TTS) (Apache 2.0): TTS tiếng Việt chạy trên CPU qua ONNX Runtime (không cần PyTorch), output 48 kHz. Mặc định (giọng `source`) clone giọng người nói trong chính video: lấy đoạn nói liền 3–8s dài nhất theo timing phụ đề (bỏ qua 10% đầu nếu có đoạn tương đương), cắt vào `~/.cache/video-trans-video/ref`; không có video thì dùng giọng mặc định (`video-trans_VOICE`). Ngoài ra có 25 giọng sẵn (`video-trans voices`) và clone từ clip mẫu tự chọn (`--ref-audio`). Video nhiều người nói chỉ clone được một giọng. Lần chạy đầu tự tải model từ Hugging Face. Video ~7 phút lồng tiếng mất ~2 phút trên M1 Pro (RTF ~0.3). `onnxruntime` được ghim ở 1.23.2 vì bản ≥1.31 từ chối load model từ cache Hugging Face.
 
 ```
-uv run dich file.mp4 --dub                                 # clone giọng trong video
-uv run dich "<folder>" -r --dub --voice "Ngọc Huyền"
-uv run dich file.mp4 --dub --ref-audio giong_mau.wav       # clone giọng từ clip
-uv run dich file.mp4 --dub --set mux.original_volume=0     # chỉ giọng lồng tiếng, bỏ audio gốc
-uv run dich file.mp4 --dub --set mux.add_track=true        # giữ audio gốc, thêm track lồng tiếng
+uv run video-trans file.mp4 --dub                                 # clone giọng trong video
+uv run video-trans "<folder>" -r --dub --voice "Ngọc Huyền"
+uv run video-trans file.mp4 --dub --ref-audio giong_mau.wav       # clone giọng từ clip
+uv run video-trans file.mp4 --dub --set mux.original_volume=0     # chỉ giọng lồng tiếng, bỏ audio gốc
+uv run video-trans file.mp4 --dub --set mux.add_track=true        # giữ audio gốc, thêm track lồng tiếng
 ```
 
 Các cue được gộp thành câu để đọc tự nhiên. Mỗi câu bắt đầu đúng lúc cue đầu tiên của nó. Câu tiếng Việt dài hơn slot thì được đọc tràn sang khoảng lặng phía sau. Nếu vẫn không đủ chỗ thì tăng tốc (không đổi cao độ), tối đa `max_speed` (mặc định 1.3). Đến mức đó vẫn dài thì câu sau bị lùi lại; log báo số câu bị lùi và độ trễ lớn nhất. Ngược lại, câu Việt ngắn hơn 90% đoạn nói gốc thì được đọc chậm lại cho vừa đoạn đó, chậm nhất `min_speed` (mặc định 0.85, đặt 1 để tắt).
 
-Bước Ghép video trộn giọng đọc lên audio gốc (mặc định giữ audio gốc ở mức 15%; khi có bước Tách nền thì dùng nhạc nền đã tách) và mặc định thay audio gốc; `add_track` giữ nguyên audio gốc và thêm giọng lồng tiếng thành audio track mới. Phụ đề bản dịch (mặc định) và phụ đề gốc được nhúng vào video. Audio từng câu được cache trong `~/.cache/dich-video/tts`, nên chạy lại với cùng giọng sẽ nhanh. `int8` chạy nhanh hơn nhưng audio có thể bị méo. Audio có watermark AI (mặc định của VieNeu).
+Bước Ghép video trộn giọng đọc lên audio gốc (mặc định giữ audio gốc ở mức 15%; khi có bước Tách nền thì dùng nhạc nền đã tách) và mặc định thay audio gốc; `add_track` giữ nguyên audio gốc và thêm giọng lồng tiếng thành audio track mới. Phụ đề bản dịch (mặc định) và phụ đề gốc được nhúng vào video. Audio từng câu được cache trong `~/.cache/video-trans-video/tts`, nên chạy lại với cùng giọng sẽ nhanh. `int8` chạy nhanh hơn nhưng audio có thể bị méo. Audio có watermark AI (mặc định của VieNeu).
 
 Hạn chế: thuật ngữ tiếng Anh trong bản dịch (model, prompt, API…) được đọc theo kiểu Việt hoá.
 
