@@ -1,10 +1,14 @@
-import { StrictMode } from 'react'
+import { lazy, StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from '@/components/ui/sonner'
 import App from './App.tsx'
 import { BulkDownloadToasts } from '@/lib/bulkDownloads'
 import './index.css'
+
+// PROTOTYPE — throwaway: ?prototype=mindmap shows the mindmap layout prototype (dev only)
+const MindmapPrototype = lazy(() => import('@/components/MindmapPrototype'))
+const prototype = import.meta.env.DEV && new URLSearchParams(location.search).get('prototype') === 'mindmap'
 
 // follow the system light/dark setting
 const dark = matchMedia('(prefers-color-scheme: dark)')
@@ -17,7 +21,7 @@ const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWind
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <App />
+      {prototype ? <Suspense><MindmapPrototype /></Suspense> : <App />}
       <BulkDownloadToasts />
       {/* pointer-events: the open job sheet is modal and disables them on <body> */}
       <Toaster richColors position="bottom-right" style={{ pointerEvents: 'auto' }} />
