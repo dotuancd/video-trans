@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from dich.drivers.translate.common import group_sentences, split_like
@@ -291,3 +293,75 @@ def test_english_to_vietnamese_gets_its_own_rules():
     for source, target in (("en", "ja"), ("ja", "vi"), (None, "vi")):
         assert rules not in system_prompt(source, target)
     assert rules.rstrip() in fit_system_prompt("en", "vi", brief="x") and fit_system_prompt("en", "ja") == FIT_PROMPT
+
+
+def mindmap_inputs(tmp_path):
+    from types import SimpleNamespace as NS
+    from dich.formats.transcript import Transcript
+    # cues of 10 s: 2 per block of 25 s (a third would make it 30 s), the video ends at 70 s
+    cues = [Cue(f"c_{i}", i * 10, i * 10 + 10, f"line {i}.") for i in range(7)]
+    return {"transcript": NS(path=Transcript("en", cues).save(tmp_path / "t.jsonl"))}
+
+
+def test_mindmap_points_at_blocks_and_covers_the_video(tmp_path, monkeypatch):
+    from dich.drivers.mindmap import llm as mindmap
+    from dich.drivers.translate.llm import Usage
+    asked = []
+    reply = {"title": "Thị trường gấu", "summary": "Video nói về thị trường gấu.", "sections": [
+        {"label": "Phần sau", "note": None, "block": "b_002", "children": [
+            {"label": "Ý lạc", "note": None, "block": "b_999"}]},
+        {"label": "Mở đầu", "note": "Giới thiệu", "block": "b_000", "children": [
+            {"label": "Ý hai", "note": None, "block": "b_001"}, {"label": "Ý một", "note": None, "block": "b_000"}]},
+        {"label": "Không có", "note": None, "block": "x", "children": []},
+    ]}
+
+    class Fake:
+        model = "fake"
+        usage = Usage()
+        request_log = None
+
+        def ask(self, system, text, kind="brief", schema=None):
+            asked.append((system, text, schema))
+            return json.dumps(reply)
+
+    monkeypatch.setattr(mindmap, "make_translator", lambda engine: Fake())
+    monkeypatch.setattr(mindmap, "pick_engine", lambda engine: "openai")
+    ctx = BriefCtx(tmp_path, langs=("vi", "ja"))
+    ctx.progress = lambda done, total: None
+    out = mindmap.LLMMindmap().run(ctx, mindmap_inputs(tmp_path), mindmap.Params())
+    assert len(asked) == 1 and "Vietnamese" in asked[0][0] and asked[0][2]
+    assert [line.split(" [")[0] for line in asked[0][1].splitlines()] == ["b_000", "b_001", "b_002", "b_003"]
+    assert "b_001 [0:20] line 2. line 3.\n" in asked[0][1]
+    data = json.loads(out["mindmap"].read_text(encoding="utf-8"))
+    root = data["root"]
+    assert data["lang"] == "vi" and root["label"] == "Thị trường gấu" and (root["start"], root["end"]) == (0, 70)
+    first, second = root["children"]
+    assert (first["label"], first["start"], first["end"]) == ("Mở đầu", 0, 40)
+    assert (second["label"], second["start"], second["end"]) == ("Phần sau", 40, 70)
+    assert [(c["label"], c["start"]) for c in first["children"]] == [("Ý một", 0), ("Ý hai", 20)]
+    assert second["children"][0]["start"] == 40 and "end" not in second["children"][0]
+    warned = (tmp_path / "events.jsonl").read_text(encoding="utf-8")
+    assert "Ý lạc" in warned and "Không có" in warned
+
+
+def test_mindmap_of_a_transcription_only_job_is_in_the_source_language(tmp_path, monkeypatch):
+    from dich.drivers.mindmap import llm as mindmap
+    from dich.drivers.translate.llm import Usage
+    asked = []
+
+    class Fake:
+        model = "fake"
+        usage = Usage()
+        request_log = None
+
+        def ask(self, system, text, kind="brief", schema=None):
+            asked.append(system)
+            return '```json\n{"title": "T", "summary": "", "sections": [{"label": "A", "note": null, "block": "b_001"}]}\n```'
+
+    monkeypatch.setattr(mindmap, "make_translator", lambda engine: Fake())
+    monkeypatch.setattr(mindmap, "pick_engine", lambda engine: "claude")
+    ctx = BriefCtx(tmp_path, langs=())
+    ctx.progress = lambda done, total: None
+    data = json.loads(mindmap.LLMMindmap().run(ctx, mindmap_inputs(tmp_path), mindmap.Params())["mindmap"].read_text())
+    assert "English" in asked[0] and data["lang"] == "en"
+    assert [(p["start"], p["end"]) for p in data["root"]["children"]] == [(0, 70)]

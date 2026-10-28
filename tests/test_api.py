@@ -678,3 +678,27 @@ def test_bulk_download_delete_cancels_first(app):
     assert ctx.store.bulk_heartbeat(running["id"]) is True
     assert client.delete(f"/api/bulk-downloads/{queued['id']}").status_code == 204     # stopped: deleted
     assert [b["id"] for b in client.get("/api/bulk-downloads").json()] == [running["id"]]
+
+
+def test_make_mindmap_runs_once_and_reads_back(app):
+    import fake_drivers
+    client, ctx = app
+    [job_id] = create(client, ctx, overrides={**FAKE, "mindmap": {"driver": "fake"}})
+    run_job(ctx.store, job_id)
+    assert "mindmap" not in {t["key"] for t in client.get(f"/api/jobs/{job_id}").json()["tasks"]}
+    assert client.get(f"/api/jobs/{job_id}/mindmap").status_code == 404
+
+    job = client.post(f"/api/jobs/{job_id}/mindmap").json()
+    task = {t["key"]: t for t in job["tasks"]}["mindmap"]
+    assert task["status"] == "queued" and task["lane"] == "net"
+    assert client.post(f"/api/jobs/{job_id}/mindmap").status_code == 200   # clicked twice: one task
+    assert [t["key"] for t in ctx.store.tasks_of(job_id)].count("mindmap") == 1
+    runs = fake_drivers.RUNS.get("mindmap", 0)
+    run_job(ctx.store, job_id)
+    mindmap = client.get(f"/api/jobs/{job_id}/mindmap").json()
+    assert mindmap["task_id"] == task["id"] and not mindmap["stale"] and mindmap["lang"] == "vi"
+    assert mindmap["root"]["end"] == 2 and [p["label"] for p in mindmap["root"]["children"]] == ["hello.", "world."]
+
+    client.post(f"/api/jobs/{job_id}/mindmap")   # made already: not again
+    run_job(ctx.store, job_id)
+    assert fake_drivers.RUNS["mindmap"] == runs + 1

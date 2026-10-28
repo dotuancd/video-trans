@@ -526,6 +526,56 @@
     }
    }
   },
+  "/api/jobs/{job_id}/replan": {
+   "post": {
+    "summary": "Replan",
+    "description": "Plans the job again with more languages and/or changed overrides (e.g. a stage turned on): only\nthe new tasks are added, the existing ones and their results stay.",
+    "operationId": "replan",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Replan"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Job"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/jobs/{job_id}/cancel": {
    "post": {
     "summary": "Cancel Job",
@@ -1475,6 +1525,83 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/BriefView"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/jobs/{job_id}/mindmap": {
+   "post": {
+    "summary": "Make Mindmap",
+    "description": "Turns the job's mindmap stage on and adds its task; the task runs again when it failed, was stopped or\nis stale; nothing happens when it is there, made or on its way.",
+    "operationId": "make_mindmap",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Job"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "get": {
+    "summary": "Get Mindmap",
+    "operationId": "get_mindmap",
+    "parameters": [
+     {
+      "name": "job_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Job Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MindmapView"
         }
        }
       }
@@ -4289,6 +4416,103 @@
     ],
     "title": "LiveChunk"
    },
+   "MindmapNode": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "label": {
+      "type": "string",
+      "title": "Label"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "start": {
+      "type": "number",
+      "title": "Start",
+      "description": "Second of the video it starts at"
+     },
+     "end": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "End",
+      "description": "Root and parts (level 1) only"
+     },
+     "children": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/components/schemas/MindmapNode"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Children"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "label",
+     "start"
+    ],
+    "title": "MindmapNode"
+   },
+   "MindmapView": {
+    "properties": {
+     "task_id": {
+      "type": "string",
+      "title": "Task Id"
+     },
+     "lang": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Lang",
+      "description": "What it is written in"
+     },
+     "stale": {
+      "type": "boolean",
+      "title": "Stale",
+      "description": "Made from subtitles edited since"
+     },
+     "root": {
+      "$ref": "#/components/schemas/MindmapNode"
+     }
+    },
+    "type": "object",
+    "required": [
+     "task_id",
+     "lang",
+     "stale",
+     "root"
+    ],
+    "title": "MindmapView"
+   },
    "PathBody": {
     "properties": {
      "path": {
@@ -4809,6 +5033,28 @@
      "waiting_review"
     ],
     "title": "QueueView"
+   },
+   "Replan": {
+    "properties": {
+     "langs": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Langs",
+      "description": "Target languages to add"
+     },
+     "overrides": {
+      "additionalProperties": {
+       "$ref": "#/components/schemas/StageOverride"
+      },
+      "type": "object",
+      "title": "Overrides",
+      "description": "Per-stage changes over the job's overrides"
+     }
+    },
+    "type": "object",
+    "title": "Replan"
    },
    "Rerun": {
     "properties": {

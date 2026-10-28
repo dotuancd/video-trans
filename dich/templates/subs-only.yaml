@@ -7,3 +7,4 @@ stages:
   - {stage: refine,    driver: rules, enabled: false}
   - {stage: brief,     driver: llm}             # what the video is about, for the translation
   - {stage: translate, driver: env}
+  - {stage: mindmap,   driver: llm, enabled: false}   # what the video says, part by part (Tạo mindmap)

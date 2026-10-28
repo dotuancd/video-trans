@@ -1,4 +1,5 @@
-# Jobs, tasks, attempts, artifacts and the transcript editor.
+# Jobs, tasks, attempts, artifacts, the transcript editor, the brief and the mindmap.
+import json
 import re
 import time
 from pathlib import Path
@@ -9,7 +10,7 @@ from pydantic import ValidationError
 
 from dich.api.models import (AddLangs, Attempt, BriefSave, BriefView, EditCue, Event, Job, JobCounts, JobCreate, JobIds, JobPage,
                              JobPatch, JobsCreated, JobsDeleted, JobsDone, JobsMove, JobSort, JobsRerun, LiveAudio, LLMRequest,
-                             Replan, Rerun, Skipped, StatusGroup, TranscriptSave, TranscriptSaved, TranscriptView, Word)
+                             MindmapView, Replan, Rerun, Skipped, StatusGroup, TranscriptSave, TranscriptSaved, TranscriptView, Word)
 from dich.core import jobs as job_service
 from dich.drivers.translate.llm import read_requests
 from dich.formats.transcript import Cue, Transcript, ensure_ids, to_srt, to_vtt
@@ -494,6 +495,35 @@ def router(ctx):
         except Busy as error:
             raise HTTPException(409, str(error))
         return BriefView(task_id=task["id"], text=text, edited=True)
+
+    # --- mindmap ---
+
+    @api.post("/jobs/{job_id}/mindmap")
+    def make_mindmap(job_id: str) -> Job:
+        """Turns the job's mindmap stage on and adds its task; the task runs again when it failed, was stopped or
+        is stale; nothing happens when it is there, made or on its way."""
+        job_or_404(job_id)
+        task = store.task_by_key(job_id, "mindmap")
+        try:
+            if not task:
+                if not job_service.replan(store, job_id, overrides={"mindmap": {"enabled": True}}):
+                    raise HTTPException(400, "Template của việc này không có bước mindmap")
+            elif task["status"] in ("failed", "cancelled", "stale"):
+                store.rerun(task["id"])
+        except (KeyError, ValidationError) as error:
+            raise HTTPException(400, str(error).strip("'"))
+        except Busy as error:
+            raise HTTPException(409, str(error))
+        return job_or_404(job_id)
+
+    @api.get("/jobs/{job_id}/mindmap")
+    def get_mindmap(job_id: str) -> MindmapView:
+        job_or_404(job_id)
+        task, art = store.slot_artifact(job_id, "mindmap")
+        if not art:
+            raise HTTPException(404, "Chưa có mindmap")
+        data = json.loads(Path(art["path"]).read_text(encoding="utf-8"))
+        return MindmapView(task_id=task["id"], lang=data.get("lang"), stale=task["status"] == "stale", root=data["root"])
 
     return api
 

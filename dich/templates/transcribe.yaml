@@ -5,3 +5,4 @@ stages:
   - {stage: source,    driver: auto}
   - {stage: asr,       driver: needle}
   - {stage: refine,    driver: rules, enabled: false}
+  - {stage: mindmap,   driver: llm, enabled: false}   # what the video says, part by part (Tạo mindmap)

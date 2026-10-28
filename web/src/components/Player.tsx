@@ -10,6 +10,7 @@ import { Switch } from '@/components/ui/switch'
 import { Button as MediaButton } from '@/components/videojs/ui/button'
 import { ButtonTooltip } from '@/components/videojs/ui/button-tooltip'
 import { langName } from '@/lib/langName'
+import { MindmapPanel } from '@/components/MindmapPanel'
 import { VideoSkin } from '@/components/videojs/video/skin'
 import { artifactUrl, downloadUrl, errorMessage, loadSaved, save, slotArtifact } from '@/lib/api'
 import type { JobSort } from '@/lib/jobs'
@@ -75,13 +76,16 @@ function PlayerPage({ job, error, lang, playlist, onPlay, onClose }: PlayerProps
   // the video and what is drawn over it: its keys are the Video.js skin's while the focus is in it
   const stage = useRef<HTMLDivElement>(null)
   const [settings, setSettings] = useState(() =>
-    loadSaved<{ playlist: boolean; auto: boolean; subtitles: boolean }>('player', { playlist: true, auto: true, subtitles: true }))
+    loadSaved<{ playlist: boolean; auto: boolean; subtitles: boolean; tab: Tab }>('player',
+      { playlist: true, auto: true, subtitles: true, tab: 'playlist' }))
   const set = (change: Partial<typeof settings>) => {
     const value = { ...settings, ...change }
     setSettings(value)
     save('player', value)
   }
   const column = settings.playlist
+  // the playlist's tab when there is one, the mindmap's else
+  const tab: Tab = playlist ? settings.tab : 'mindmap'
   const jobs = playlist?.jobs ?? []
   // the language is kept from the moment the job is known, for the whole playlist: the list loading later must not
   // restart the video. The list's most common one; the job's own when the list is not loaded yet.
@@ -108,9 +112,9 @@ function PlayerPage({ job, error, lang, playlist, onPlay, onClose }: PlayerProps
   // closing at the top left: in the video's skin, else over the corners of the page (an audio's: shown while the pointer
   // is over it or the focus in it, the playlist column shown or hidden at the top right)
   const inSkin = !!best && VIDEO.test(best.source.path)
-  const columnLabel = column ? 'Ẩn danh sách phát' : 'Hiện danh sách phát'
+  const columnLabel = column ? 'Ẩn cột bên' : playlist ? 'Hiện danh sách phát, mindmap' : 'Hiện mindmap'
   // a video's, where picture-in-picture was
-  const columnButton = playlist && (
+  const columnButton = (
     <ButtonTooltip side="top" label={columnLabel}>
       <MediaButton aria-label={columnLabel} aria-pressed={column} onClick={() => set({ playlist: !column })}>
         <ListVideo className="size-media-icon" />
@@ -126,8 +130,15 @@ function PlayerPage({ job, error, lang, playlist, onPlay, onClose }: PlayerProps
     return () => document.removeEventListener('fullscreenchange', sync)
   }, [])
   const overVideo = full && inSkin
-  const list = playlist && column && (
-    <PlaylistColumn playlist={playlist} current={job?.id} lang={wanted} onPlay={onPlay}
+  const seek = (seconds: number) => {
+    const m = media.current
+    if (!m) return
+    m.currentTime = seconds
+    void m.play().catch(() => {})
+  }
+  const list = job && column && (
+    <SideColumn tab={tab} onTab={(tab) => set({ tab })} playlist={playlist} current={job.id} lang={wanted} onPlay={onPlay}
+      mindmap={<MindmapPanel job={job} onSeek={seek} />}
       className={overVideo ? 'absolute top-2 right-2 bottom-16 z-20 rounded-lg border bg-black/80 backdrop-blur' : 'border-l'}>
       <Button size="icon" variant="ghost" className={DARK} title="Video trước (P)" aria-label="Video trước"
         disabled={!previous} onClick={() => previous && onPlay(previous.id)}>
@@ -142,7 +153,7 @@ function PlayerPage({ job, error, lang, playlist, onPlay, onClose }: PlayerProps
         <Switch size="sm" checked={settings.auto} onCheckedChange={(auto) => set({ auto })} />
         Tự chuyển bài
       </label>
-    </PlaylistColumn>
+    </SideColumn>
   )
 
   const fullscreen = () => void (document.fullscreenElement ? store.exitFullscreen() : store.requestFullscreen()).catch(() => {})
@@ -230,7 +241,7 @@ function PlayerPage({ job, error, lang, playlist, onPlay, onClose }: PlayerProps
         {!inSkin && (
           <>
             <div className={cn('absolute left-2 top-2 z-30', best && FADE)}><Back skin={false} onClose={onClose} /></div>
-            {playlist && (
+            {job && (
               <div className={cn('absolute right-2 top-2 z-30', best && FADE)}>
                 <Button size="icon" variant="ghost" className={cn(DARK, 'bg-black/60', column && 'bg-white/15')}
                   title={columnLabel} aria-label={columnLabel} aria-pressed={column} onClick={() => set({ playlist: !column })}>
@@ -267,15 +278,51 @@ function PlayerPage({ job, error, lang, playlist, onPlay, onClose }: PlayerProps
   )
 }
 
-/** The jobs of the playlist with something to watch, the one watched marked, how much of each was watched under it.
- * children: its header (⏮ ⏭, Tự chuyển bài). */
-function PlaylistColumn({ playlist, current, lang, onPlay, className, children }: {
-  playlist: Playlist
-  current?: string
+type Tab = 'playlist' | 'mindmap'
+
+/** The column beside the video: the playlist's tab (when there is a playlist) and the mindmap's. children: the
+ * playlist's header (⏮ ⏭, Tự chuyển bài). */
+function SideColumn({ tab, onTab, playlist, mindmap, className, children, ...list }: {
+  tab: Tab
+  onTab: (tab: Tab) => void
+  playlist?: Playlist
+  mindmap: ReactNode
+  current: string
   lang?: string
   onPlay: (id: string) => void
   className: string
   children: ReactNode
+}) {
+  const tabs: [Tab, string][] = playlist ? [['playlist', 'Danh sách phát'], ['mindmap', 'Mindmap']] : [['mindmap', 'Mindmap']]
+  return (
+    <aside aria-label={tab === 'playlist' ? 'Danh sách phát' : 'Mindmap'}
+      className={cn('flex w-72 shrink-0 flex-col border-white/10', className)}>
+      <div role="tablist" className="flex gap-1 border-b border-white/10 px-2 pt-2">
+        {tabs.map(([id, label]) => (
+          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => onTab(id)}
+            title={id === 'mindmap' ? 'Sơ đồ tư duy: nội dung video theo từng phần' : undefined}
+            className={cn('-mb-px border-b-2 px-3 py-1.5 text-sm text-white/60 hover:text-white',
+              tab === id ? 'border-white text-white' : 'border-transparent')}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === 'playlist' && playlist ? (
+        <>
+          <div className="flex items-center gap-1 border-b border-white/10 py-2 pe-4 ps-2">{children}</div>
+          <PlaylistJobs playlist={playlist} {...list} />
+        </>
+      ) : mindmap}
+    </aside>
+  )
+}
+
+/** The jobs of the playlist with something to watch, the one watched marked, how much of each was watched under it. */
+function PlaylistJobs({ playlist, current, lang, onPlay }: {
+  playlist: Playlist
+  current: string
+  lang?: string
+  onPlay: (id: string) => void
 }) {
   const playing = useRef<HTMLButtonElement>(null)
   const saved = useWatched()
@@ -283,8 +330,6 @@ function PlaylistColumn({ playlist, current, lang, onPlay, className, children }
     playing.current?.scrollIntoView({ block: 'nearest' })
   }, [current])
   return (
-    <aside aria-label="Danh sách phát" className={cn('flex w-72 shrink-0 flex-col border-white/10', className)}>
-      <div className="flex items-center gap-1 border-b border-white/10 py-2 pe-4 ps-2">{children}</div>
       <ol className="min-h-0 flex-1 overflow-y-auto py-1">
         {playlist.jobs.map((job) => {
           const best = playback(job, lang)
@@ -316,7 +361,6 @@ function PlaylistColumn({ playlist, current, lang, onPlay, className, children }
           ) : 'Hết danh sách'}
         </li>
       </ol>
-    </aside>
   )
 }
 

@@ -304,8 +304,8 @@ class LLMTranslator:
         when the reply can't be parsed."""
         raise NotImplementedError
 
-    def ask(self, system, text, kind="brief"):
-        """A free-text reply to `text` (no JSON schema), for the brief."""
+    def ask(self, system, text, kind="brief", schema=None):
+        """The reply to `text`: free text (the brief), or JSON text following `schema` (the mindmap)."""
         raise NotImplementedError
 
     def translate_texts(self, texts, progress=None, sentences=None, timing=None):
@@ -506,12 +506,15 @@ class OpenAITranslator(LLMTranslator):
         self.record(payload, prompt, started, content, items, used)
         return items
 
-    def ask(self, system, text, kind="brief"):
+    def ask(self, system, text, kind="brief", schema=None):
         started = time.time()
         payload = {"input": text}
+        format = {"response_format": {"type": "json_schema",
+                                      "json_schema": {"name": kind, "strict": True, "schema": schema}}} if schema else {}
         try:
             response = self.client.chat.completions.create(
-                model=self.model, messages=[{"role": "system", "content": system}, {"role": "user", "content": text}])
+                model=self.model, messages=[{"role": "system", "content": system}, {"role": "user", "content": text}],
+                **format)
         except Exception as error:
             self.record(payload, system, started, error=f"{type(error).__name__}: {error}", kind=kind)
             raise
@@ -728,10 +731,11 @@ class ClaudeCodeTranslator(LLMTranslator):
         self.usage.add(input=used["input"], cached=cached, output=used["output"], cost=used["cost_usd"])
         return reply, used, started
 
-    def ask(self, system, text, kind="brief"):
+    def ask(self, system, text, kind="brief", schema=None):
         payload = {"input": text}
-        reply, used, started = self.run_cli(system, text, payload, kind=kind)
-        content = reply.get("result") or ""
+        reply, used, started = self.run_cli(system, text, payload, schema, kind=kind)
+        output = reply.get("structured_output") if schema else None
+        content = json.dumps(output, ensure_ascii=False) if output is not None else reply.get("result") or ""
         self.record(payload, system, started, content, [], used, kind=kind)
         return content
 

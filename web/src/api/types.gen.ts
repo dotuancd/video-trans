@@ -1043,6 +1043,63 @@ export type LiveChunk = {
 };
 
 /**
+ * MindmapNode
+ */
+export type MindmapNode = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Note
+     */
+    note?: string | null;
+    /**
+     * Start
+     *
+     * Second of the video it starts at
+     */
+    start: number;
+    /**
+     * End
+     *
+     * Root and parts (level 1) only
+     */
+    end?: number | null;
+    /**
+     * Children
+     */
+    children?: Array<MindmapNode> | null;
+};
+
+/**
+ * MindmapView
+ */
+export type MindmapView = {
+    /**
+     * Task Id
+     */
+    task_id: string;
+    /**
+     * Lang
+     *
+     * What it is written in
+     */
+    lang: string | null;
+    /**
+     * Stale
+     *
+     * Made from subtitles edited since
+     */
+    stale: boolean;
+    root: MindmapNode;
+};
+
+/**
  * PathBody
  */
 export type PathBody = {
@@ -1370,6 +1427,26 @@ export type QueueView = {
      * Waiting Review
      */
     waiting_review: number;
+};
+
+/**
+ * Replan
+ */
+export type Replan = {
+    /**
+     * Langs
+     *
+     * Target languages to add
+     */
+    langs?: Array<string>;
+    /**
+     * Overrides
+     *
+     * Per-stage changes over the job's overrides
+     */
+    overrides?: {
+        [key: string]: StageOverride;
+    };
 };
 
 /**
@@ -2167,6 +2244,36 @@ export type AddLangsResponses = {
 
 export type AddLangsResponse = AddLangsResponses[keyof AddLangsResponses];
 
+export type ReplanData = {
+    body: Replan;
+    path: {
+        /**
+         * Job Id
+         */
+        job_id: string;
+    };
+    query?: never;
+    url: '/api/jobs/{job_id}/replan';
+};
+
+export type ReplanErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ReplanError = ReplanErrors[keyof ReplanErrors];
+
+export type ReplanResponses = {
+    /**
+     * Successful Response
+     */
+    200: Job;
+};
+
+export type ReplanResponse = ReplanResponses[keyof ReplanResponses];
+
 export type CancelJobData = {
     body?: never;
     path: {
@@ -2843,6 +2950,66 @@ export type SaveBriefResponses = {
 };
 
 export type SaveBriefResponse = SaveBriefResponses[keyof SaveBriefResponses];
+
+export type GetMindmapData = {
+    body?: never;
+    path: {
+        /**
+         * Job Id
+         */
+        job_id: string;
+    };
+    query?: never;
+    url: '/api/jobs/{job_id}/mindmap';
+};
+
+export type GetMindmapErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetMindmapError = GetMindmapErrors[keyof GetMindmapErrors];
+
+export type GetMindmapResponses = {
+    /**
+     * Successful Response
+     */
+    200: MindmapView;
+};
+
+export type GetMindmapResponse = GetMindmapResponses[keyof GetMindmapResponses];
+
+export type MakeMindmapData = {
+    body?: never;
+    path: {
+        /**
+         * Job Id
+         */
+        job_id: string;
+    };
+    query?: never;
+    url: '/api/jobs/{job_id}/mindmap';
+};
+
+export type MakeMindmapErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type MakeMindmapError = MakeMindmapErrors[keyof MakeMindmapErrors];
+
+export type MakeMindmapResponses = {
+    /**
+     * Successful Response
+     */
+    200: Job;
+};
+
+export type MakeMindmapResponse = MakeMindmapResponses[keyof MakeMindmapResponses];
 
 export type GetConfigData = {
     body?: never;

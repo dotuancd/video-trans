@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddLangsData, AddLangsErrors, AddLangsResponses, AnalyzeVoiceData, AnalyzeVoiceErrors, AnalyzeVoiceResponses, ArtifactVttData, ArtifactVttErrors, ArtifactVttResponses, AttemptEventsData, AttemptEventsErrors, AttemptEventsResponses, AttemptRequestsData, AttemptRequestsErrors, AttemptRequestsResponses, AttemptSystemLogData, AttemptSystemLogErrors, AttemptSystemLogResponses, CancelJobData, CancelJobErrors, CancelJobResponses, CountJobsData, CountJobsErrors, CountJobsResponses, CreateBulkDownloadData, CreateBulkDownloadErrors, CreateBulkDownloadResponses, CreateJobsData, CreateJobsErrors, CreateJobsResponses, CreateProjectData, CreateProjectErrors, CreateProjectResponses, CreateVoiceData, CreateVoiceErrors, CreateVoiceResponses, DeleteBulkDownloadData, DeleteBulkDownloadErrors, DeleteBulkDownloadResponses, DeleteJobData, DeleteJobErrors, DeleteJobResponses, DeleteJobsData, DeleteJobsErrors, DeleteJobsResponses, DeletePresetData, DeletePresetErrors, DeletePresetResponses, DeleteProjectData, DeleteProjectErrors, DeleteProjectResponses, DeleteVoiceData, DeleteVoiceErrors, DeleteVoiceResponses, DownloadArtifactData, DownloadArtifactErrors, DownloadArtifactResponses, DownloadBulkDownloadData, DownloadBulkDownloadErrors, DownloadBulkDownloadResponses, EventsData, EventsResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetBriefData, GetBriefErrors, GetBriefResponses, GetConfigData, GetConfigResponses, GetJobData, GetJobErrors, GetJobResponses, GetLiveChunkData, GetLiveChunkErrors, GetLiveChunkResponses, GetLiveData, GetLiveErrors, GetLiveResponses, GetQueueData, GetQueueResponses, GetTranscriptData, GetTranscriptErrors, GetTranscriptResponses, JobIdsData, JobIdsErrors, JobIdsResponses, ListAttemptsData, ListAttemptsErrors, ListAttemptsResponses, ListBulkDownloadsData, ListBulkDownloadsResponses, ListDirData, ListDirErrors, ListDirResponses, ListDriversData, ListDriversResponses, ListJobsData, ListJobsErrors, ListJobsResponses, ListPresetsData, ListPresetsResponses, ListPresetVoicesData, ListPresetVoicesResponses, ListProjectsData, ListProjectsResponses, ListTemplatesData, ListTemplatesResponses, ListVoicesData, ListVoicesErrors, ListVoicesResponses, MoveJobsData, MoveJobsErrors, MoveJobsResponses, PauseJobsData, PauseJobsErrors, PauseJobsResponses, PickAttemptData, PickAttemptErrors, PickAttemptResponses, PreviewBulkDownloadData, PreviewBulkDownloadErrors, PreviewBulkDownloadResponses, PreviewVoiceData, PreviewVoiceErrors, PreviewVoiceResponses, RefreshJobData, RefreshJobErrors, RefreshJobResponses, RerunJobsData, RerunJobsErrors, RerunJobsResponses, RerunTaskData, RerunTaskErrors, RerunTaskResponses, ResumeJobData, ResumeJobErrors, ResumeJobResponses, RevealData, RevealErrors, RevealResponses, SaveBriefData, SaveBriefErrors, SaveBriefResponses, SavePresetData, SavePresetErrors, SavePresetResponses, SaveProjectData, SaveProjectErrors, SaveProjectResponses, SaveTranscriptData, SaveTranscriptErrors, SaveTranscriptResponses, SaveVoiceData, SaveVoiceErrors, SaveVoiceResponses, SetWorkersData, SetWorkersErrors, SetWorkersResponses, TraceData, TraceErrors, TraceResponses, UnpauseJobsData, UnpauseJobsErrors, UnpauseJobsResponses, UpdateJobData, UpdateJobErrors, UpdateJobResponses, UploadData, UploadErrors, UploadResponses, VoiceAudioData, VoiceAudioErrors, VoiceAudioResponses, VoiceSegmentData, VoiceSegmentErrors, VoiceSegmentResponses } from './types.gen';
+import type { AddLangsData, AddLangsErrors, AddLangsResponses, AnalyzeVoiceData, AnalyzeVoiceErrors, AnalyzeVoiceResponses, ArtifactVttData, ArtifactVttErrors, ArtifactVttResponses, AttemptEventsData, AttemptEventsErrors, AttemptEventsResponses, AttemptRequestsData, AttemptRequestsErrors, AttemptRequestsResponses, AttemptSystemLogData, AttemptSystemLogErrors, AttemptSystemLogResponses, CancelJobData, CancelJobErrors, CancelJobResponses, CountJobsData, CountJobsErrors, CountJobsResponses, CreateBulkDownloadData, CreateBulkDownloadErrors, CreateBulkDownloadResponses, CreateJobsData, CreateJobsErrors, CreateJobsResponses, CreateProjectData, CreateProjectErrors, CreateProjectResponses, CreateVoiceData, CreateVoiceErrors, CreateVoiceResponses, DeleteBulkDownloadData, DeleteBulkDownloadErrors, DeleteBulkDownloadResponses, DeleteJobData, DeleteJobErrors, DeleteJobResponses, DeleteJobsData, DeleteJobsErrors, DeleteJobsResponses, DeletePresetData, DeletePresetErrors, DeletePresetResponses, DeleteProjectData, DeleteProjectErrors, DeleteProjectResponses, DeleteVoiceData, DeleteVoiceErrors, DeleteVoiceResponses, DownloadArtifactData, DownloadArtifactErrors, DownloadArtifactResponses, DownloadBulkDownloadData, DownloadBulkDownloadErrors, DownloadBulkDownloadResponses, EventsData, EventsResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetBriefData, GetBriefErrors, GetBriefResponses, GetConfigData, GetConfigResponses, GetJobData, GetJobErrors, GetJobResponses, GetLiveChunkData, GetLiveChunkErrors, GetLiveChunkResponses, GetLiveData, GetLiveErrors, GetLiveResponses, GetMindmapData, GetMindmapErrors, GetMindmapResponses, GetQueueData, GetQueueResponses, GetTranscriptData, GetTranscriptErrors, GetTranscriptResponses, JobIdsData, JobIdsErrors, JobIdsResponses, ListAttemptsData, ListAttemptsErrors, ListAttemptsResponses, ListBulkDownloadsData, ListBulkDownloadsResponses, ListDirData, ListDirErrors, ListDirResponses, ListDriversData, ListDriversResponses, ListJobsData, ListJobsErrors, ListJobsResponses, ListPresetsData, ListPresetsResponses, ListPresetVoicesData, ListPresetVoicesResponses, ListProjectsData, ListProjectsResponses, ListTemplatesData, ListTemplatesResponses, ListVoicesData, ListVoicesErrors, ListVoicesResponses, MakeMindmapData, MakeMindmapErrors, MakeMindmapResponses, MoveJobsData, MoveJobsErrors, MoveJobsResponses, PauseJobsData, PauseJobsErrors, PauseJobsResponses, PickAttemptData, PickAttemptErrors, PickAttemptResponses, PreviewBulkDownloadData, PreviewBulkDownloadErrors, PreviewBulkDownloadResponses, PreviewVoiceData, PreviewVoiceErrors, PreviewVoiceResponses, RefreshJobData, RefreshJobErrors, RefreshJobResponses, ReplanData, ReplanErrors, ReplanResponses, RerunJobsData, RerunJobsErrors, RerunJobsResponses, RerunTaskData, RerunTaskErrors, RerunTaskResponses, ResumeJobData, ResumeJobErrors, ResumeJobResponses, RevealData, RevealErrors, RevealResponses, SaveBriefData, SaveBriefErrors, SaveBriefResponses, SavePresetData, SavePresetErrors, SavePresetResponses, SaveProjectData, SaveProjectErrors, SaveProjectResponses, SaveTranscriptData, SaveTranscriptErrors, SaveTranscriptResponses, SaveVoiceData, SaveVoiceErrors, SaveVoiceResponses, SetWorkersData, SetWorkersErrors, SetWorkersResponses, TraceData, TraceErrors, TraceResponses, UnpauseJobsData, UnpauseJobsErrors, UnpauseJobsResponses, UpdateJobData, UpdateJobErrors, UpdateJobResponses, UploadData, UploadErrors, UploadResponses, VoiceAudioData, VoiceAudioErrors, VoiceAudioResponses, VoiceSegmentData, VoiceSegmentErrors, VoiceSegmentResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -82,6 +82,21 @@ export const updateJob = <ThrowOnError extends boolean = true>(options: Options<
  */
 export const addLangs = <ThrowOnError extends boolean = true>(options: Options<AddLangsData, ThrowOnError>): RequestResult<AddLangsResponses, AddLangsErrors, ThrowOnError> => (options.client ?? client).post<AddLangsResponses, AddLangsErrors, ThrowOnError>({
     url: '/api/jobs/{job_id}/langs',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Replan
+ *
+ * Plans the job again with more languages and/or changed overrides (e.g. a stage turned on): only
+ * the new tasks are added, the existing ones and their results stay.
+ */
+export const replan = <ThrowOnError extends boolean = true>(options: Options<ReplanData, ThrowOnError>): RequestResult<ReplanResponses, ReplanErrors, ThrowOnError> => (options.client ?? client).post<ReplanResponses, ReplanErrors, ThrowOnError>({
+    url: '/api/jobs/{job_id}/replan',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -287,6 +302,19 @@ export const saveBrief = <ThrowOnError extends boolean = true>(options: Options<
         ...options.headers
     }
 });
+
+/**
+ * Get Mindmap
+ */
+export const getMindmap = <ThrowOnError extends boolean = true>(options: Options<GetMindmapData, ThrowOnError>): RequestResult<GetMindmapResponses, GetMindmapErrors, ThrowOnError> => (options.client ?? client).get<GetMindmapResponses, GetMindmapErrors, ThrowOnError>({ url: '/api/jobs/{job_id}/mindmap', ...options });
+
+/**
+ * Make Mindmap
+ *
+ * Turns the job's mindmap stage on and adds its task; the task runs again when it failed, was stopped or
+ * is stale; nothing happens when it is there, made or on its way.
+ */
+export const makeMindmap = <ThrowOnError extends boolean = true>(options: Options<MakeMindmapData, ThrowOnError>): RequestResult<MakeMindmapResponses, MakeMindmapErrors, ThrowOnError> => (options.client ?? client).post<MakeMindmapResponses, MakeMindmapErrors, ThrowOnError>({ url: '/api/jobs/{job_id}/mindmap', ...options });
 
 /**
  * Get Config

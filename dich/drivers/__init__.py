@@ -17,6 +17,7 @@ BUILTIN = [
     "dich.drivers.asr.needle",
     "dich.drivers.refine.rules",
     "dich.drivers.brief.llm",
+    "dich.drivers.mindmap.llm",
     "dich.drivers.translate.local", "dich.drivers.translate.llm",
     "dich.drivers.dub.vieneu",
     "dich.drivers.mux.ffmpeg",

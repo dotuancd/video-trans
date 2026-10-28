@@ -378,6 +378,22 @@ class BriefSave(BaseModel):
     text: str
 
 
+class MindmapNode(BaseModel):
+    id: str
+    label: str
+    note: str | None = None
+    start: float = Field(description="Second of the video it starts at")
+    end: float | None = Field(None, description="Root and parts (level 1) only")
+    children: list["MindmapNode"] | None = None
+
+
+class MindmapView(BaseModel):
+    task_id: str
+    lang: str | None = Field(description="What it is written in")
+    stale: bool = Field(description="Made from subtitles edited since")
+    root: MindmapNode
+
+
 class Entry(BaseModel):
     name: str
     path: str

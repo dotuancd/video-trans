@@ -87,3 +87,23 @@ class FakeMux(Driver):
         path = ctx.output("out.mp4")
         path.write_bytes(Path(inputs["video"].path).read_bytes() + Path(inputs["dub"].path).read_bytes())
         return {"video": path}
+
+
+@register
+class FakeMindmap(Driver):
+    stage = "mindmap"
+    name = "fake"
+    resources = {"net"}
+    consumes = {"transcript": "transcript.src"}
+    produces = {"mindmap": "mindmap"}
+
+    def run(self, ctx, inputs, params):
+        count("mindmap")
+        import json
+        source = Transcript.load(inputs["transcript"].path)
+        end = source.cues[-1].end
+        root = {"id": "root", "label": "Video", "start": 0, "end": end,
+                "children": [{"id": "s1", "label": c.text, "start": c.start, "end": c.end} for c in source.cues]}
+        path = ctx.output("mindmap.json")
+        path.write_text(json.dumps({"lang": "vi", "root": root}), encoding="utf-8")
+        return {"mindmap": path}

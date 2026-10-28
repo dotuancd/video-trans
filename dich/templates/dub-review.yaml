@@ -10,3 +10,4 @@ stages:
   - {stage: translate, driver: env}
   - {stage: dub,       driver: vieneu, gate: review}
   - {stage: mux,       driver: ffmpeg}
+  - {stage: mindmap,   driver: llm, enabled: false}   # what the video says, part by part (Tạo mindmap)
