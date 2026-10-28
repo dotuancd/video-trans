@@ -10,11 +10,12 @@ import { Switch } from '@/components/ui/switch'
 import { Button as MediaButton } from '@/components/videojs/ui/button'
 import { ButtonTooltip } from '@/components/videojs/ui/button-tooltip'
 import { langName } from '@/lib/langName'
-import { MindmapPanel } from '@/components/MindmapPanel'
+import { MindmapPanel, useMindmap } from '@/components/MindmapPanel'
 import { VideoSkin } from '@/components/videojs/video/skin'
 import { artifactUrl, downloadUrl, errorMessage, loadSaved, save, slotArtifact } from '@/lib/api'
 import type { JobSort } from '@/lib/jobs'
 import { cn } from '@/lib/utils'
+import { partsVtt } from '@/lib/mindmap'
 import { mkvHint, neighbour, placeIn, playback, VIDEO, type Source } from '@/lib/playback'
 import { progress, resumeAt, saveWatched, useWatched, watchedIn } from '@/lib/watched'
 
@@ -50,7 +51,8 @@ const SKIN = { '--media-border-radius': '0', '--media-border-color': 'transparen
  * 'Tự chuyển bài'. The subtitles of every language are the video's
  * tracks: on or off (C, remembered) and which one in the skin, as is the audio track of a file that has several.
  * Space plays / pauses, ← → go 10 s back / on, F is fullscreen: the video with its subtitles and the countdown, kept
- * from one video to the next. A job is played from where it was left in that
+ * from one video to the next. M opens or closes the mindmap's tab (the column hidden); its parts are the marks "Phần"
+ * on the time bar. A job is played from where it was left in that
  * language (see lib/watched), from the start once watched to the end. */
 export function Player(props: PlayerProps) {
   return (
@@ -86,6 +88,8 @@ function PlayerPage({ job, error, lang, playlist, onPlay, onClose }: PlayerProps
   const column = settings.playlist
   // the playlist's tab when there is one, the mindmap's else
   const tab: Tab = playlist ? settings.tab : 'mindmap'
+  const { mindmap } = useMindmap(job)
+  const chapters = mindmap.data && partsVtt(mindmap.data.root)
   const jobs = playlist?.jobs ?? []
   // the language is kept from the moment the job is known, for the whole playlist: the list loading later must not
   // restart the video. The list's most common one; the job's own when the list is not loaded yet.
@@ -159,7 +163,13 @@ function PlayerPage({ job, error, lang, playlist, onPlay, onClose }: PlayerProps
   const fullscreen = () => void (document.fullscreenElement ? store.exitFullscreen() : store.requestFullscreen()).catch(() => {})
   const subtitles = () => store.toggleSubtitles()
 
-  const keys = useRef<{ onClose: () => void; step: (dir: 1 | -1) => void; subtitles: () => void; fullscreen: () => void }>(undefined)
+  const keys = useRef<{
+    onClose: () => void
+    step: (dir: 1 | -1) => void
+    subtitles: () => void
+    fullscreen: () => void
+    mindmap: () => void
+  }>(undefined)
   useEffect(() => {
     keys.current = {
       onClose,
@@ -170,6 +180,7 @@ function PlayerPage({ job, error, lang, playlist, onPlay, onClose }: PlayerProps
       },
       subtitles,
       fullscreen,
+      mindmap: () => set(column && tab === 'mindmap' ? { playlist: false } : { playlist: true, tab: 'mindmap' }),
     }
   })
   useEffect(() => {
@@ -197,6 +208,7 @@ function PlayerPage({ job, error, lang, playlist, onPlay, onClose }: PlayerProps
       if (e.repeat) return
       if (key === 'n') keys.current?.step(1)
       if (key === 'p') keys.current?.step(-1)
+      if (key === 'm') keys.current?.mindmap()
     }
     // a button focused is clicked by Space let go
     const onKeyUp = (e: KeyboardEvent) => e.key === ' ' && !typing(e)
@@ -263,7 +275,7 @@ function PlayerPage({ job, error, lang, playlist, onPlay, onClose }: PlayerProps
                       media={(element) => {
                         media.current = element
                       }}
-                      subtitles={subtitlesOf(job)} shown={settings.subtitles ? best.subtitles : undefined}
+                      subtitles={subtitlesOf(job)} chapters={chapters} shown={settings.subtitles ? best.subtitles : undefined}
                       onSubtitles={(shown) => shown !== settings.subtitles && set({ subtitles: shown })}
                       start={resumeAt(watchedIn(job.id, wanted))}
                       onProgress={(time, duration, now) => saveWatched(job.id, wanted, time, duration, now)}
@@ -439,10 +451,11 @@ function subtitlesOf(job: Job) {
 /** onStop: the media ended, or (failed) cannot be played: an error, or a video whose picture the browser cannot
  * decode (.mkv, codec). onPlaying: it plays (again). start: the second it is played from. onProgress: where it is
  * as it plays; now: paused or ended. subtitles: its tracks, `shown` the one shown; onSubtitles: they were turned on
- * or off. */
-function Media({ source, subtitles, shown, start, media, onStop, onPlaying, onSubtitles, onProgress }: {
+ * or off. chapters: the WebVTT of its chapters track, the skin's time bar marked by it. */
+function Media({ source, subtitles, chapters, shown, start, media, onStop, onPlaying, onSubtitles, onProgress }: {
   source: Source
   subtitles: { lang: string; artifact: string }[]
+  chapters?: string
   shown?: string
   start?: number
   /** given the element playing */
@@ -463,13 +476,13 @@ function Media({ source, subtitles, shown, start, media, onStop, onPlaying, onSu
   useEffect(() => {
     const tracks = element.current?.textTracks
     if (!tracks) return
-    const onChange = () => toggled.current([...tracks].some((t) => t.mode === 'showing'))
+    const onChange = () => toggled.current([...tracks].some((t) => t.kind === 'subtitles' && t.mode === 'showing'))
     tracks.addEventListener('change', onChange)
     return () => tracks.removeEventListener('change', onChange)
   }, [])
   // another language picked while the same file plays: its subtitles shown instead, if any are
   useEffect(() => {
-    const tracks = [...element.current?.textTracks ?? []]
+    const tracks = [...element.current?.textTracks ?? []].filter((t) => t.kind === 'subtitles')
     if (!shown || !tracks.some((t) => t.mode === 'showing')) return
     for (const t of tracks) t.mode = t.language === shown ? 'showing' : 'disabled'
   }, [shown])
@@ -504,6 +517,13 @@ function Media({ source, subtitles, shown, start, media, onStop, onPlaying, onSu
     <track key={artifact} kind="subtitles" src={`${artifactUrl(artifact)}/vtt`} srcLang={lang}
       label={lang === 'src' ? 'Gốc' : langName(lang)} default={lang === shown} />
   ))
+  if (chapters) {
+    const src = `data:text/vtt;charset=utf-8,${encodeURIComponent(chapters)}`
+    // loaded once hidden: a track added after the media is not by `default`
+    tracks.push(<track key={src} kind="chapters" src={src} ref={(t) => {
+      if (t) t.track.mode = 'hidden'
+    }} />)
+  }
   return (
     <>
       {VIDEO.test(source.path)

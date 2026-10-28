@@ -8,7 +8,7 @@ from pathlib import Path
 
 from dich import drivers
 from dich.logging import system
-from dich.logging.events import UserError
+from dich.logging.events import Skip, UserError
 from dich.logging.trace import error_code
 from dich.runtime.context import TaskContext
 from dich.storage.artifacts import describe, fingerprint, reuse
@@ -84,6 +84,10 @@ class Engine:
             ctx.drop_checkpoint()
             self._export(task)
             return "done"
+        except Skip as error:
+            ctx.log.warn(str(error))
+            store.skip(task["id"], attempt["id"], str(error))
+            return "skipped"
         except UserError as error:
             ctx.log.error(str(error))
             store.fail(task["id"], attempt["id"], str(error))

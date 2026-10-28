@@ -8,12 +8,16 @@ from dich import settings
 CLAUDE_MODELS = ("sonnet", "haiku", "opus")
 
 
+def usable():
+    """engine → whether it can run here (an OpenAI key, the claude CLI)."""
+    return {"openai": bool(os.environ.get("OPENAI_API_KEY")), "claude": bool(shutil.which("claude"))}
+
+
 def pick_engine(engine):
     """openai | claude, the first one usable for "auto"; None when neither is."""
-    usable = {"openai": bool(os.environ.get("OPENAI_API_KEY")), "claude": bool(shutil.which("claude"))}
     if engine != "auto":
         return engine
-    return next((name for name, ok in usable.items() if ok), None)
+    return next((name for name, ok in usable().items() if ok), None)
 
 
 def make_translator(engine):

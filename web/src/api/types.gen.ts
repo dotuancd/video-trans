@@ -2951,6 +2951,31 @@ export type SaveBriefResponses = {
 
 export type SaveBriefResponse = SaveBriefResponses[keyof SaveBriefResponses];
 
+export type MakeMindmapsData = {
+    body: JobIds;
+    path?: never;
+    query?: never;
+    url: '/api/jobs/mindmap';
+};
+
+export type MakeMindmapsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type MakeMindmapsError = MakeMindmapsErrors[keyof MakeMindmapsErrors];
+
+export type MakeMindmapsResponses = {
+    /**
+     * Successful Response
+     */
+    200: JobsDone;
+};
+
+export type MakeMindmapsResponse = MakeMindmapsResponses[keyof MakeMindmapsResponses];
+
 export type GetMindmapData = {
     body?: never;
     path: {

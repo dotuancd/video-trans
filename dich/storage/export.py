@@ -3,8 +3,10 @@
 #
 #   transcript.src  → <name>.srt          audio.dub.vi → <name>.vi.wav
 #   transcript.vi   → <name>.vi.srt       media.out.vi → <name>.dub.vi.mp4
+#   mindmap         → <name>.mindmap.md
 from pathlib import Path
 
+from dich.formats import mindmap
 from dich.formats.transcript import Transcript, to_srt
 from dich.storage.artifacts import link_or_copy
 
@@ -17,6 +19,8 @@ def export_name(slot, stem, source_suffix):
         return f"{stem}.{slot.removeprefix('audio.dub.')}.wav"
     if slot.startswith("media.out."):
         return f"{stem}.dub.{slot.removeprefix('media.out.')}{source_suffix}"
+    if slot == "mindmap":
+        return f"{stem}.mindmap.md"
     return None
 
 
@@ -38,6 +42,15 @@ def download_name(source, art):
     return export_name(art["slot"], source_stem(base), Path(art["path"]).suffix) or Path(art["path"]).name
 
 
+def as_text(artifact):
+    """What a transcript or the mindmap is exported and downloaded as (.srt, .md); None for the others (as is)."""
+    if artifact["slot"].startswith("transcript."):
+        return to_srt(Transcript.load(artifact["path"]))
+    if artifact["slot"] == "mindmap":
+        return mindmap.to_markdown(mindmap.load(artifact["path"]))
+    return None
+
+
 def export(artifact, slot, export_dir, source):
     """Path written for the artifact, or None when the slot is not exported. Never overwrites `source`."""
     if not export_dir:
@@ -50,9 +63,10 @@ def export(artifact, slot, export_dir, source):
     if target.resolve() == source.resolve():
         return None
     target.parent.mkdir(parents=True, exist_ok=True)
-    if slot.startswith("transcript."):
+    text = as_text({**artifact, "slot": slot})
+    if text is not None:
         tmp = target.with_name(target.name + ".tmp")
-        tmp.write_text(to_srt(Transcript.load(artifact["path"])), encoding="utf-8")
+        tmp.write_text(text, encoding="utf-8")
         tmp.replace(target)
     else:
         link_or_copy(artifact["path"], target)

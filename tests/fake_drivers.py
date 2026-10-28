@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from dich.drivers import Driver, UserError, register
+from dich.drivers import Driver, Skip, UserError, register
 from dich.formats.transcript import Cue, Transcript
 
 RUNS = {}
@@ -15,7 +15,7 @@ def count(name):
 
 
 class AsrParams(BaseModel):
-    fail: str | None = None     # "user" | "system"
+    fail: str | None = None     # "user" | "system" | "skip"
     sleep: float = 0
 
 
@@ -39,6 +39,8 @@ class FakeAsr(Driver):
             raise UserError("File hỏng")
         if params.fail == "system":
             raise ValueError("boom")
+        if params.fail == "skip":
+            raise Skip("Không có gì để làm")
         ctx.log.info("2 câu")
         t = Transcript("en", [Cue("c_0001", 0, 1, "hello."), Cue("c_0002", 1, 2, "world.")])
         return {"transcript": t.save(ctx.output("transcript.jsonl"))}

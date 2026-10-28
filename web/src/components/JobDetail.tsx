@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  ChevronRight, Copy, Download, ExternalLink, Eye, FolderSearch, Languages, Loader2, Pencil, Play, Plus, RotateCcw, ScrollText, Square, StepForward, Trash2,
+  ChevronRight, Copy, Download, ExternalLink, Eye, FolderSearch, Languages, Loader2, Network, Pencil, Play, Plus, RotateCcw, ScrollText, Square, StepForward, Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
-  addLangs, cancelJob, deleteJob, getBrief, listAttempts, pickAttempt, refreshJob, rerunTask, resumeJob, reveal, saveBrief, updateJob,
+  addLangs, cancelJob, deleteJob, getBrief, listAttempts, makeMindmap, pickAttempt, refreshJob, rerunTask, resumeJob, reveal, saveBrief, updateJob,
   type Config, type DriverInfo, type Job, type LlmRequest, type Project, type Task, type TranscriptSaved,
 } from '@/api'
 import { STATUS_STYLE, taskLabel } from '@/components/JobList'
@@ -69,7 +69,8 @@ function JobBody({ job, drivers, config, projects, onClose }: {
   const [playing, setPlaying] = useState(-1) // cue under the playhead
   const [confirming, setConfirming] = useState<RerunArgs>()
   const active = isActive(job.status)
-  const statuses = new Set(job.tasks.map((t) => t.status))
+  // a stale mindmap waits to be asked (its tab's "Cập nhật"): not one for "Cập nhật phía sau"
+  const statuses = new Set(job.tasks.filter((t) => t.status !== 'stale' || t.stage !== 'mindmap').map((t) => t.status))
   const updated = (data: Job) => putJob(queryClient, data)
   const onError = (error: unknown) => toast.error(errorMessage(error))
 
@@ -88,6 +89,7 @@ function JobBody({ job, drivers, config, projects, onClose }: {
   const cancel = useJobAction(job.id, cancelJob)
   const resume = useJobAction(job.id, resumeJob)
   const refresh = useJobAction(job.id, refreshJob)
+  const mindmap = useJobAction(job.id, makeMindmap)
   const move = useMutation({
     mutationFn: async (project: string | null) => (await updateJob({ path: { job_id: job.id }, body: { project_id: project } })).data,
     onSuccess: updated,
@@ -195,6 +197,13 @@ function JobBody({ job, drivers, config, projects, onClose }: {
             </Button>
           )}
           {job.langs.length > 0 && <AddLanguage job={job} config={config} onAdded={updated} />}
+          {/* none yet, or skipped for want of an LLM (not in the steps): once there, its step has Chạy lại… */}
+          {(!task('mindmap') || (task('mindmap')!.status === 'skipped' && !!task('mindmap')!.current_attempt)) && (
+            <Button size="sm" variant="outline" disabled={mindmap.isPending} onClick={() => mindmap.mutate()}
+              title="Sơ đồ tư duy: 1 request AI đọc phụ đề gốc, viết bằng ngôn ngữ đích đầu tiên">
+              {mindmap.isPending ? <Loader2 className="animate-spin" /> : <Network />} Tạo mindmap
+            </Button>
+          )}
           <Button size="sm" variant="ghost" className="text-muted-foreground" disabled={job.status === 'running'}
             onClick={() => remove.mutate()} title="Xoá việc và các file trung gian; file đã xuất cạnh video được giữ">
             <Trash2 /> Xoá

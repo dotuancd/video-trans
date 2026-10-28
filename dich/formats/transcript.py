@@ -42,12 +42,20 @@ class Transcript:
     def save(self, path):
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        lines = [{"lang": self.lang}] + [asdict(c) for c in self.cues]
+        lines = [{"lang": self.lang}] + [timed(asdict(c)) for c in self.cues]
         path.write_text("".join(json.dumps(line, ensure_ascii=False) + "\n" for line in lines), encoding="utf-8")
         return path
 
     def by_id(self):
         return {c.id: c for c in self.cues}
+
+
+def timed(cue):
+    """The cue with its times in ms, as floats: the same cues make the same file (an edit undone hits the cache)."""
+    cue["start"], cue["end"] = round(float(cue["start"]), 3), round(float(cue["end"]), 3)
+    if cue["words"]:
+        cue["words"] = [{**w, "s": round(float(w["s"]), 3), "e": round(float(w["e"]), 3)} for w in cue["words"]]
+    return cue
 
 
 def cue_id(index):

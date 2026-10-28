@@ -20,6 +20,7 @@ export const STAGE_LABELS: Record<string, string> = {
   translate: 'Dịch',
   dub: 'Lồng tiếng',
   mux: 'Ghép video',
+  mindmap: 'Mindmap',
 }
 export const stageLabel = (stage: string) => STAGE_LABELS[stage] ?? stage
 

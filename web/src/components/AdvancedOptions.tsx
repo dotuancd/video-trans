@@ -29,6 +29,8 @@ export type Stage = {
 /** Options shown in the new job card itself, not in the sheet (nor counted as advanced). */
 const MAIN: Record<string, string[]> = { translate: ['model'], brief: ['summary'], dub: ['voice', 'ref_audio'] }
 const OPTIONAL = ['separate', 'refine']
+/** Stages off in the template that run when the user asks (Tạo mindmap): their options can be set while off. */
+const ON_DEMAND = ['mindmap']
 
 type Schema = { properties?: Record<string, { default?: unknown }> }
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
@@ -38,7 +40,7 @@ export function changedCount(s: Stage): number {
   const main = MAIN[s.stage] ?? []
   let n = s.enabled !== s.base.enabled ? 1 : 0
   if (s.stage !== 'translate' && s.driver && s.driver.name !== s.base.driver) n++
-  if (!s.enabled || !s.driver) return n
+  if ((!s.enabled && !ON_DEMAND.includes(s.stage)) || !s.driver) return n
   const props = (s.driver.params_schema as Schema).properties ?? {}
   for (const key of Object.keys(props)) {
     if (main.includes(key)) continue
@@ -162,7 +164,10 @@ function StagePanel({ s, setStage, setParams, context }: {
         {stageLabel(s.stage)}
         {s.driver && <span className="font-mono normal-case tracking-normal">{s.driver.name}</span>}
       </p>
-      {!s.enabled ? (
+      {!s.enabled && s.driver && ON_DEMAND.includes(s.stage) && (
+        <p className="text-sm text-muted-foreground">Chỉ chạy khi bạn bấm “Tạo mindmap”, với các tuỳ chọn này.</p>
+      )}
+      {!s.enabled && !(s.driver && ON_DEMAND.includes(s.stage)) ? (
         <div className="grid justify-items-start gap-3">
           <p className="text-sm text-muted-foreground">
             {s.driver ? 'Bước này đang tắt.' : 'Chưa có driver cho bước này.'}

@@ -108,3 +108,14 @@ def test_brief_is_off_without_an_llm_translation():
     chosen = resolve(get_template("default"), "/v/a.mp4",
                      {"translate": {"driver": "claude"}, "brief": {"params": {"engine": "openai"}}})
     assert next(c for c in chosen if c.stage == "brief").params["engine"] == "openai"
+
+
+def test_mindmap_reads_the_brief_but_does_not_keep_it_on():
+    on = {"mindmap": {"enabled": True}}
+    specs = by_key(plan(stages(**on), ["vi"]))
+    assert specs["mindmap"].inputs["brief"] == ["brief", "brief"] and specs["mindmap"].params["engine"] == "claude"
+    transcribe = by_key(plan(resolve(get_template("transcribe"), "/v/a.mp4", on), []))
+    assert "brief" not in transcribe and "brief" not in transcribe["mindmap"].inputs
+    assert transcribe["mindmap"].params["engine"] == "auto"
+    chosen = by_key(plan(stages(mindmap={"enabled": True, "params": {"engine": "openai", "detail": "gọn"}}), ["vi"]))
+    assert chosen["mindmap"].params == {"detail": "gọn", "instructions": "", "engine": "openai"}

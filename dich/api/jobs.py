@@ -13,11 +13,11 @@ from dich.api.models import (AddLangs, Attempt, BriefSave, BriefView, EditCue, E
                              MindmapView, Replan, Rerun, Skipped, StatusGroup, TranscriptSave, TranscriptSaved, TranscriptView, Word)
 from dich.core import jobs as job_service
 from dich.drivers.translate.llm import read_requests
-from dich.formats.transcript import Cue, Transcript, ensure_ids, to_srt, to_vtt
+from dich.formats.transcript import Cue, Transcript, ensure_ids, to_vtt
 from dich.media import is_media, is_subtitle, sha256
 from dich.queue.base import Busy, NeedsConfirm
 from dich.runtime.engine import export_task
-from dich.storage.export import download_name
+from dich.storage.export import as_text, download_name
 from dich.storage.live import live_chunk, read_live
 
 
@@ -360,15 +360,16 @@ def router(ctx):
 
     @api.get("/artifacts/{artifact_id}/download", response_class=FileResponse)
     def download_artifact(artifact_id: str, inline: bool = False):
-        """The file as an attachment named like the export; transcripts as .srt. inline: shown in the
-        browser instead (transcripts as plain text)."""
+        """The file as an attachment named like the export; transcripts as .srt, the mindmap as .md. inline:
+        shown in the browser instead (those as plain text)."""
         artifact = artifact_or_404(artifact_id)
         name = download_name(store.job_row(artifact["job_id"])["source"], artifact)
-        if artifact["slot"].startswith("transcript."):
-            text = to_srt(Transcript.load(artifact["path"]))
+        text = as_text(artifact)
+        if text is not None:
             if inline:
                 return PlainTextResponse(text)
-            return PlainTextResponse(text, media_type="application/x-subrip",
+            kind = "text/markdown" if artifact["slot"] == "mindmap" else "application/x-subrip"
+            return PlainTextResponse(text, media_type=kind,
                                      headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"})
         if inline:
             return FileResponse(artifact["path"])
@@ -439,8 +440,10 @@ def router(ctx):
         ensure_ids(cues)
         is_src = lang in (None, "", "src")
         slot = "transcript.src" if is_src else f"transcript.{lang}"
+        speakers = {c.id: c.speaker for c in transcript.cues}
         new = Transcript(transcript.lang, [Cue(c.id, round(c.start, 3), round(c.end, 3), c.text.strip(),
-                                               src_id=c.id if with_source else None) for c in cues])
+                                               speaker=speakers.get(c.id), src_id=c.id if with_source else None)
+                                           for c in cues])
         if is_src:
             with_words(new.cues, flat_words(transcript) or [])
         before = {(c.start, c.end, c.text) for c in transcript.cues}
@@ -498,19 +501,43 @@ def router(ctx):
 
     # --- mindmap ---
 
+    def ask_mindmap(job_id):
+        """Turns the job's mindmap stage on and adds its task; the task runs again when it failed, was stopped,
+        is stale or was skipped for want of an LLM. Returns why nothing happened: made already, or on its way."""
+        task = store.task_by_key(job_id, "mindmap")
+        if not task:
+            if not job_service.replan(store, job_id, overrides={"mindmap": {"enabled": True}}):
+                raise LookupError("Template của việc này không có bước mindmap")
+        elif task["status"] in ("failed", "cancelled", "stale") or (task["status"] == "skipped"
+                                                                  and task["current_attempt"]):
+            store.rerun(task["id"])
+        else:
+            return "Đã có mindmap" if task["status"] == "done" else "Mindmap đang được tạo"
+        return None
+
+    @api.post("/jobs/mindmap")
+    def make_mindmaps(body: JobIds) -> JobsDone:
+        """Tạo mindmap for many jobs: a job whose mindmap is made (and not stale) or on its way is skipped,
+        as is one whose template has no mindmap or that is busy."""
+        done, skipped = [], []
+        for job in filter(None, map(store.job, body.ids)):
+            try:
+                reason = ask_mindmap(job["id"])
+            except (LookupError, ValidationError, Busy) as error:
+                reason = str(error).strip("'")
+            if reason:
+                skipped.append(skip(job, reason))
+            else:
+                done.append(job["id"])
+        return JobsDone(jobs=jobs_of(done), skipped=skipped, needs_confirm=[])
+
     @api.post("/jobs/{job_id}/mindmap")
     def make_mindmap(job_id: str) -> Job:
-        """Turns the job's mindmap stage on and adds its task; the task runs again when it failed, was stopped or
-        is stale; nothing happens when it is there, made or on its way."""
+        """Tạo mindmap: see ask_mindmap; nothing happens when it is made or on its way."""
         job_or_404(job_id)
-        task = store.task_by_key(job_id, "mindmap")
         try:
-            if not task:
-                if not job_service.replan(store, job_id, overrides={"mindmap": {"enabled": True}}):
-                    raise HTTPException(400, "Template của việc này không có bước mindmap")
-            elif task["status"] in ("failed", "cancelled", "stale"):
-                store.rerun(task["id"])
-        except (KeyError, ValidationError) as error:
+            ask_mindmap(job_id)
+        except (LookupError, ValidationError) as error:
             raise HTTPException(400, str(error).strip("'"))
         except Busy as error:
             raise HTTPException(409, str(error))

@@ -58,3 +58,15 @@ def test_srt_and_vtt():
     assert "00:00:01,500 --> 00:00:03,250" in srt_text
     assert from_srt(srt_text, "vi").cues[0].text == "Xin chào"
     assert "00:00:01.500 --> 00:00:03.250" in to_vtt(t)
+
+
+def test_mindmap_as_markdown():
+    from dich.formats.mindmap import to_markdown
+    root = {"label": "Bài giảng", "note": "Nói về  mây.", "start": 0, "end": 3725, "children": [
+        {"label": "Mở đầu", "start": 0, "end": 75, "children": [
+            {"label": "Chào", "note": "Ai nói", "start": 15, "children": [{"label": "Tên", "start": 40}]}]},
+        {"label": "Kết", "note": "Tóm lại.", "start": 3600}]}
+    assert to_markdown({"lang": "vi", "root": root}) == (
+        "# Bài giảng\n\nNói về mây.\n\n"
+        "## 1. Mở đầu [0:00 – 1:15]\n\n- [0:15] Chào — Ai nói\n  - [0:40] Tên\n\n"
+        "## 2. Kết [1:00:00 – 1:02:05]\n\nTóm lại.\n")

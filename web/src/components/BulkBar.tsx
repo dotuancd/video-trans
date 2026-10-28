@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, FolderInput, Inbox, Loader2, Play, SlidersHorizontal, Trash2, X } from 'lucide-react'
+import { Download, FolderInput, Inbox, Loader2, Network, Play, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
-  createBulkDownload, deleteJobs, moveJobs, previewBulkDownload, rerunJobs,
+  createBulkDownload, deleteJobs, makeMindmaps, moveJobs, previewBulkDownload, rerunJobs,
   type DriverInfo, type Job, type JobCounts, type JobsDone, type Project,
 } from '@/api'
 import { BulkActions, pausable, paused } from '@/components/JobList'
@@ -93,6 +93,7 @@ export function BulkBar({ jobs, total, counts, filter, checked, everything, onCh
             <DownloadDialog ids={ids} onOpenJob={onOpenJob} />
             <MoveMenu ids={ids} projects={projects} view={view} onOpenProject={onOpenProject} />
             <RerunDialog jobs={picked} ids={ids} drivers={drivers} />
+            <MindmapButton ids={ids} />
             <DeleteDialog jobs={picked} ids={ids} onDeleted={(gone) => onChecked(new Set(ids.filter((id) => !gone.includes(id))), everything)} />
           </div>
         </>
@@ -138,6 +139,31 @@ function MoveMenu({ ids, projects, view, onOpenProject }: {
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+/** "Tạo mindmap" for every job ticked, one click: the server skips those made already or on their way. */
+function MindmapButton({ ids }: { ids: string[] }) {
+  const queryClient = useQueryClient()
+  const make = useMutation({
+    mutationFn: async () => (await makeMindmaps({ body: { ids } })).data,
+    onSuccess: ({ jobs, skipped }) => {
+      for (const job of jobs) putJob(queryClient, job)
+      void queryClient.invalidateQueries({ queryKey: ['job-counts'] })
+      // many jobs: told by reason, not one line each
+      const reasons = new Map<string, number>()
+      for (const { reason } of skipped) reasons.set(reason, (reasons.get(reason) ?? 0) + 1)
+      const description = [...reasons].map(([reason, n]) => `Bỏ qua ${n} việc: ${reason}`).join('\n') || undefined
+      if (jobs.length) toast.success(`Tạo mindmap cho ${jobs.length} việc`, { description })
+      else toast.info('Không có việc nào cần tạo mindmap', { description })
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  })
+  return (
+    <Button size="sm" variant="outline" disabled={make.isPending} onClick={() => make.mutate()}
+      title="Sơ đồ tư duy cho từng việc: 1 request AI mỗi việc; việc đã có mindmap được bỏ qua">
+      {make.isPending ? <Loader2 className="animate-spin" /> : <Network />} Tạo mindmap
+    </Button>
   )
 }
 

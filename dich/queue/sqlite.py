@@ -176,9 +176,13 @@ MAX_RETRIES = 2
 LEASE = 30.0
 ACTIVE = ("queued", "running")
 JOB_STATUS_ORDER = ("running", "failed", "waiting_review", "queued", "blocked", "cancelled", "stale")
+# Stages run only when asked (the mindmap): stale, they wait for the user, neither refreshed nor the job's status
+ON_DEMAND = ("mindmap",)
 # A job's status is not stored: it is the first of JOB_STATUS_ORDER among its tasks' (else done). In SQL, its
 # rank: the index in JOB_STATUS_ORDER, len(JOB_STATUS_ORDER) for done.
-JOB_RANK = ("coalesce((select min(case t.status " + " ".join(f"when '{s}' then {i}" for i, s in enumerate(JOB_STATUS_ORDER))
+JOB_RANK = ("coalesce((select min(case when t.status = 'stale' and t.stage in ("
+            + ",".join(f"'{s}'" for s in ON_DEMAND) + ") then null "
+            + " ".join(f"when t.status = '{s}' then {i}" for i, s in enumerate(JOB_STATUS_ORDER))
             + f" end) from tasks t where t.job_id = j.id), {len(JOB_STATUS_ORDER)})")
 # The groups the job list is filtered by
 STATUS_GROUPS = {"attention": ("failed", "waiting_review", "stale"), "active": ("running", "queued", "blocked"),
@@ -673,6 +677,16 @@ class Store:
             self._status(task, "failed", message=message, error=error, lease_until=None, cancel_requested=0)
         self.drop_outputs(attempt_id, "success_only")
 
+    def skip(self, task_id, attempt_id, message):
+        """The driver found it can't run here (Skip): skipped with its note, the attempt kept as current so it
+        can be run again (a task skipped by the plan has none)."""
+        with self.tx():
+            task = self.task(task_id)
+            self._finish_attempt(attempt_id, "skipped", message)
+            self._status(task, "skipped", current_attempt=attempt_id, message=message, error=None, lease_until=None,
+                         cancel_requested=0, retries=0)
+        self.drop_outputs(attempt_id, "success_only")
+
     def cancelled(self, task_id, attempt_id):
         with self.tx():
             task = self.task(task_id)
@@ -764,10 +778,10 @@ class Store:
         return resumed
 
     def refresh(self, job_id):
-        """Run the stale tasks again with their new inputs."""
+        """Run the stale tasks again with their new inputs, but those of the stages ON_DEMAND."""
         with self.tx():
             for task in self.tasks_of(job_id):
-                if task["status"] == "stale":
+                if task["status"] == "stale" and task["stage"] not in ON_DEMAND:
                     self._status(task, "blocked", message=None)
             self.touch(job_id)
             self.advance(job_id)
@@ -791,7 +805,7 @@ class Store:
             task = self.task(task_id)
             if task is None:
                 raise KeyError(task_id)
-            if task["status"] == "skipped":
+            if task["status"] == "skipped" and not task["current_attempt"]:
                 raise Busy("Bước này không chạy được cho job này")
             later = self.descendants(task["job_id"], task["key"])
             if task["status"] == "running" or (mode == "cascade" and any(t["status"] == "running" for t in later)):
@@ -1167,7 +1181,7 @@ def task_dict(row):
 
 
 def job_status(tasks):
-    statuses = {t["status"] for t in tasks}
+    statuses = {t["status"] for t in tasks if t["status"] != "stale" or t["stage"] not in ON_DEMAND}
     for status in JOB_STATUS_ORDER:
         if status in statuses:
             return status

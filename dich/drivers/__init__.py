@@ -10,7 +10,7 @@ from typing import ClassVar
 
 from pydantic import BaseModel
 
-from dich.logging.events import UserError  # noqa: F401  (re-exported for drivers)
+from dich.logging.events import Skip, UserError  # noqa: F401  (re-exported for drivers)
 
 BUILTIN = [
     "dich.drivers.source.file", "dich.drivers.source.url",

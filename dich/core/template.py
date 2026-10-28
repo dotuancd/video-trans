@@ -78,6 +78,7 @@ def resolve(template, source, overrides=None):
             conf.params = cls.Params(**conf.params).model_dump(mode="json")
         stages.append(conf)
     link_brief(stages)
+    link_mindmap(stages)
     if not any(conf.stage == "dub" and conf.enabled for conf in stages):
         # without a dub, fitting the translation to the speech time only costs a second LLM pass
         for conf in stages:
@@ -87,11 +88,12 @@ def resolve(template, source, overrides=None):
 
 
 def link_brief(stages):
-    """The brief only serves an LLM translation: off without one, and its "auto" engine is the translation's."""
+    """The brief only serves an LLM translation: off without one, and its "auto" engine is the translation's.
+    The mindmap reads it when there is one, but does not keep it on (no request for it alone)."""
     brief = next((conf for conf in stages if conf.stage == "brief" and conf.enabled), None)
     if not brief:
         return
-    readers = [conf for conf in stages if conf.enabled and conf.stage != "brief"
+    readers = [conf for conf in stages if conf.enabled and conf.stage not in ("brief", "mindmap")
                and "brief" in {p.rstrip("?") for p in drivers.get(conf.stage, conf.driver).consumes.values()}]
     if not readers:
         brief.enabled = False
@@ -99,3 +101,12 @@ def link_brief(stages):
     if brief.params.get("engine") == "auto":
         from dich.drivers.engines import engine_of
         brief.params["engine"] = engine_of(readers[0].driver) or "auto"
+
+
+def link_mindmap(stages):
+    """The mindmap's "auto" engine is the translation's when it is an LLM."""
+    mindmap = next((conf for conf in stages if conf.stage == "mindmap" and conf.enabled), None)
+    translate = next((conf for conf in stages if conf.stage == "translate" and conf.enabled), None)
+    if mindmap and translate and mindmap.params.get("engine") == "auto":
+        from dich.drivers.engines import engine_of
+        mindmap.params["engine"] = engine_of(translate.driver) or "auto"

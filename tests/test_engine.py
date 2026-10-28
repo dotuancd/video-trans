@@ -142,6 +142,17 @@ def test_user_and_system_errors(store, video):
     assert asr["message"] in events and not any("boom" in (m or "") for m in events)
 
 
+def test_skipped_by_the_driver_can_run_again(store, video):
+    job_id = make_job(store, video, asr={"fail": "skip"}, export=False)
+    run_job(store, job_id)
+    asr = store.task_by_key(job_id, "asr")
+    assert asr["status"] == "skipped" and asr["message"] == "Không có gì để làm" and asr["error"] is None
+    assert statuses(store, job_id)["translate@vi"] == "blocked"
+    store.rerun(asr["id"], params={"fail": None})
+    run_job(store, job_id)
+    assert statuses(store, job_id)["translate@vi"] == "done"
+
+
 def test_lease_expiry_requeues_then_fails(store, video):
     job_id = make_job(store, video, export=False)
     run_job(store, job_id)

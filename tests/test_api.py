@@ -702,3 +702,68 @@ def test_make_mindmap_runs_once_and_reads_back(app):
     client.post(f"/api/jobs/{job_id}/mindmap")   # made already: not again
     run_job(ctx.store, job_id)
     assert fake_drivers.RUNS["mindmap"] == runs + 1
+
+
+def test_mindmap_is_exported_and_downloaded_as_markdown(app):
+    client, ctx = app
+    [job_id] = create(client, ctx, overrides={**FAKE, "mindmap": {"driver": "fake"}})
+    client.post(f"/api/jobs/{job_id}/mindmap")
+    run_job(ctx.store, job_id)
+    exported = (ctx.root / "a.mindmap.md").read_text(encoding="utf-8")
+    assert exported.startswith("# Video\n") and "- " not in exported
+    assert "## 1. hello. [0:00 – 0:01]" in exported and "## 2. world. [0:01 – 0:02]" in exported
+    task = {t["key"]: t for t in client.get(f"/api/jobs/{job_id}").json()["tasks"]}["mindmap"]
+    art = task["artifacts"][0]
+    assert art["download_name"] == "a.mindmap.md" and str(ctx.root / "a.mindmap.md") in task["exports"]
+    download = client.get(f"/api/artifacts/{art['id']}/download")
+    assert "a.mindmap.md" in download.headers["content-disposition"] and download.text == exported
+    assert download.headers["content-type"].startswith("text/markdown")
+
+
+def test_make_mindmaps_skips_those_made_or_on_their_way(app):
+    client, ctx = app
+    (ctx.root / "b.mp4").write_bytes(b"video b")
+    (ctx.root / "c.mp4").write_bytes(b"video c")
+    sources = [str(ctx.root / name) for name in ("a.mp4", "b.mp4", "c.mp4")]
+    made, fresh, waiting = client.post("/api/jobs", json={
+        "sources": sources, "overrides": {**FAKE, "mindmap": {"driver": "fake"}}}).json()["jobs"]
+    client.post(f"/api/jobs/{made}/mindmap")
+    client.post(f"/api/jobs/{waiting}/mindmap")
+    run_job(ctx.store, made)
+
+    result = client.post("/api/jobs/mindmap", json={"ids": [made, fresh, waiting, "job_nope"]}).json()
+    assert [j["id"] for j in result["jobs"]] == [fresh]
+    assert {t["key"]: t["status"] for t in result["jobs"][0]["tasks"]}["mindmap"] == "blocked"   # after the subtitles
+    assert {s["id"]: s["reason"] for s in result["skipped"]} == {made: "Đã có mindmap",
+                                                                  waiting: "Mindmap đang được tạo"}
+    assert result["needs_confirm"] == []
+
+
+def test_mindmap_stays_stale_after_a_subtitle_edit_until_asked(app):
+    import fake_drivers
+    client, ctx = app
+    [job_id] = create(client, ctx, overrides={**FAKE, "mindmap": {"driver": "fake"}})
+    client.post(f"/api/jobs/{job_id}/mindmap")
+    run_job(ctx.store, job_id)
+    runs = fake_drivers.RUNS["mindmap"]
+    cues = client.get(f"/api/jobs/{job_id}/transcript").json()["cues"]
+    edited = [{**cues[0], "text": "hi."}, *cues[1:]]
+    client.put(f"/api/jobs/{job_id}/transcript", json={"cues": edited})
+    tasks = {t["key"]: t["status"] for t in client.get(f"/api/jobs/{job_id}").json()["tasks"]}
+    assert tasks["mindmap"] == "stale" and tasks["translate@vi"] == "stale"
+
+    client.post(f"/api/jobs/{job_id}/refresh")   # the other steps run again, the mindmap waits to be asked
+    run_job(ctx.store, job_id)
+    job = client.get(f"/api/jobs/{job_id}").json()
+    tasks = {t["key"]: t["status"] for t in job["tasks"]}
+    assert tasks["translate@vi"] == "done" and tasks["mindmap"] == "stale" and job["status"] == "done"
+    assert listed(client, status="done") == [job_id]
+    mindmap = client.get(f"/api/jobs/{job_id}/mindmap").json()
+    assert mindmap["stale"] and [p["label"] for p in mindmap["root"]["children"]] == ["hello.", "world."]
+    assert fake_drivers.RUNS["mindmap"] == runs
+
+    client.put(f"/api/jobs/{job_id}/transcript", json={"cues": cues})   # undone: the mindmap made comes from the cache
+    client.post(f"/api/jobs/{job_id}/mindmap")
+    run_job(ctx.store, job_id)
+    mindmap = client.get(f"/api/jobs/{job_id}/mindmap").json()
+    assert not mindmap["stale"] and fake_drivers.RUNS["mindmap"] == runs

@@ -303,10 +303,31 @@ def mindmap_inputs(tmp_path):
     return {"transcript": NS(path=Transcript("en", cues).save(tmp_path / "t.jsonl"))}
 
 
-def test_mindmap_points_at_blocks_and_covers_the_video(tmp_path, monkeypatch):
+class MindmapLLM:
+    """A stand-in LLM for the mindmap driver: replies `reply` (a dict as JSON, or text) and keeps what it was asked."""
+    def __init__(self, reply):
+        from dich.drivers.translate.llm import Usage
+        self.model, self.usage, self.request_log, self.reply, self.asked = "fake", Usage(), None, reply, []
+
+    def ask(self, system, text, kind="brief", schema=None):
+        self.asked.append((system, text, schema))
+        return self.reply if isinstance(self.reply, str) else json.dumps(self.reply)
+
+
+def run_mindmap(tmp_path, monkeypatch, reply, langs=("vi",), here="openai", inputs=None, llm=None, **params):
+    """(the artifact, the fake LLM) of the mindmap driver run on mindmap_inputs, with the engine `here` usable."""
     from dich.drivers.mindmap import llm as mindmap
-    from dich.drivers.translate.llm import Usage
-    asked = []
+    llm = llm or MindmapLLM(reply)
+    monkeypatch.setattr(mindmap, "make_translator", lambda engine: llm)
+    monkeypatch.setattr(mindmap, "usable", lambda: {"openai": here == "openai", "claude": here == "claude"})
+    monkeypatch.setattr(mindmap, "pick_engine", lambda choice: here if choice == "auto" else choice)
+    ctx = BriefCtx(tmp_path, langs=langs)
+    ctx.progress = lambda done, total: None
+    out = mindmap.LLMMindmap().run(ctx, inputs or mindmap_inputs(tmp_path), mindmap.Params(**params))
+    return json.loads(out["mindmap"].read_text(encoding="utf-8")), llm
+
+
+def test_mindmap_points_at_blocks_and_covers_the_video(tmp_path, monkeypatch):
     reply = {"title": "Thị trường gấu", "summary": "Video nói về thị trường gấu.", "sections": [
         {"label": "Phần sau", "note": None, "block": "b_002", "children": [
             {"label": "Ý lạc", "note": None, "block": "b_999"}]},
@@ -314,25 +335,12 @@ def test_mindmap_points_at_blocks_and_covers_the_video(tmp_path, monkeypatch):
             {"label": "Ý hai", "note": None, "block": "b_001"}, {"label": "Ý một", "note": None, "block": "b_000"}]},
         {"label": "Không có", "note": None, "block": "x", "children": []},
     ]}
-
-    class Fake:
-        model = "fake"
-        usage = Usage()
-        request_log = None
-
-        def ask(self, system, text, kind="brief", schema=None):
-            asked.append((system, text, schema))
-            return json.dumps(reply)
-
-    monkeypatch.setattr(mindmap, "make_translator", lambda engine: Fake())
-    monkeypatch.setattr(mindmap, "pick_engine", lambda engine: "openai")
-    ctx = BriefCtx(tmp_path, langs=("vi", "ja"))
-    ctx.progress = lambda done, total: None
-    out = mindmap.LLMMindmap().run(ctx, mindmap_inputs(tmp_path), mindmap.Params())
+    data, llm = run_mindmap(tmp_path, monkeypatch, reply, langs=("vi", "ja"))
+    asked = llm.asked
     assert len(asked) == 1 and "Vietnamese" in asked[0][0] and asked[0][2]
-    assert [line.split(" [")[0] for line in asked[0][1].splitlines()] == ["b_000", "b_001", "b_002", "b_003"]
+    lines = asked[0][1].split("Transcript:\n")[1].splitlines()
+    assert [line.split(" [")[0] for line in lines] == ["b_000", "b_001", "b_002", "b_003"]
     assert "b_001 [0:20] line 2. line 3.\n" in asked[0][1]
-    data = json.loads(out["mindmap"].read_text(encoding="utf-8"))
     root = data["root"]
     assert data["lang"] == "vi" and root["label"] == "Thị trường gấu" and (root["start"], root["end"]) == (0, 70)
     first, second = root["children"]
@@ -345,23 +353,71 @@ def test_mindmap_points_at_blocks_and_covers_the_video(tmp_path, monkeypatch):
 
 
 def test_mindmap_of_a_transcription_only_job_is_in_the_source_language(tmp_path, monkeypatch):
-    from dich.drivers.mindmap import llm as mindmap
-    from dich.drivers.translate.llm import Usage
-    asked = []
-
-    class Fake:
-        model = "fake"
-        usage = Usage()
-        request_log = None
-
-        def ask(self, system, text, kind="brief", schema=None):
-            asked.append(system)
-            return '```json\n{"title": "T", "summary": "", "sections": [{"label": "A", "note": null, "block": "b_001"}]}\n```'
-
-    monkeypatch.setattr(mindmap, "make_translator", lambda engine: Fake())
-    monkeypatch.setattr(mindmap, "pick_engine", lambda engine: "claude")
-    ctx = BriefCtx(tmp_path, langs=())
-    ctx.progress = lambda done, total: None
-    data = json.loads(mindmap.LLMMindmap().run(ctx, mindmap_inputs(tmp_path), mindmap.Params())["mindmap"].read_text())
-    assert "English" in asked[0] and data["lang"] == "en"
+    reply = '```json\n{"title": "T", "summary": "", "sections": [{"label": "A", "note": null, "block": "b_001"}]}\n```'
+    data, llm = run_mindmap(tmp_path, monkeypatch, reply, langs=(), here="claude")
+    assert "English" in llm.asked[0][0] and data["lang"] == "en"
     assert [(p["start"], p["end"]) for p in data["root"]["children"]] == [(0, 70)]
+
+
+def test_mindmap_is_told_the_brief_the_page_and_the_users_instructions(tmp_path, monkeypatch):
+    from types import SimpleNamespace as NS
+    inputs = mindmap_inputs(tmp_path)
+    (tmp_path / "brief.md").write_text("Domain: finance\n", encoding="utf-8")
+    (tmp_path / "meta.json").write_text(json.dumps({"title": "Bears 101", "chapters": ["Intro", "Dip"]}))
+    inputs.update(brief=NS(path=tmp_path / "brief.md"), meta=NS(path=tmp_path / "meta.json"))
+    reply = {"title": "", "summary": "", "sections": [{"label": "A", "note": None, "block": "b_000"}]}
+    data, llm = run_mindmap(tmp_path, monkeypatch, reply, inputs=inputs, instructions="Bỏ qua quảng cáo")
+    text = llm.asked[0][1]
+    assert "Title: Bears 101" in text and "Chapters: Intro; Dip" in text and "Domain: finance" in text
+    assert "Bỏ qua quảng cáo" in text and text.index("Domain") < text.index("Transcript:")
+    assert data["root"]["label"] == "Bears 101"     # the LLM gave no title: the page's
+    _data, plain = run_mindmap(tmp_path, monkeypatch, reply)
+    assert plain.asked[0][1].startswith("Transcript:\n")
+
+
+def test_mindmap_of_a_too_long_video_asks_nothing(tmp_path, monkeypatch):
+    from types import SimpleNamespace as NS
+    from dich.drivers import UserError
+    from dich.formats.transcript import Transcript
+    cues = [Cue(f"c_{i}", i * 10, i * 10 + 10, " ".join(["word"] * 500)) for i in range(81)]
+    inputs = {"transcript": NS(path=Transcript("en", cues).save(tmp_path / "long.jsonl"))}
+    llm = MindmapLLM({})
+    with pytest.raises(UserError, match="quá dài"):
+        run_mindmap(tmp_path, monkeypatch, {}, inputs=inputs, llm=llm)
+    assert llm.asked == []
+
+
+def test_mindmap_without_an_llm_is_skipped(tmp_path, monkeypatch):
+    from dich.drivers import Skip
+    with pytest.raises(Skip, match="Không có OpenAI hay Claude Code"):
+        run_mindmap(tmp_path, monkeypatch, {}, here=None)
+    with pytest.raises(Skip, match="OPENAI_API_KEY"):
+        run_mindmap(tmp_path, monkeypatch, {}, here="claude", engine="openai")
+
+
+def test_mindmap_detail_sets_the_depth_and_how_many_nodes_are_kept(tmp_path, monkeypatch):
+    blocks = ["b_000", "b_001", "b_002", "b_003"]
+    point = lambda n, depth: {"label": f"ý {n}", "note": None, "block": blocks[n % 4],
+                              **({"children": [point(n * 10 + k, depth - 1) for k in range(3)]} if depth else {})}
+    reply = {"title": "T", "summary": "S", "sections": [
+        {"label": f"Phần {p}", "note": None, "block": blocks[p], "children": [point(p * 10 + k, 2) for k in range(10)]}
+        for p in range(4)]}
+
+    def count(nodes, level=1):
+        found = {}
+        for node in nodes:
+            found[level] = found.get(level, 0) + 1
+            for k, v in count(node.get("children") or [], level + 1).items():
+                found[k] = found.get(k, 0) + v
+        return found
+
+    compact, llm = run_mindmap(tmp_path, monkeypatch, reply, detail="gọn")
+    assert "about 4 parts" in llm.asked[0][0] and "about 15 nodes" in llm.asked[0][0]
+    assert "children" not in llm.asked[0][2]["properties"]["sections"]["items"]["properties"]["children"]["items"]["properties"]
+    assert count(compact["root"]["children"]) == {1: 4, 2: 16}      # 20 nodes, 2 levels
+    assert [len(p["children"]) for p in compact["root"]["children"]] == [4, 4, 4, 4]   # every part keeps points
+    medium, _llm = run_mindmap(tmp_path, monkeypatch, reply)
+    assert count(medium["root"]["children"]) == {1: 4, 2: 40}       # 44 ≤ 50: all of 2 levels
+    detailed, llm = run_mindmap(tmp_path, monkeypatch, reply, detail="chi tiết")
+    assert "under a point the details" in llm.asked[0][0]
+    assert count(detailed["root"]["children"]) == {1: 4, 2: 40, 3: 31}   # cut at 75 nodes

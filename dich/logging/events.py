@@ -10,6 +10,11 @@ class UserError(Exception):
     generic message with the trace code, its traceback goes to the system log."""
 
 
+class Skip(Exception):
+    """The task can't run here and that is fine (no LLM to ask): it ends skipped with this note, the job
+    goes on. It can be run again later."""
+
+
 class EventLog:
     def __init__(self, path=None, emit=None):
         """emit(level, type, message, data) also gets every event (the store, the CLI)."""

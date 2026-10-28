@@ -9,7 +9,7 @@ export function PlaybackHotkeys({ disabled = false }: PlaybackHotkeysProps = {})
     <>
       <Hotkey disabled={disabled} keys="Space" action="togglePaused" />
       <Hotkey disabled={disabled} keys="k" action="togglePaused" />
-      <Hotkey disabled={disabled} keys="m" action="toggleMuted" />
+      {/* M is the page's: the mindmap (Player) */}
       <Hotkey disabled={disabled} keys="ArrowRight" action="seekStep" />
       <Hotkey disabled={disabled} keys="ArrowLeft" action="seekStep" />
       <Hotkey disabled={disabled} keys="l" action="seekStep" />

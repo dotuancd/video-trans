@@ -1308,7 +1308,7 @@
   "/api/artifacts/{artifact_id}/download": {
    "get": {
     "summary": "Download Artifact",
-    "description": "The file as an attachment named like the export; transcripts as .srt. inline: shown in the\nbrowser instead (transcripts as plain text).",
+    "description": "The file as an attachment named like the export; transcripts as .srt, the mindmap as .md. inline:\nshown in the browser instead (those as plain text).",
     "operationId": "download_artifact",
     "parameters": [
      {
@@ -1542,10 +1542,49 @@
     }
    }
   },
+  "/api/jobs/mindmap": {
+   "post": {
+    "summary": "Make Mindmaps",
+    "description": "Tạo mindmap for many jobs: a job whose mindmap is made (and not stale) or on its way is skipped,\nas is one whose template has no mindmap or that is busy.",
+    "operationId": "make_mindmaps",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/JobIds"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/JobsDone"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/jobs/{job_id}/mindmap": {
    "post": {
     "summary": "Make Mindmap",
-    "description": "Turns the job's mindmap stage on and adds its task; the task runs again when it failed, was stopped or\nis stale; nothing happens when it is there, made or on its way.",
+    "description": "Tạo mindmap: see ask_mindmap; nothing happens when it is made or on its way.",
     "operationId": "make_mindmap",
     "parameters": [
      {
