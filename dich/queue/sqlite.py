@@ -329,8 +329,9 @@ class Store:
                    json.dumps(spec.inputs), json.dumps(spec.outputs), json.dumps(spec.deps), spec.lane,
                    int(spec.gate), "skipped" if spec.skip else "blocked", spec.skip, time.time())
 
-    def add_langs(self, job_id, langs, specs):
-        """New tasks of a re-planned job (more languages); existing tasks and their results stay."""
+    def replan(self, job_id, langs, overrides, specs):
+        """New tasks of a re-planned job (more languages, changed overrides); existing tasks and their
+        results stay."""
         with self.tx():
             existing = {r["key"] for r in self.q("select key from tasks where job_id = ?", job_id)}
             new = [s for s in specs if s.key not in existing]
@@ -341,8 +342,9 @@ class Store:
                 self.x("update tasks set position = ? where job_id = ? and key = ?", positions[spec.key], job_id, spec.key)
             for key, position in positions.items():
                 self.x("update tasks set position = ? where job_id = ? and key = ?", position, job_id, key)
-            self.x("update jobs set langs = ?, updated_at = ? where id = ?", json.dumps(langs), time.time(), job_id)
-            self.event(job_id, "job", data={"langs": langs})
+            self.x("update jobs set langs = ?, overrides = ?, updated_at = ? where id = ?", json.dumps(langs),
+                   json.dumps(overrides), time.time(), job_id)
+            self.event(job_id, "job", data={"langs": langs, "added": [s.key for s in new]})
             self.advance(job_id)
         return [s.key for s in new]
 

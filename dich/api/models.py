@@ -161,6 +161,12 @@ class AddLangs(BaseModel):
     langs: list[str]
 
 
+class Replan(BaseModel):
+    langs: list[str] = Field(default_factory=list, description="Target languages to add")
+    overrides: dict[str, StageOverride] = Field(default_factory=dict,
+                                                description="Per-stage changes over the job's overrides")
+
+
 class Rerun(BaseModel):
     mode: Literal["only", "cascade"] = "cascade"
     params: dict[str, Any] | None = None

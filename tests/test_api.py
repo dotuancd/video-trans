@@ -1,3 +1,4 @@
+import json
 import re
 import time
 
@@ -118,6 +119,25 @@ def test_merge_in_editor_keeps_translation_fresh(app):
     assert tasks["translate@vi"] == "done" and tasks["dub@vi"] == "stale"
     src = client.get(f"/api/jobs/{job_id}/transcript").json()
     assert [c["text"] for c in src["cues"]] == ["hello. world."]
+
+
+def test_replan_turns_a_stage_on_without_running_done_tasks_again(app):
+    client, ctx = app
+    [job_id] = create(client, ctx)
+    run_job(ctx.store, job_id)
+    asr = ctx.store.task_by_key(job_id, "asr")
+    attempts = len(ctx.store.attempts_of(asr["id"]))
+    job = client.post(f"/api/jobs/{job_id}/replan", json={"overrides": {"mux": {"enabled": True, "driver": "fake"}}}).json()
+    statuses = {t["key"]: t["status"] for t in job["tasks"]}
+    assert statuses["mux@vi"] == "queued" and statuses["asr"] == "done" and statuses["translate@vi"] == "done"
+    assert job["langs"] == ["vi"]
+    overrides = json.loads(ctx.store.job_row(job_id)["overrides"])
+    assert overrides["mux"] == {"enabled": True, "driver": "fake"} and overrides["asr"] == {"driver": "fake"}
+    run_job(ctx.store, job_id)
+    assert {t["key"]: t["status"] for t in client.get(f"/api/jobs/{job_id}").json()["tasks"]}["mux@vi"] == "done"
+    assert len(ctx.store.attempts_of(asr["id"])) == attempts
+    bad = client.post(f"/api/jobs/{job_id}/replan", json={"overrides": {"dub": {"driver": "nope"}}})
+    assert bad.status_code == 400
 
 
 def test_add_language_cancel_resume_delete(app):

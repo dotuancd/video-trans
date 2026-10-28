@@ -97,5 +97,5 @@ def link_brief(stages):
         brief.enabled = False
         return
     if brief.params.get("engine") == "auto":
-        from dich.drivers.brief.llm import engine_of
+        from dich.drivers.engines import engine_of
         brief.params["engine"] = engine_of(readers[0].driver) or "auto"

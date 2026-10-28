@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from dich.api.models import (AddLangs, Attempt, BriefSave, BriefView, EditCue, Event, Job, JobCounts, JobCreate, JobIds, JobPage,
                              JobPatch, JobsCreated, JobsDeleted, JobsDone, JobsMove, JobSort, JobsRerun, LiveAudio, LLMRequest,
-                             Rerun, Skipped, StatusGroup, TranscriptSave, TranscriptSaved, TranscriptView, Word)
+                             Replan, Rerun, Skipped, StatusGroup, TranscriptSave, TranscriptSaved, TranscriptView, Word)
 from dich.core import jobs as job_service
 from dich.drivers.translate.llm import read_requests
 from dich.formats.transcript import Cue, Transcript, ensure_ids, to_srt, to_vtt
@@ -146,8 +146,18 @@ def router(ctx):
 
     @api.post("/jobs/{job_id}/langs")
     def add_langs(job_id: str, body: AddLangs) -> Job:
+        return replan(job_id, Replan(langs=body.langs))
+
+    @api.post("/jobs/{job_id}/replan")
+    def replan(job_id: str, body: Replan) -> Job:
+        """Plans the job again with more languages and/or changed overrides (e.g. a stage turned on): only
+        the new tasks are added, the existing ones and their results stay."""
         job_or_404(job_id)
-        job_service.add_langs(store, job_id, body.langs)
+        overrides = {stage: o.model_dump(exclude_none=True) for stage, o in body.overrides.items()}
+        try:
+            job_service.replan(store, job_id, body.langs, overrides)
+        except (KeyError, ValidationError) as error:
+            raise HTTPException(400, str(error).strip("'"))
         return job_or_404(job_id)
 
     @api.post("/jobs/{job_id}/cancel")

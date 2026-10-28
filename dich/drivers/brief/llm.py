@@ -10,21 +10,18 @@
 # `instructions` (the field, how to address the audience…) are added as they are: they suit a project's
 # defaults, the summary suits one video.
 import json
-import os
-import shutil
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from dich import settings
 from dich.core.langs import english_name
 from dich.drivers import Driver, register
+from dich.drivers.engines import make_translator, pick_engine
 from dich.drivers.translate.llm import REQUESTS, LLMDriver, RequestLog
 from dich.formats.transcript import Transcript
 
 MAX_WORDS = 8000     # of the transcript sent to write the brief (~11k tokens); longer ones are sampled
 SAMPLES = 8          # evenly spread windows a long transcript is sampled in
-CLAUDE_MODELS = ("sonnet", "haiku", "opus")
 
 BRIEF_PROMPT = """You write a brief for translators who subtitle a {source} video into {targets}. They \
 translate it in small chunks and never see the whole video: the brief must give them what they need to \
@@ -100,31 +97,6 @@ class LLMBrief(Driver):
         brief = translator.ask(system, text).strip()
         LLMDriver.log_usage(ctx, translator.usage, "Đã viết bối cảnh")
         return brief
-
-
-def pick_engine(engine):
-    """openai | claude, the first one usable for "auto"; None when neither is."""
-    usable = {"openai": bool(os.environ.get("OPENAI_API_KEY")), "claude": bool(shutil.which("claude"))}
-    if engine != "auto":
-        return engine
-    return next((name for name, ok in usable.items() if ok), None)
-
-
-def make_translator(engine):
-    from dich.drivers.translate.llm import ClaudeCodeTranslator, OpenAITranslator
-    if engine == "claude":
-        model = settings.CLAUDE_MODEL if settings.CLAUDE_MODEL in CLAUDE_MODELS else "sonnet"
-        return ClaudeCodeTranslator(model, workers=1, effort="low")
-    return OpenAITranslator(settings.OPENAI_MODEL, workers=1)
-
-
-def engine_of(translate_driver):
-    """The brief engine that goes with a translate driver, None for one that is not an LLM."""
-    if translate_driver == "claude":
-        return "claude"
-    if translate_driver and translate_driver.startswith("openai"):
-        return "openai"
-    return None
 
 
 def read_meta(artifact):

@@ -45,11 +45,30 @@ def create_job(store, source, langs, template="default", overrides=None, export=
     return job_id
 
 
-def add_langs(store, job_id, langs):
-    """Plans the job again with more target languages; finished tasks are kept and reused."""
+def merge_overrides(current, change):
+    """Per-stage overrides with change applied over current: its fields win, its params are added."""
+    merged = {stage: dict(o) for stage, o in (current or {}).items()}
+    for stage, o in (change or {}).items():
+        stage_override = merged.setdefault(stage, {})
+        params = {**(stage_override.get("params") or {}), **(o.get("params") or {})}
+        stage_override.update({k: v for k, v in o.items() if k != "params"})
+        if params:
+            stage_override["params"] = params
+    return merged
+
+
+def replan(store, job_id, langs=(), overrides=None):
+    """Plans the job again with more target languages and/or changed overrides (e.g. a stage that was off
+    turned on). Only the tasks that are new get added: the existing ones and their results stay as they
+    are, even when the change would plan them differently (run them again for that). Returns the new keys."""
     import json
     job = store.job_row(job_id)
-    current = json.loads(job["langs"])
-    langs = list(dict.fromkeys(current + list(langs)))
-    specs = plan_job(job["source"], langs, job["template"], json.loads(job["overrides"]))
-    return store.add_langs(job_id, langs, specs)
+    langs = list(dict.fromkeys(json.loads(job["langs"]) + list(langs)))
+    overrides = merge_overrides(json.loads(job["overrides"]), overrides)
+    specs = plan_job(job["source"], langs, job["template"], overrides)
+    return store.replan(job_id, langs, overrides, specs)
+
+
+def add_langs(store, job_id, langs):
+    """Plans the job again with more target languages; finished tasks are kept and reused."""
+    return replan(store, job_id, langs)
